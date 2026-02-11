@@ -7,101 +7,92 @@
 <div class="left-panel">
     <h2>Ranking Type</h2>
     <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
-        <button class="btn btn-primary btn-bold" id="ppr_btn" onclick="showTable('ppr')">PPR</button>
-        <button class="btn btn-primary" id="half_ppr_btn" onclick="showTable('half_ppr')">Half PPR</button>
-        <button class="btn btn-primary" id="standard_btn" onclick="showTable('standard')">Standard</button>
+        <a href="{{ url_for('main.get_ppr_rankings') }}" class="btn btn-primary btn-bold" id="ppr_btn">PPR</a>
+        <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="btn btn-primary" id="half_ppr_btn">Half PPR</a>
+        <a href="{{ url_for('main.get_standard_rankings') }}" class="btn btn-primary" id="standard_btn">Standard</a>
+    </div>
+    
+    <!-- User-Specific Saved Rankings -->
+    <h3>Your Saved Rankings</h3>
+    <div class="btn-group-vertical mb-3" role="group" aria-label="User Saved Rankings">
+        {% for ranking in user_rankings %}
+            <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="btn btn-secondary">
+                {{ ranking.ranking_type }} (Saved: {{ ranking.timestamp.strftime('%Y-%m-%d %H:%M') }})
+            </a>
+        {% endfor %}
     </div>
 </div>
 
-<div id="ranking_table" class="ranking-table"></div>
+<div id="ranking_table" class="ranking-table">
+    {% if table_data %}
+        <table class="table table-striped" id="sortable-table">
+            <thead>
+                <tr>
+                    {% for header in table_data[0].keys() %}
+                        <th>{{ header }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in table_data %}
+                    <tr>
+                        {% for cell in row.values() %}
+                            <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No data available for {{ table_type }} rankings.</p>
+    {% endif %}
+</div>
+
+<!-- Save Button -->
+<button id="saveRanking" class="btn btn-success">Save Rankings</button>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 
 <script>
-function fetchAndRenderTable(type) {
-    console.log(`Fetching data for: ${type}`);
-    fetch(`http://127.0.0.1:5000/api/${type}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log(`Data fetched for ${type}:`, data);
-            renderTable(type, data);
-        })
-        .catch(error => {
-            console.error('Error fetching data:', error);
-        });
-}
-
-function renderTable(type, data) {
-    const tableContainer = document.getElementById('ranking_table');
-    tableContainer.innerHTML = ''; // Clear existing table
-
-    const table = document.createElement('table');
-    table.classList.add('table', 'table-striped');
-    const thead = document.createElement('thead');
-    const tbody = document.createElement('tbody');
-
-    if (data.length > 0) {
-        const headers = Object.keys(data[0]);
-
-        const tr = document.createElement('tr');
-        headers.forEach(header => {
-            const th = document.createElement('th');
-            th.textContent = header;
-            tr.appendChild(th);
-        });
-        thead.appendChild(tr);
-
-        data.forEach(row => {
-            const tr = document.createElement('tr');
-            tr.setAttribute('data-id', row.id); // Assuming each row has an 'id' field
-            Object.values(row).forEach(cell => {
-                const td = document.createElement('td');
-                td.textContent = cell;
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-    } else {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 100; // Assuming 100 columns max
-        td.textContent = 'No data available';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
-    }
-
-    table.appendChild(thead);
-    table.appendChild(tbody);
-    tableContainer.appendChild(table);
-}
-
-function showTable(type) {
-    document.getElementById('ppr_btn').classList.remove('btn-bold');
-    document.getElementById('half_ppr_btn').classList.remove('btn-bold');
-    document.getElementById('standard_btn').classList.remove('btn-bold');
-
-    document.getElementById(type + '_btn').classList.add('btn-bold');
-
-    fetchAndRenderTable(type);
-}
-
 $(document).ready(function() {
-    let isReordered = false;
-
-    $('#ranking_table').sortable({
-        items: 'tr',
-        cursor: 'move',
-        opacity: 0.6,
-        update: function(event, ui) {
-            // Enable the save list button when rows are reordered
-            isReordered = true;
-            $('#saveListButton').prop('disabled', false);
-            console.log('Rows reordered');
+    // Make the table rows sortable
+    $("#sortable-table tbody").sortable({
+        helper: function(e, tr) {
+            var $originals = tr.children();
+            var $helper = tr.clone();
+            $helper.children().each(function(index) {
+                $(this).width($originals.eq(index).width());
+            });
+            return $helper;
         }
     }).disableSelection();
+
+    // Save the reordered list
+    $('#saveRanking').click(function() {
+        var rows = [];
+        $('#sortable-table tbody tr').each(function() {
+            var row = [];
+            $(this).find('td').each(function() {
+                row.push($(this).text());
+            });
+            rows.push(row);
+        });
+
+        // Send reordered list to the server
+        $.ajax({
+            type: 'POST',
+            url: '{{ url_for("main.save_rankings") }}',
+            contentType: 'application/json;charset=UTF-8',
+            data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}"}),
+            success: function(response) {
+                alert('Rankings saved successfully!');
+            },
+            error: function(error) {
+                alert('Failed to save rankings. Please try again.');
+            }
+        });
+    });
 });
 </script>
 {% endblock %}
