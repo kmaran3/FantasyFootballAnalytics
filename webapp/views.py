@@ -2,11 +2,16 @@ from flask import Blueprint, render_template, url_for, flash, redirect, request,
 from flask_login import login_user, current_user, logout_user, login_required
 import pandas as pd
 import requests
+from sqlalchemy import create_engine, text
 from bs4 import BeautifulSoup
 from webapp.forms import LoginForm, RegistrationForm
 from webapp import db, User
+from .__init__ import UserRanking
+import json
 
 main = Blueprint('main', __name__)
+
+engine = create_engine('sqlite:////Users/kmaran3/Dropbox/Darkhorse/webapp/my_database.db', echo=True)
 
 @main.route('/', methods=['GET', 'POST'])
 def login():
@@ -59,6 +64,51 @@ def contact():
 def rankings():
     return render_template('rankings.html')
 
+@main.route('/rankings/ppr')
+def get_ppr_rankings():
+    # Query the Full PPR table
+    with engine.connect() as connection:  # Use the engine to establish a connection
+        df = pd.read_sql(text('SELECT * FROM Full_PPR'), con=connection)
+    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='PPR')
+
+@main.route('/rankings/half-ppr')
+def get_half_ppr_rankings():
+    # Query the Half PPR table
+    with engine.connect() as connection:
+        df = pd.read_sql(text('SELECT * FROM Half_PPR'), con=connection)
+    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Half PPR')
+
+@main.route('/rankings/standard')
+def get_standard_rankings():
+    # Query the Non PPR table
+    with engine.connect() as connection:
+        df = pd.read_sql(text('SELECT * FROM Non_PPR'), con=connection)
+    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Standard')
+
+@main.route('/save_rankings', methods=['POST'])
+@login_required
+def save_rankings():
+    data = request.get_json()
+    ranking_data = data.get('ranking', [])
+    ranking_type = data.get('ranking_type', 'Custom')
+
+    # Convert ranking data to JSON format
+    ranking_json = json.dumps(ranking_data)
+
+    # Save the ranking to the database
+    user_ranking = UserRanking(user_id=current_user.id, ranking_type=ranking_type, ranking_data=ranking_json)
+    db.session.add(user_ranking)
+    db.session.commit()
+
+    return jsonify({'message': 'Rankings saved successfully!'})
+
+@main.route('/user_rankings')
+@login_required
+def user_rankings():
+    # Retrieve all rankings for the current user
+    user_rankings = UserRanking.query.filter_by(user_id=current_user.id).all()
+    return render_template('user_rankings.html', user_rankings=user_rankings)
+
 @main.route('/mockdraft', methods=['GET', 'POST'])
 @login_required
 def mock_draft():
@@ -90,27 +140,3 @@ def fetch_player_data():
         return player_data_sorted
     else:
         return []
-
-def convert_nan_to_na(df):
-    return df.where(pd.notnull(df), "NA")
-
-@main.route('/api/ppr', methods=['GET'])
-def get_ppr_data():
-    df = pd.read_csv('Final Rankings/Full PPR Rankings with Weighted VBD.csv', usecols=['Rank', 'Name', 'Team', 'Position', 'Bye Week', 'ESPN ADP'])
-    df = convert_nan_to_na(df)
-    data = df.to_dict(orient='records')
-    return jsonify(data)
-
-@main.route('/api/half_ppr', methods=['GET'])
-def get_half_ppr_data():
-    df = pd.read_csv('Final Rankings/Half PPR Rankings with Weighted VBD.csv', usecols=['Rank', 'Name', 'Team', 'Position', 'Bye Week', 'ESPN ADP'])
-    df = convert_nan_to_na(df)
-    data = df.to_dict(orient='records')
-    return jsonify(data)
-
-@main.route('/api/standard', methods=['GET'])
-def get_standard_data():
-    df = pd.read_csv('Final Rankings/Non PPR Rankings with Weighted VBD.csv', usecols=['Rank', 'Name', 'Team', 'Position', 'Bye Week', 'ESPN ADP'])
-    df = convert_nan_to_na(df)
-    data = df.to_dict(orient='records')
-    return jsonify(data)

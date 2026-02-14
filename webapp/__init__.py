@@ -8,20 +8,16 @@ db = SQLAlchemy()
 
 class User(UserMixin, db.Model):
     id = db.Column(db.String(100), primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)  # New email column
+    email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(100))
-    lists = db.relationship('UserList', backref='owner', lazy=True)
+    rankings = db.relationship('UserRanking', backref='user', lazy=True)
 
-class UserList(db.Model):
+class UserRanking(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    name = db.Column(db.String(150), nullable=False)
-    items = db.relationship('ListItem', backref='list', lazy=True)
-
-class ListItem(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    list_id = db.Column(db.Integer, db.ForeignKey('user_list.id'), nullable=False)
-    content = db.Column(db.String(150), nullable=False)
+    user_id = db.Column(db.String(100), db.ForeignKey('user.id'), nullable=False)
+    ranking_type = db.Column(db.String(50), nullable=False)  # Type of ranking: PPR, Half PPR, etc.
+    ranking_data = db.Column(db.Text, nullable=False)  # Store the ranking data as JSON or plain text
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def create_app():
     app = Flask(__name__)
@@ -29,19 +25,23 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///yourdatabase.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    # Initialize the database with the app
     db.init_app(app)
 
     login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'main.login'  # Redirect to main.login view if not logged in
+    login_manager.login_view = 'main.login'
 
     # User loader function for Flask-Login
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(user_id)
 
-    # Importing the main blueprint that contains routes and views
+    # Import and register blueprints
     from .views import main as main_blueprint
     app.register_blueprint(main_blueprint)
+
+    with app.app_context():
+        db.create_all()  # Ensure tables are created
 
     return app
