@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(find /Users/kmaran3/Dropbox/Darkhorse -name \"*.csv\" -not -path \"*/.git/*\" -not -path \"*/fantasy points allowed by position/*\" -delete)"
+    ]
+  }
+}
