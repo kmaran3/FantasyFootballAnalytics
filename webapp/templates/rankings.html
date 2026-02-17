@@ -7,24 +7,33 @@
 <div class="left-panel">
     <h2>Ranking Type</h2>
     <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
-        <a href="{{ url_for('main.get_ppr_rankings') }}" class="btn btn-primary btn-bold" id="ppr_btn">PPR</a>
-        <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="btn btn-primary" id="half_ppr_btn">Half PPR</a>
-        <a href="{{ url_for('main.get_standard_rankings') }}" class="btn btn-primary" id="standard_btn">Standard</a>
+        <a href="{{ url_for('main.get_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}">PPR</a>
+        <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}">Half PPR</a>
+        <a href="{{ url_for('main.get_standard_rankings') }}" class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}">Standard</a>
     </div>
-    
-    <!-- User-Specific Saved Rankings -->
-    <h3>Your Saved Rankings</h3>
-    <div class="btn-group-vertical mb-3" role="group" aria-label="User Saved Rankings">
+</div>
+
+<div class="right-panel">
+    <h2>Your Saved Rankings</h2>
+    {% if user_rankings %}
         {% for ranking in user_rankings %}
-            <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="btn btn-secondary">
-                {{ ranking.ranking_type }} (Saved: {{ ranking.timestamp.strftime('%Y-%m-%d %H:%M') }})
-            </a>
+            <div class="saved-ranking-item">
+                <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="btn btn-secondary saved-ranking-link">
+                    {{ ranking.name }}
+                </a>
+                <button class="btn btn-danger btn-sm delete-ranking" data-id="{{ ranking.id }}">&times;</button>
+            </div>
         {% endfor %}
-    </div>
+    {% else %}
+        <p style="font-size: 0.85em; opacity: 0.7;">No saved rankings yet.</p>
+    {% endif %}
 </div>
 
 <div id="ranking_table" class="ranking-table">
     {% if table_data %}
+        <div style="width: 65%; margin: 0 auto; text-align: right; margin-bottom: 8px;">
+            <button id="saveRanking" class="btn btn-success">Save Rankings</button>
+        </div>
         <table class="table table-striped" id="sortable-table">
             <thead>
                 <tr>
@@ -48,9 +57,6 @@
     {% endif %}
 </div>
 
-<!-- Save Button -->
-<button id="saveRanking" class="btn btn-success">Save Rankings</button>
-
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 
@@ -70,6 +76,9 @@ $(document).ready(function() {
 
     // Save the reordered list
     $('#saveRanking').click(function() {
+        var name = prompt('Enter a name for this ranking list:');
+        if (name === null || name.trim() === '') return;
+
         var rows = [];
         $('#sortable-table tbody tr').each(function() {
             var row = [];
@@ -84,12 +93,29 @@ $(document).ready(function() {
             type: 'POST',
             url: '{{ url_for("main.save_rankings") }}',
             contentType: 'application/json;charset=UTF-8',
-            data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}"}),
+            data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}", name: name.trim()}),
             success: function(response) {
-                alert('Rankings saved successfully!');
+                location.reload();
             },
             error: function(error) {
                 alert('Failed to save rankings. Please try again.');
+            }
+        });
+    });
+
+    // Delete a saved ranking
+    $('.delete-ranking').click(function() {
+        var rankingId = $(this).data('id');
+        if (!confirm('Delete this saved ranking?')) return;
+
+        $.ajax({
+            type: 'DELETE',
+            url: '/delete_ranking/' + rankingId,
+            success: function(response) {
+                location.reload();
+            },
+            error: function(error) {
+                alert('Failed to delete ranking.');
             }
         });
     });

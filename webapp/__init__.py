@@ -15,6 +15,7 @@ class User(UserMixin, db.Model):
 class UserRanking(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String(100), db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), nullable=False, default='Untitled')
     ranking_type = db.Column(db.String(50), nullable=False)  # Type of ranking: PPR, Half PPR, etc.
     ranking_data = db.Column(db.Text, nullable=False)  # Store the ranking data as JSON or plain text
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
