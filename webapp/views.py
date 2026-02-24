@@ -10,7 +10,7 @@ import json
 
 main = Blueprint('main', __name__)
 
-engine = create_engine('sqlite:////Users/kmaran3/Dropbox/Darkhorse/webapp/my_database.db', echo=True)
+engine = create_engine('sqlite:///webapp/my_database.db', echo=True)
 
 @main.route('/', methods=['GET', 'POST'])
 def login():

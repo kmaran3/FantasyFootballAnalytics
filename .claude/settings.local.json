@@ -3,7 +3,12 @@
     "allow": [
       "Bash(python:*)",
       "Bash(python3:*)",
-      "Bash(find /Users/kmaran3/Dropbox/Darkhorse -name \"*.csv\" -not -path \"*/.git/*\" -not -path \"*/fantasy points allowed by position/*\" -delete)"
+      "Bash(find /Users/kmaran3/Dropbox/Darkhorse -name \"*.csv\" -not -path \"*/.git/*\" -not -path \"*/fantasy points allowed by position/*\" -delete)",
+      "Bash(/Users/kmaran3/anaconda3/bin/pip install:*)",
+      "Bash(/Users/kmaran3/anaconda3/bin/python:*)",
+      "Bash(/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3 -m pip install:*)",
+      "Bash(/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3:*)",
+      "Bash(pip3 install:*)"
     ]
   }
 }
