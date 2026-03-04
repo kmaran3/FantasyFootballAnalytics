@@ -14,6 +14,7 @@
     <button class="position-filter-btn" data-pos="TE">TE</button>
     <button class="position-filter-btn" data-pos="K">K</button>
             <button class="position-filter-btn" data-pos="DEF">DEF</button>
+            <button class="position-filter-btn" id="deepDiveToggle">Deep Dive</button>
         </div>
     </div>
 </div>
@@ -34,7 +35,7 @@
     {% if user_rankings %}
         {% for ranking in user_rankings %}
             <div class="saved-ranking-item">
-                <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="saved-ranking-link">
+                <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="saved-ranking-link {% if saved_ranking_id is defined and saved_ranking_id == ranking.id %}active{% endif %}">
                     {{ ranking.name }}
                 </a>
                 <button class="btn btn-danger btn-sm delete-ranking" data-id="{{ ranking.id }}">&times;</button>
@@ -57,10 +58,15 @@
             </thead>
             <tbody>
                 {% for row in table_data %}
-                    <tr>
+                    <tr class="player-row" style="cursor: pointer;">
                         {% for cell in row.values() %}
                             <td>{{ cell }}</td>
                         {% endfor %}
+                    </tr>
+                    <tr class="deep-dive-row" style="display: none;">
+                        <td colspan="{{ row.keys()|list|length }}">
+                            <div class="deep-dive-panel"></div>
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>
@@ -87,7 +93,7 @@ $(document).ready(function() {
     // Player search
     $('#playerSearch').on('input', function() {
         var query = $(this).val().trim().toLowerCase();
-        $('#sortable-table tbody tr').each(function() {
+        $('#sortable-table tbody tr.player-row').each(function() {
             if (query === '') {
                 $(this).show();
             } else {
@@ -97,30 +103,26 @@ $(document).ready(function() {
         });
     });
 
-    $('.position-filter-btn').click(function() {
+    $('.position-filter-btn[data-pos]').click(function() {
         var clicked = $(this).data('pos');
         if (clicked === 'ALL') {
-            // Clear all others, activate ALL
-            $('.position-filter-btn').removeClass('active');
+            $('.position-filter-btn[data-pos]').removeClass('active');
             $(this).addClass('active');
         } else {
-            // Deactivate ALL button
             $('.position-filter-btn[data-pos="ALL"]').removeClass('active');
-            // Toggle clicked button
             $(this).toggleClass('active');
-            // If nothing is selected, reactivate ALL
-            if ($('.position-filter-btn.active').length === 0) {
+            if ($('.position-filter-btn[data-pos].active').length === 0) {
                 $('.position-filter-btn[data-pos="ALL"]').addClass('active');
             }
         }
 
         var activePositions = [];
-        $('.position-filter-btn.active').each(function() {
+        $('.position-filter-btn[data-pos].active').each(function() {
             activePositions.push($(this).data('pos'));
         });
         var showAll = activePositions.indexOf('ALL') !== -1;
 
-        $('#sortable-table tbody tr').each(function() {
+        $('#sortable-table tbody tr.player-row').each(function() {
             if (showAll) {
                 $(this).show();
             } else {
@@ -134,8 +136,44 @@ $(document).ready(function() {
         });
     });
 
-    // Make the table rows sortable
+    // Deep dive toggle
+    var deepDiveAllOpen = false;
+
+    $('.player-row').click(function() {
+        var deepDive = $(this).next('.deep-dive-row');
+        if (!deepDiveAllOpen) {
+            $('.deep-dive-row').not(deepDive).hide();
+            $('.player-row').not(this).removeClass('active-player');
+        }
+        deepDive.toggle();
+        $(this).toggleClass('active-player');
+    });
+
+    // Deep Dive all toggle
+    $('#deepDiveToggle').click(function() {
+        deepDiveAllOpen = !deepDiveAllOpen;
+        $(this).toggleClass('active');
+        if (deepDiveAllOpen) {
+            $('.deep-dive-row').show();
+            $('.player-row').addClass('active-player');
+        } else {
+            $('.deep-dive-row').hide();
+            $('.player-row').removeClass('active-player');
+        }
+    });
+
+    // Make the table rows sortable (only player rows, not deep-dive rows)
+    // First, detach all deep-dive rows and store references
+    $('.player-row').each(function() {
+        $(this).data('deep-dive', $(this).next('.deep-dive-row').detach());
+    });
+    // Re-append them after their player rows
+    $('.player-row').each(function() {
+        $(this).after($(this).data('deep-dive'));
+    });
+
     $("#sortable-table tbody").sortable({
+        items: 'tr.player-row',
         helper: function(e, tr) {
             var $originals = tr.children();
             var $helper = tr.clone();
@@ -143,16 +181,24 @@ $(document).ready(function() {
                 $(this).width($originals.eq(index).width());
             });
             return $helper;
+        },
+        start: function(e, ui) {
+            // Detach the deep-dive row so sortable doesn't mess with it
+            ui.item.data('deep-dive', ui.item.next('.deep-dive-row').detach());
+        },
+        stop: function(e, ui) {
+            // Reattach deep-dive row after its player row
+            ui.item.after(ui.item.data('deep-dive'));
         }
     }).disableSelection();
 
     // Save the reordered list
-    $('#saveRanking').click(function() {
-        var name = prompt('Enter a name for this ranking list:');
-        if (name === null || name.trim() === '') return;
+    var savedRankingId = {{ saved_ranking_id if saved_ranking_id is defined else 'null' }};
+    var savedRankingName = {{ saved_ranking_name|tojson if saved_ranking_name is defined else 'null' }};
 
+    $('#saveRanking').click(function() {
         var rows = [];
-        $('#sortable-table tbody tr').each(function() {
+        $('#sortable-table tbody tr.player-row').each(function() {
             var row = [];
             $(this).find('td').each(function() {
                 row.push($(this).text());
@@ -160,23 +206,40 @@ $(document).ready(function() {
             rows.push(row);
         });
 
-        // Send reordered list to the server
-        $.ajax({
-            type: 'POST',
-            url: '{{ url_for("main.save_rankings") }}',
-            contentType: 'application/json;charset=UTF-8',
-            data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}", name: name.trim()}),
-            success: function(response) {
-                location.reload();
-            },
-            error: function(xhr) {
-                var msg = 'Failed to save rankings. Please try again.';
-                if (xhr.responseJSON && xhr.responseJSON.error) {
-                    msg = xhr.responseJSON.error;
+        if (savedRankingId) {
+            // Update existing saved ranking
+            $.ajax({
+                type: 'PUT',
+                url: '/update_ranking/' + savedRankingId,
+                contentType: 'application/json;charset=UTF-8',
+                data: JSON.stringify({ranking: rows}),
+                success: function(response) {},
+                error: function(xhr) {
+                    alert('Failed to update ranking.');
                 }
-                alert(msg);
-            }
-        });
+            });
+        } else {
+            // New ranking - prompt for name
+            var name = prompt('Enter a name for this ranking list:');
+            if (name === null || name.trim() === '') return;
+
+            $.ajax({
+                type: 'POST',
+                url: '{{ url_for("main.save_rankings") }}',
+                contentType: 'application/json;charset=UTF-8',
+                data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}", name: name.trim()}),
+                success: function(response) {
+                    window.location.href = '/rankings/saved/' + response.ranking_id;
+                },
+                error: function(xhr) {
+                    var msg = 'Failed to save rankings. Please try again.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        msg = xhr.responseJSON.error;
+                    }
+                    alert(msg);
+                }
+            });
+        }
     });
 
     // Delete a saved ranking

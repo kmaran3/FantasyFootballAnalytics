@@ -111,7 +111,19 @@ def save_rankings():
     db.session.add(user_ranking)
     db.session.commit()
 
-    return jsonify({'message': 'Rankings saved successfully!'})
+    return jsonify({'message': 'Rankings saved successfully!', 'ranking_id': user_ranking.id})
+
+@main.route('/update_ranking/<int:ranking_id>', methods=['PUT'])
+@login_required
+def update_ranking(ranking_id):
+    ranking = UserRanking.query.get_or_404(ranking_id)
+    if ranking.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json()
+    ranking_data = data.get('ranking', [])
+    ranking.ranking_data = json.dumps(ranking_data)
+    db.session.commit()
+    return jsonify({'message': 'Ranking updated successfully!'})
 
 @main.route('/rankings/saved/<int:ranking_id>')
 @login_required
@@ -136,7 +148,7 @@ def view_saved_ranking(ranking_id):
             row_dict[header] = row[i] if i < len(row) else ''
         table_data.append(row_dict)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    return render_template('rankings.html', table_data=table_data, table_type=ranking.name, user_rankings=saved)
+    return render_template('rankings.html', table_data=table_data, table_type=ranking.name, user_rankings=saved, saved_ranking_id=ranking.id, saved_ranking_name=ranking.name)
 
 @main.route('/user_rankings')
 @login_required

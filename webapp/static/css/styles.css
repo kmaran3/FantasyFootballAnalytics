@@ -227,6 +227,12 @@ th, td {
     color: #fff;
 }
 
+.saved-ranking-link.active {
+    background-color: #f8f39fee;
+    color: #333;
+    font-weight: bold;
+}
+
 .saved-ranking-item .btn-danger {
     margin-left: 4px;
     padding: 4px 8px;
@@ -301,6 +307,28 @@ th, td {
 
 .player-search-input:focus {
     border-color: #f8f39fee;
+}
+
+.player-row:hover {
+    background-color: #e8e8e8;
+}
+
+.player-row.active-player {
+    background-color: #e0dfc8;
+}
+
+.deep-dive-row td {
+    padding: 0 !important;
+    border-bottom: none !important;
+}
+
+.deep-dive-panel {
+    width: 100%;
+    min-height: 200px;
+    background-color: #fff;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    margin: 8px 0;
 }
 
 .save-ranking-btn {
