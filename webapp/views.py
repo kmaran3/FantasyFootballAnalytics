@@ -98,6 +98,11 @@ def save_rankings():
     ranking_type = data.get('ranking_type', 'Custom')
     name = data.get('name', 'Untitled')
 
+    # Check for duplicate name
+    existing = UserRanking.query.filter_by(user_id=current_user.id, name=name).first()
+    if existing:
+        return jsonify({'error': 'A ranking with that name already exists. Please choose a different name.'}), 400
+
     # Convert ranking data to JSON format
     ranking_json = json.dumps(ranking_data)
 

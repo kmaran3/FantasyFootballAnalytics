@@ -3,7 +3,20 @@
 {% block title %}Rankings{% endblock %}
 
 {% block content %}
-<h1>Player Rankings</h1>
+<div class="position-filter-bar">
+    <div class="filter-bar-inner">
+        <input type="text" id="playerSearch" class="player-search-input" placeholder="Search player...">
+        <div class="filter-buttons">
+            <button class="position-filter-btn active" data-pos="ALL">All Positions</button>
+    <button class="position-filter-btn" data-pos="QB">QB</button>
+    <button class="position-filter-btn" data-pos="RB">RB</button>
+    <button class="position-filter-btn" data-pos="WR">WR</button>
+    <button class="position-filter-btn" data-pos="TE">TE</button>
+    <button class="position-filter-btn" data-pos="K">K</button>
+            <button class="position-filter-btn" data-pos="DEF">DEF</button>
+        </div>
+    </div>
+</div>
 <div class="left-panel">
     <h2>Ranking Type</h2>
     <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
@@ -14,11 +27,14 @@
 </div>
 
 <div class="right-panel">
+    {% if table_data %}
+        <button id="saveRanking" class="save-ranking-btn" style="width: 100%; margin-bottom: 10px;">Save Rankings</button>
+    {% endif %}
     <h2>Your Saved Rankings</h2>
     {% if user_rankings %}
         {% for ranking in user_rankings %}
             <div class="saved-ranking-item">
-                <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="btn btn-secondary saved-ranking-link">
+                <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="saved-ranking-link">
                     {{ ranking.name }}
                 </a>
                 <button class="btn btn-danger btn-sm delete-ranking" data-id="{{ ranking.id }}">&times;</button>
@@ -31,9 +47,6 @@
 
 <div id="ranking_table" class="ranking-table">
     {% if table_data %}
-        <div style="width: 65%; margin: 0 auto; text-align: right; margin-bottom: 8px;">
-            <button id="saveRanking" class="btn btn-success">Save Rankings</button>
-        </div>
         <table class="table table-striped" id="sortable-table">
             <thead>
                 <tr>
@@ -62,6 +75,65 @@
 
 <script>
 $(document).ready(function() {
+    // Find column indices
+    var posColIndex = -1;
+    var nameColIndex = -1;
+    $('#sortable-table thead th').each(function(i) {
+        var header = $(this).text().trim();
+        if (header === 'Position') posColIndex = i;
+        if (header === 'Name') nameColIndex = i;
+    });
+
+    // Player search
+    $('#playerSearch').on('input', function() {
+        var query = $(this).val().trim().toLowerCase();
+        $('#sortable-table tbody tr').each(function() {
+            if (query === '') {
+                $(this).show();
+            } else {
+                var name = $(this).find('td').eq(nameColIndex).text().trim().toLowerCase();
+                $(this).toggle(name.indexOf(query) !== -1);
+            }
+        });
+    });
+
+    $('.position-filter-btn').click(function() {
+        var clicked = $(this).data('pos');
+        if (clicked === 'ALL') {
+            // Clear all others, activate ALL
+            $('.position-filter-btn').removeClass('active');
+            $(this).addClass('active');
+        } else {
+            // Deactivate ALL button
+            $('.position-filter-btn[data-pos="ALL"]').removeClass('active');
+            // Toggle clicked button
+            $(this).toggleClass('active');
+            // If nothing is selected, reactivate ALL
+            if ($('.position-filter-btn.active').length === 0) {
+                $('.position-filter-btn[data-pos="ALL"]').addClass('active');
+            }
+        }
+
+        var activePositions = [];
+        $('.position-filter-btn.active').each(function() {
+            activePositions.push($(this).data('pos'));
+        });
+        var showAll = activePositions.indexOf('ALL') !== -1;
+
+        $('#sortable-table tbody tr').each(function() {
+            if (showAll) {
+                $(this).show();
+            } else {
+                var cellText = $(this).find('td').eq(posColIndex).text().trim().toUpperCase();
+                var match = false;
+                for (var i = 0; i < activePositions.length; i++) {
+                    if (cellText.startsWith(activePositions[i])) { match = true; break; }
+                }
+                $(this).toggle(match);
+            }
+        });
+    });
+
     // Make the table rows sortable
     $("#sortable-table tbody").sortable({
         helper: function(e, tr) {
@@ -97,8 +169,12 @@ $(document).ready(function() {
             success: function(response) {
                 location.reload();
             },
-            error: function(error) {
-                alert('Failed to save rankings. Please try again.');
+            error: function(xhr) {
+                var msg = 'Failed to save rankings. Please try again.';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    msg = xhr.responseJSON.error;
+                }
+                alert(msg);
             }
         });
     });
@@ -112,7 +188,8 @@ $(document).ready(function() {
             type: 'DELETE',
             url: '/delete_ranking/' + rankingId,
             success: function(response) {
-                location.reload();
+                // Always redirect to PPR page after deletion
+                window.location.href = '{{ url_for("main.get_ppr_rankings") }}';
             },
             error: function(error) {
                 alert('Failed to delete ranking.');

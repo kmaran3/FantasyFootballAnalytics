@@ -8,7 +8,8 @@
       "Bash(/Users/kmaran3/anaconda3/bin/python:*)",
       "Bash(/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3 -m pip install:*)",
       "Bash(/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(pip install flask-sqlalchemy)"
     ]
   }
 }
