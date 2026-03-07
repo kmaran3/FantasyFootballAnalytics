@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from sqlalchemy import create_engine, text
 from bs4 import BeautifulSoup
+from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
 from webapp import db, User, UserRanking
 import json
@@ -159,6 +160,24 @@ def mock_draft():
         return render_template('mockdraft.html', player_data=player_data, draft_position=draft_position)
     else:
         return render_template('mockdraft.html')
+
+
+@main.route('/rosters')
+@login_required
+def rosters():
+    data_path = Path(app.root_path) / 'data' / 'teamsPastRoster.pkl'
+
+    if not data_path.exists():
+        flash('Roster file not found. Please generate teamsPastRoster.pkl first.')
+        return redirect(url_for('main.home'))
+
+    df = pd.read_pickle(data_path)
+
+    return render_template(
+        'rosters.html',
+        table_data=df.to_dict(orient='records'),
+        columns=df.columns.tolist()
+    )
 
 def fetch_player_data():
     url = 'https://www.footballguys.com/adp'
