@@ -10,23 +10,24 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
 </head>
 <body>
-    <header class="banner">
-        <nav>
-            <ul>
-                <li><a href="{{ url_for('main.home') }}">Home</a></li>
-                <li><a href="{{ url_for('main.rankings') }}">Rankings</a></li>
-                <li><a href="{{ url_for('main.mock_draft') }}">Mock Draft</a></li>
-                <li><a href="{{ url_for('main.about') }}">About</a></li>
-                <li><a href="{{ url_for('main.contact') }}">Contact</a></li>
-                {% if current_user.is_authenticated %}
-                    <li class="login"><a class="button" href="{{ url_for('main.logout') }}">Logout</a></li>
-                {% else %}
-                    <li class="login"><a class="button" href="{{ url_for('main.login') }}">Login</a></li>
-                    <li class="register"><a class="button" href="{{ url_for('main.register') }}">Register</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-    </header>
+<header class="banner">
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('main.home') }}">Home</a></li>
+            <li><a href="{{ url_for('main.rankings') }}">Rankings</a></li>
+            <li><a href="{{ url_for('main.mock_draft') }}">Mock Draft</a></li>
+            <li><a href="{{ url_for('main.rosters') }}">Rosters</a></li>
+            <li><a href="{{ url_for('main.about') }}">About</a></li>
+            <li><a href="{{ url_for('main.contact') }}">Contact</a></li>
+            {% if current_user.is_authenticated %}
+                <li class="login"><a class="button" href="{{ url_for('main.logout') }}">Logout</a></li>
+            {% else %}
+                <li class="login"><a class="button" href="{{ url_for('main.login') }}">Login</a></li>
+                <li class="register"><a class="button" href="{{ url_for('main.register') }}">Register</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</header>
     <main>
         {% block content %}{% endblock %}
     </main>
