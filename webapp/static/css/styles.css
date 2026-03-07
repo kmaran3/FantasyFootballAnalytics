@@ -40,7 +40,7 @@ nav ul li {
     flex-direction: column;
     align-items: flex-start;
     position: fixed;
-    top: 170px;
+    top: 152px;
 }
 
 .btn-group-vertical .btn {
@@ -161,10 +161,11 @@ th, td {
 
 .left-panel {
     position: fixed; /* Keeps the panel fixed on the page */
-    top: 100px; /* Adjust this value to position the panel higher or lower */
+    top: 82px; /* Adjust this value to position the panel higher or lower */
     left: 40px; /* Adjust this value to position the panel left or right */
     width: 130px; /* Adjust the width as needed */
     padding: 5px; /* Optional: Add some padding */
+    z-index: 1000;
     background-color: #555; /* Optional: Add a background color */ /* Optional: Add a border */
     /* box-shadow: 0 0 10px rgba(117, 108, 108, 0.1); */
     font-size: 0.65em; /* Optional: Add a shadow */
@@ -186,10 +187,11 @@ th, td {
 
 .right-panel {
     position: fixed;
-    top: 100px;
+    top: 82px;
     right: 40px;
     width: 160px;
     padding: 5px;
+    z-index: 1000;
     background-color: #555;
     font-size: 0.65em;
     color: #f8f39fee;
@@ -212,11 +214,140 @@ th, td {
     flex: 1;
     text-align: left;
     font-size: 1.1em;
-    padding: 4px 8px;
+    padding: 6px 10px;
+    background-color: #444;
+    color: #f8f39fee;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.saved-ranking-link:hover {
+    background-color: #666;
+    color: #fff;
+}
+
+.saved-ranking-link.active {
+    background-color: #f8f39fee;
+    color: #333;
+    font-weight: bold;
 }
 
 .saved-ranking-item .btn-danger {
     margin-left: 4px;
-    padding: 2px 6px;
+    padding: 4px 8px;
     font-size: 1em;
+    background-color: #c0392b;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.saved-ranking-item .btn-danger:hover {
+    background-color: #e74c3c;
+}
+
+.position-filter-bar {
+    display: flex;
+    justify-content: center;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    position: sticky;
+    top: 55px;
+    z-index: 999;
+    background-color: #fff;
+    padding: 14px 0;
+}
+
+.filter-bar-inner {
+    width: 65%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.position-filter-btn {
+    padding: 6px 16px;
+    background-color: #444;
+    color: #f8f39fee;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.position-filter-btn:hover {
+    background-color: #666;
+    color: #fff;
+}
+
+.position-filter-btn.active {
+    background-color: #f8f39fee;
+    color: #333;
+    font-weight: bold;
+}
+
+.player-search-input {
+    padding: 6px 12px;
+    font-size: 0.95em;
+    border: 2px solid #444;
+    border-radius: 4px;
+    width: 180px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.player-search-input:focus {
+    border-color: #f8f39fee;
+}
+
+.player-row:hover {
+    background-color: #e8e8e8;
+}
+
+.player-row.active-player {
+    background-color: #e0dfc8;
+}
+
+.deep-dive-row td {
+    padding: 0 !important;
+    border-bottom: none !important;
+}
+
+.deep-dive-panel {
+    width: 100%;
+    min-height: 200px;
+    background-color: #fff;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.save-ranking-btn {
+    padding: 10px 24px;
+    background-color: #f8f39fee;
+    color: #333;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.3em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.save-ranking-btn:hover {
+    background-color: #e6e08c;
+    transform: scale(1.03);
+}
+
+.save-ranking-btn:active {
+    transform: scale(0.97);
 }
