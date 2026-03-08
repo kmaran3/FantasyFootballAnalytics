@@ -5,9 +5,9 @@ from sqlalchemy import create_engine
 
 # List of CSV files and their corresponding table names
 csv_files = [
-    {'file': '/Users/kmaran3/Dropbox/Darkhorse/Models/Final Rankings/Full PPR Rankings with Weighted VBD.pkl', 'table_name': 'Full_PPR'},
-    {'file': '/Users/kmaran3/Dropbox/Darkhorse/Models/Final Rankings/Half PPR Rankings with Weighted VBD.pkl', 'table_name': 'Half_PPR'},
-    {'file': '/Users/kmaran3/Dropbox/Darkhorse/Models/Final Rankings/Non PPR Rankings with Weighted VBD.pkl', 'table_name': 'Non_PPR'}
+    {'file': 'Models/Final Rankings/Full PPR Rankings with Weighted VBD.pkl', 'table_name': 'Full_PPR'},
+    {'file': 'Models/Final Rankings/Half PPR Rankings with Weighted VBD.pkl', 'table_name': 'Half_PPR'},
+    {'file': 'Models/Final Rankings/Non PPR Rankings with Weighted VBD.pkl', 'table_name': 'Non_PPR'}
 ]
 
 # Columns to pull from each CSV file
