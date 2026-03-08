@@ -2,17 +2,9 @@ RUNNING THE FANTASY RANKING MODEL:
 
 Download the 'Models' folder
     
-Within folder: Roster Creation
-
-    Run Rosters.ipynb (Creates current year roster and past rosters for last 10 seasons)
-    
 Within folder: progress position group data
 
     Run PositionalData.ipynb
-    
-Within folder: final position group data
-
-    Run OverallStats.ipynb
     
 Within folder: Models
 
