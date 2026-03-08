@@ -1,8 +1,12 @@
 RUNNING THE FANTASY RANKING MODEL:
 
-Download the 'Models' folder
+Within folder: approximate value data
+
+    Run AVgrades.ipynb
+
+    Run ScaleAVs.ipynb
     
-Within folder: progress position group data
+Within folder: final position group data
 
     Run PositionalData.ipynb
     
@@ -17,9 +21,12 @@ Within folder: Final Rankings
     Run RankingsCSVCreation.ipynb (Makes the rankings from prediction code)
     
     Run VBD.ipynb (adds VBD and ADP weights to rankings)
-    
-Final Rankings -> Full/Half/Non PPR Rankings with Weighted WBD.csv
 
+Within folder: webapp
+
+    Run csvtosql.py
+
+    Run app.py
 
 Note:
 
