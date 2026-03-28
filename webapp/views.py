@@ -195,6 +195,12 @@ def register():
         return redirect(url_for('main.home'))
     form = RegistrationForm()
     if form.validate_on_submit():
+        if User.query.filter_by(email=form.email.data).first():
+            flash('An account with that email already exists.')
+            return render_template('register.html', form=form)
+        if User.query.filter_by(id=form.username.data).first():
+            flash('That username is already taken.')
+            return render_template('register.html', form=form)
         user = User(id=form.username.data, email=form.email.data, password=form.password.data)
         db.session.add(user)
         db.session.commit()
