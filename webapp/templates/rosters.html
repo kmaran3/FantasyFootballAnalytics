@@ -73,14 +73,6 @@
             </table>
         </div>
 
-        <!-- Rankings card -->
-        <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
-            <h4 style="margin:0 0 10px 0; color:#333;">2025 Projection</h4>
-            <div id="ranking-card" style="font-size:0.9em;">
-                <p style="color:#aaa;">Loading...</p>
-            </div>
-        </div>
-
         <!-- Team Grade card -->
         <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
             <h4 style="margin:0 0 10px 0; color:#333;">Team Grades</h4>
@@ -91,18 +83,17 @@
 
     </div>
 
-    <!-- Season History Table -->
+    <!-- Fantasy Points Chart -->
     <div style="background:#f4f4f4; border-radius:8px; padding:16px; margin-bottom:28px;">
-        <h4 style="margin:0 0 12px 0; color:#333;">Season History (Last 5 Seasons)</h4>
-        <div id="history-table" style="overflow-x:auto;">
-            <p style="color:#aaa;">Loading...</p>
-        </div>
+        <h4 style="margin:0 0 12px 0; color:#333;">Fantasy Points by Season</h4>
+        <div id="chart-placeholder" style="color:#aaa;">Loading...</div>
+        <canvas id="fantasy-chart" style="display:none; max-height:300px;"></canvas>
     </div>
 
-    <!-- Current Season Projection Table -->
+    <!-- Season History Table -->
     <div style="background:#f4f4f4; border-radius:8px; padding:16px;">
-        <h4 style="margin:0 0 12px 0; color:#333;">Model Projection Inputs</h4>
-        <div id="projection-table" style="overflow-x:auto;">
+        <h4 style="margin:0 0 12px 0; color:#333;">Season History</h4>
+        <div id="history-table" style="overflow-x:auto;">
             <p style="color:#aaa;">Loading...</p>
         </div>
     </div>
@@ -220,33 +211,20 @@ document.querySelectorAll('.player-btn').forEach(function(btn) {
         document.getElementById('bio-fields').innerHTML = bioHtml;
 
         // Reset loading state
-        document.getElementById('ranking-card').innerHTML = '<p style="color:#aaa;">Loading...</p>';
         document.getElementById('team-grade-card').innerHTML = '<p style="color:#aaa;">Loading...</p>';
         document.getElementById('history-table').innerHTML = '<p style="color:#aaa;">Loading...</p>';
-        document.getElementById('projection-table').innerHTML = '<p style="color:#aaa;">Loading...</p>';
+        document.getElementById('chart-placeholder').style.display = 'block';
+        document.getElementById('chart-placeholder').textContent = 'Loading...';
+        document.getElementById('fantasy-chart').style.display = 'none';
 
         // Show profile, hide list
         document.getElementById('player-list').style.display = 'none';
         document.getElementById('player-profile').style.display = 'block';
 
         // Fetch stats from server
-        fetch('/player_stats?name=' + encodeURIComponent(player['Player']) + '&pos=' + encodeURIComponent(player['Pos']))
+        fetch('/player_stats?name=' + encodeURIComponent(player['Player']) + '&pos=' + encodeURIComponent(player['Pos']) + '&team=' + encodeURIComponent(player['Team']))
             .then(function(res) { return res.json(); })
             .then(function(data) {
-
-                // Rankings card
-                var rk = data.ranking || {};
-                if (Object.keys(rk).length) {
-                    document.getElementById('ranking-card').innerHTML = renderKV(rk, [
-                        ['Rank', 'Overall Rank'],
-                        ['Final PPG', 'Projected PPG'],
-                        ['ESPN ADP', 'ESPN ADP'],
-                        ['VBD', 'VBD Score'],
-                        ['Bye Week', 'Bye Week'],
-                    ]);
-                } else {
-                    document.getElementById('ranking-card').innerHTML = '<p style="color:#aaa;">Not ranked.</p>';
-                }
 
                 // Team grade card
                 var tg = data.team_grade || {};
@@ -262,14 +240,51 @@ document.querySelectorAll('.player-btn').forEach(function(btn) {
                     document.getElementById('team-grade-card').innerHTML = '<p style="color:#aaa;">Not available.</p>';
                 }
 
-                // History table
-                document.getElementById('history-table').innerHTML = renderTable(data.history || []);
+                // Season history chart
+                var history = data.history || [];
+                if (history.length) {
+                    var seasons = history.map(function(r) { return r.season; });
+                    var fantasyPts = history.map(function(r) { return r.fantasy_points !== null ? r.fantasy_points : 0; });
 
-                // Projection table
-                var proj = data.projection || {};
-                document.getElementById('projection-table').innerHTML = proj && Object.keys(proj).length
-                    ? renderTable([proj])
-                    : '<p style="color:#aaa;">No projection available.</p>';
+                    document.getElementById('chart-placeholder').style.display = 'none';
+                    var canvas = document.getElementById('fantasy-chart');
+                    canvas.style.display = 'block';
+
+                    if (window._fantasyChart) { window._fantasyChart.destroy(); }
+                    window._fantasyChart = new Chart(canvas, {
+                        type: 'line',
+                        data: {
+                            labels: seasons,
+                            datasets: [{
+                                label: 'Fantasy Points',
+                                data: fantasyPts,
+                                borderColor: '#444',
+                                backgroundColor: 'rgba(68,68,68,0.1)',
+                                borderWidth: 2,
+                                pointBackgroundColor: '#f8f39f',
+                                pointRadius: 5,
+                                tension: 0.3,
+                                fill: true,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { mode: 'index', intersect: false }
+                            },
+                            scales: {
+                                x: { title: { display: true, text: 'Season' } },
+                                y: { title: { display: true, text: 'Fantasy Points' }, beginAtZero: true }
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('chart-placeholder').textContent = 'No historical data available.';
+                }
+
+                // History table
+                document.getElementById('history-table').innerHTML = renderTable(history);
             });
     });
 });

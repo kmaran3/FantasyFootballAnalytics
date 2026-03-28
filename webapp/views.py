@@ -178,14 +178,51 @@ def _load(filename):
     except Exception:
         return pd.DataFrame()
 
-_qb_stats    = _load('final_qb_data.pkl')
-_rb_stats    = _load('final_rb_data.pkl')
-_wrte_stats  = _load('final_wrte_data.pkl')
-_qb_model    = _load('QBDFForModelPPR.pkl')
-_rb_model    = _load('RBDFForModelPPR.pkl')
-_wrte_model  = _load('WRTEDFForModelPPR.pkl')
-_rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
-_curr_avs    = _load('currAVs.pkl')
+_rankings = _load('Full PPR Rankings with Weighted VBD.pkl')
+
+# Load live seasonal stats from nfl_data_py (includes 2024)
+_nfl_seasonal = pd.DataFrame()
+_nfl_roster_map = {}
+try:
+    import nfl_data_py as nfl
+    _seasons = list(range(2020, 2025))
+    _stats_raw = nfl.import_seasonal_data(_seasons, s_type='REG')
+    _roster_raw = nfl.import_seasonal_rosters(_seasons)[['player_id', 'player_name', 'position']].drop_duplicates('player_id')
+    _nfl_seasonal = _stats_raw.merge(_roster_raw, on='player_id', how='left')
+except Exception as e:
+    print(f'Warning: could not load nfl_data_py stats: {e}')
+
+# Normalize currAVs team names to abbreviations
+_TEAM_NAME_MAP = {
+    'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
+    'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
+    'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
+    'denver broncos': 'DEN', 'detroit lions': 'DET', 'green bay packers': 'GB',
+    'houston texans': 'HOU', 'indianapolis colts': 'IND', 'jacksonville jaguars': 'JAX',
+    'kansas city chiefs': 'KC', 'los angeles rams': 'LA', 'los angeles chargers': 'LAC',
+    'las vegas raiders': 'LV', 'miami dolphins': 'MIA', 'minnesota vikings': 'MIN',
+    'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
+    'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
+    'seattle seahawks': 'SEA', 'san francisco 49ers': 'SF', 'tampa bay buccaneers': 'TB',
+    'tennessee titans': 'TEN', 'washington commanders': 'WAS',
+}
+
+def _normalize_av_team(raw):
+    raw = str(raw).strip()
+    # Already an abbreviation
+    if len(raw) <= 3:
+        return raw.upper()
+    # Strip leading "12. " style prefixes then match
+    import re
+    clean = re.sub(r'^\d+\.\s*', '', raw).strip().lower()
+    return _TEAM_NAME_MAP.get(clean, raw.upper())
+
+_raw_avs = _load('currAVs.pkl')
+if not _raw_avs.empty:
+    _raw_avs['team'] = _raw_avs['team'].apply(_normalize_av_team)
+    _curr_avs = _raw_avs.set_index('team')
+else:
+    _curr_avs = _raw_avs
 
 @main.route('/', methods=['GET', 'POST'])
 def login():
@@ -367,47 +404,31 @@ def delete_ranking(ranking_id):
 def player_stats():
     name = request.args.get('name', '').strip()
     pos  = request.args.get('pos', '').strip().upper()
+    team = request.args.get('team', '').strip().upper()
 
     if not name:
         return jsonify({})
 
-    # Pick the right stat tables based on position
-    if pos == 'QB':
-        hist_df  = _qb_stats
-        model_df = _qb_model
-        stat_cols = ['season', 'GP', 'completions', 'attempts', 'passing_yards',
-                     'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points']
-        model_cols = ['GP', 'completions', 'attempts', 'passing_yards',
-                      'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'PPG']
-    elif pos == 'RB':
-        hist_df  = _rb_stats
-        model_df = _rb_model
-        stat_cols = ['season', 'GP', 'carries', 'rushing_yards', 'rushing_tds',
-                     'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points']
-        model_cols = ['GP', 'carries', 'rushing_yards', 'rushing_tds',
-                      'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'PPG']
-    else:  # WR / TE
-        hist_df  = _wrte_stats
-        model_df = _wrte_model
-        stat_cols = ['season', 'GP', 'receptions', 'targets', 'receiving_yards',
-                     'receiving_tds', 'rushing_yards', 'fantasy_points']
-        model_cols = ['GP', 'receptions', 'targets', 'receiving_yards',
-                      'receiving_tds', 'rushing_yards', 'PPG']
+    # --- Historical stats from nfl_data_py (2020-2024) ---
+    history = []
+    if not _nfl_seasonal.empty:
+        player_rows = _nfl_seasonal[_nfl_seasonal['player_name'] == name].sort_values('season')
+        if pos == 'QB':
+            cols = ['season', 'games', 'completions', 'attempts', 'passing_yards',
+                    'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points_ppr']
+        elif pos == 'RB':
+            cols = ['season', 'games', 'carries', 'rushing_yards', 'rushing_tds',
+                    'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points_ppr']
+        else:  # WR / TE
+            cols = ['season', 'games', 'receptions', 'targets', 'receiving_yards',
+                    'receiving_tds', 'target_share', 'air_yards_share', 'fantasy_points_ppr']
 
-    # Historical seasons
-    hist = hist_df[hist_df['player_display_name'] == name]
-    hist = hist[hist['season_type'] == 'REG'] if 'season_type' in hist.columns else hist
-    hist = hist.sort_values('season')[stat_cols].tail(5)
-    history = hist.round(1).to_dict(orient='records')
+        available = [c for c in cols if c in player_rows.columns]
+        hist = player_rows[available].tail(5).round(1)
+        hist = hist.rename(columns={'games': 'GP', 'fantasy_points_ppr': 'fantasy_points'})
+        history = hist.to_dict(orient='records')
 
-    # Model projection (current season)
-    proj_row = model_df[model_df['player_display_name'] == name]
-    projection = {}
-    if not proj_row.empty:
-        row = proj_row.iloc[0]
-        projection = {c: round(float(row[c]), 2) if pd.notna(row[c]) else None for c in model_cols if c in row}
-
-    # Rankings info
+    # --- Rankings info ---
     rank_row = _rankings[_rankings['Name'] == name]
     ranking = {}
     if not rank_row.empty:
@@ -420,21 +441,20 @@ def player_stats():
             'Bye Week': int(r['Bye Week']) if pd.notna(r['Bye Week']) else None,
         }
 
-    # Team grade
+    # --- Team grade ---
     team_grade = {}
-    if not proj_row.empty:
-        row = proj_row.iloc[0]
+    if team and not _curr_avs.empty and team in _curr_avs.index:
+        row = _curr_avs.loc[team]
         team_grade = {
-            'OLine':  round(float(row['oline']), 2) if pd.notna(row.get('oline')) else None,
-            'QB':     round(float(row['qb']), 2)    if pd.notna(row.get('qb'))    else None,
-            'RB':     round(float(row['rb']), 2)    if pd.notna(row.get('rb'))    else None,
-            'WR/TE':  round(float(row['wrte']), 2)  if pd.notna(row.get('wrte'))  else None,
-            'DST':    round(float(row['dst']), 2)   if pd.notna(row.get('dst'))   else None,
+            'OLine': round(float(row['oline']), 2) if pd.notna(row['oline']) else None,
+            'QB':    round(float(row['qb']), 2)    if pd.notna(row['qb'])    else None,
+            'RB':    round(float(row['rb']), 2)    if pd.notna(row['rb'])    else None,
+            'WR/TE': round(float(row['wrte']), 2)  if pd.notna(row['wrte'])  else None,
+            'DST':   round(float(row['dst']), 2)   if pd.notna(row['dst'])   else None,
         }
 
     return jsonify({
         'history': history,
-        'projection': projection,
         'ranking': ranking,
         'team_grade': team_grade,
     })
