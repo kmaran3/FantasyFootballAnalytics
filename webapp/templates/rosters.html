@@ -17,8 +17,7 @@
         </div>
         <select id="teamFilter" style="padding: 6px 12px; font-size: 0.95em; border: 2px solid #444; border-radius: 4px; outline: none; background: #fff; cursor: pointer;">
             <option value="ALL">All Teams</option>
-            {% set teams = ['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC','LA','LAC','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS'] %}
-            {% for team in teams %}
+            {% for team in ['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC','LA','LAC','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS'] %}
             <option value="{{ team }}">{{ team }}</option>
             {% endfor %}
         </select>
@@ -56,50 +55,79 @@
     <button onclick="showList()" style="background:#444; color:#f8f39fee; border:none; border-radius:6px; padding: 8px 18px; cursor:pointer; margin-bottom: 24px; font-size: 1em;">
         &larr; Back to Rosters
     </button>
-    <h2 id="profile-name" style="margin-bottom: 20px;"></h2>
-    <table style="font-size: 1em; border-collapse: collapse; text-align: left; width: auto;">
-        <tbody id="profile-fields"></tbody>
-    </table>
+
+    <!-- Header -->
+    <div style="display:flex; align-items:baseline; gap: 16px; margin-bottom: 8px;">
+        <h2 id="profile-name" style="margin:0;"></h2>
+        <span id="profile-subtitle" style="font-size:1em; color:#666;"></span>
+    </div>
+
+    <!-- Info Cards Row -->
+    <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom: 28px;">
+
+        <!-- Bio card -->
+        <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
+            <h4 style="margin:0 0 10px 0; color:#333;">Player Info</h4>
+            <table style="font-size:0.9em; border-collapse:collapse;">
+                <tbody id="bio-fields"></tbody>
+            </table>
+        </div>
+
+        <!-- Rankings card -->
+        <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
+            <h4 style="margin:0 0 10px 0; color:#333;">2025 Projection</h4>
+            <div id="ranking-card" style="font-size:0.9em;">
+                <p style="color:#aaa;">Loading...</p>
+            </div>
+        </div>
+
+        <!-- Team Grade card -->
+        <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
+            <h4 style="margin:0 0 10px 0; color:#333;">Team Grades</h4>
+            <div id="team-grade-card" style="font-size:0.9em;">
+                <p style="color:#aaa;">Loading...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Season History Table -->
+    <div style="background:#f4f4f4; border-radius:8px; padding:16px; margin-bottom:28px;">
+        <h4 style="margin:0 0 12px 0; color:#333;">Season History (Last 5 Seasons)</h4>
+        <div id="history-table" style="overflow-x:auto;">
+            <p style="color:#aaa;">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Current Season Projection Table -->
+    <div style="background:#f4f4f4; border-radius:8px; padding:16px;">
+        <h4 style="margin:0 0 12px 0; color:#333;">Model Projection Inputs</h4>
+        <div id="projection-table" style="overflow-x:auto;">
+            <p style="color:#aaa;">Loading...</p>
+        </div>
+    </div>
 </div>
 
 <script>
 var allPlayers = {{ table_data | tojson }};
 
-var fieldLabels = [
-    ['Team', 'Team'],
-    ['Pos', 'Position'],
-    ['PosGroup', 'Position Group'],
-    ['height', 'Height'],
-    ['weight', 'Weight'],
-    ['BirthDate', 'Birth Date'],
-    ['College', 'College'],
-    ['CollegeConf', 'College Conference'],
-    ['RookieSeason', 'Rookie Season'],
-    ['LastSeason', 'Last Season'],
-    ['ExperienceYears', 'Experience (yrs)'],
-    ['Jersey', 'Jersey #'],
-    ['DraftYear', 'Draft Year'],
-    ['DraftRound', 'Draft Round'],
-    ['DraftPick', 'Draft Pick'],
-    ['DraftTeam', 'Draft Team'],
-    ['status', 'Status']
+var bioFields = [
+    ['Team', 'Team'], ['Pos', 'Position'], ['height', 'Height'], ['weight', 'Weight'],
+    ['BirthDate', 'Birth Date'], ['College', 'College'], ['RookieSeason', 'Rookie Season'],
+    ['ExperienceYears', 'Experience (yrs)'], ['Jersey', 'Jersey #'],
+    ['DraftYear', 'Draft Year'], ['DraftRound', 'Round'], ['DraftPick', 'Pick'], ['DraftTeam', 'Draft Team']
 ];
 
 // Filter logic
-var activePos = 'ALL';
-var activeTeam = 'ALL';
-var searchVal = '';
+var activePos = 'ALL', activeTeam = 'ALL', searchVal = '';
 
 function applyFilters() {
     var btns = document.querySelectorAll('.player-btn');
     var visible = 0;
     btns.forEach(function(btn) {
-        var pos = btn.getAttribute('data-pos');
-        var team = btn.getAttribute('data-team');
-        var name = btn.getAttribute('data-name');
-        var show = (activePos === 'ALL' || pos === activePos)
-                && (activeTeam === 'ALL' || team === activeTeam)
-                && name.includes(searchVal);
+        var show = (activePos === 'ALL' || btn.getAttribute('data-pos') === activePos)
+                && (activeTeam === 'ALL' || btn.getAttribute('data-team') === activeTeam)
+                && btn.getAttribute('data-name').includes(searchVal);
         btn.style.display = show ? '' : 'none';
         if (show) visible++;
     });
@@ -125,28 +153,124 @@ document.getElementById('playerSearch').addEventListener('input', function() {
     applyFilters();
 });
 
-// Player click -> profile
+function renderTable(data) {
+    if (!data || data.length === 0) return '<p style="color:#aaa;">No data available.</p>';
+    var headers = Object.keys(data[0]);
+    var html = '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
+    html += '<thead><tr>';
+    headers.forEach(function(h) {
+        html += '<th style="padding:6px 12px; background:#444; color:#f8f39fee; text-align:left; white-space:nowrap;">' + h + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+    data.forEach(function(row, i) {
+        var bg = i % 2 === 0 ? '#fff' : '#ebebeb';
+        html += '<tr style="background:' + bg + ';">';
+        headers.forEach(function(h) {
+            var val = row[h] !== null && row[h] !== undefined ? row[h] : '—';
+            html += '<td style="padding:6px 12px; white-space:nowrap;">' + val + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+function renderKV(obj, labels) {
+    if (!obj || Object.keys(obj).length === 0) return '<p style="color:#aaa;">Not available.</p>';
+    var html = '<table style="border-collapse:collapse; font-size:0.9em;">';
+    labels.forEach(function(pair) {
+        var key = pair[0], label = pair[1];
+        if (!(key in obj)) return;
+        var val = obj[key] !== null ? obj[key] : '—';
+        html += '<tr><td style="font-weight:bold; padding:4px 20px 4px 0; color:#555;">' + label + '</td>'
+              + '<td style="padding:4px 0;">' + val + '</td></tr>';
+    });
+    html += '</table>';
+    return html;
+}
+
+function gradeBar(val) {
+    if (val === null) return '—';
+    var pct = Math.min(Math.max(val * 100, 0), 100).toFixed(0);
+    var color = val >= 0.7 ? '#2ecc71' : val >= 0.4 ? '#f39c12' : '#e74c3c';
+    return '<div style="display:flex; align-items:center; gap:8px;">'
+         + '<div style="width:80px; background:#ddd; border-radius:4px; height:10px;">'
+         + '<div style="width:' + pct + '%; background:' + color + '; height:10px; border-radius:4px;"></div></div>'
+         + '<span>' + pct + '</span></div>';
+}
+
+// Player click
 document.querySelectorAll('.player-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         var idx = parseInt(this.getAttribute('data-index'));
         var player = allPlayers[idx];
 
+        // Set header
         document.getElementById('profile-name').textContent = player['Player'];
+        document.getElementById('profile-subtitle').textContent = player['Pos'] + ' · ' + player['Team'];
 
-        var html = '';
-        fieldLabels.forEach(function(pair) {
-            var key = pair[0], label = pair[1];
-            var val = player[key];
+        // Bio card
+        var bioHtml = '';
+        bioFields.forEach(function(pair) {
+            var val = player[pair[0]];
             if (val === null || val === undefined || val === '') val = '—';
-            html += '<tr>'
-                  + '<td style="font-weight:bold; padding: 8px 32px 8px 0; color:#555;">' + label + '</td>'
-                  + '<td style="padding: 8px 0;">' + val + '</td>'
-                  + '</tr>';
+            bioHtml += '<tr><td style="font-weight:bold; padding:4px 16px 4px 0; color:#555;">' + pair[1] + '</td>'
+                     + '<td style="padding:4px 0;">' + val + '</td></tr>';
         });
+        document.getElementById('bio-fields').innerHTML = bioHtml;
 
-        document.getElementById('profile-fields').innerHTML = html;
+        // Reset loading state
+        document.getElementById('ranking-card').innerHTML = '<p style="color:#aaa;">Loading...</p>';
+        document.getElementById('team-grade-card').innerHTML = '<p style="color:#aaa;">Loading...</p>';
+        document.getElementById('history-table').innerHTML = '<p style="color:#aaa;">Loading...</p>';
+        document.getElementById('projection-table').innerHTML = '<p style="color:#aaa;">Loading...</p>';
+
+        // Show profile, hide list
         document.getElementById('player-list').style.display = 'none';
         document.getElementById('player-profile').style.display = 'block';
+
+        // Fetch stats from server
+        fetch('/player_stats?name=' + encodeURIComponent(player['Player']) + '&pos=' + encodeURIComponent(player['Pos']))
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+
+                // Rankings card
+                var rk = data.ranking || {};
+                if (Object.keys(rk).length) {
+                    document.getElementById('ranking-card').innerHTML = renderKV(rk, [
+                        ['Rank', 'Overall Rank'],
+                        ['Final PPG', 'Projected PPG'],
+                        ['ESPN ADP', 'ESPN ADP'],
+                        ['VBD', 'VBD Score'],
+                        ['Bye Week', 'Bye Week'],
+                    ]);
+                } else {
+                    document.getElementById('ranking-card').innerHTML = '<p style="color:#aaa;">Not ranked.</p>';
+                }
+
+                // Team grade card
+                var tg = data.team_grade || {};
+                if (Object.keys(tg).length) {
+                    var tgHtml = '<table style="border-collapse:collapse; font-size:0.9em;">';
+                    [['OLine','OLine'],['QB','QB'],['RB','RB'],['WR/TE','WR/TE'],['DST','DST']].forEach(function(p) {
+                        tgHtml += '<tr><td style="font-weight:bold; padding:4px 16px 4px 0; color:#555;">' + p[1] + '</td>'
+                                + '<td style="padding:4px 0;">' + gradeBar(tg[p[0]]) + '</td></tr>';
+                    });
+                    tgHtml += '</table>';
+                    document.getElementById('team-grade-card').innerHTML = tgHtml;
+                } else {
+                    document.getElementById('team-grade-card').innerHTML = '<p style="color:#aaa;">Not available.</p>';
+                }
+
+                // History table
+                document.getElementById('history-table').innerHTML = renderTable(data.history || []);
+
+                // Projection table
+                var proj = data.projection || {};
+                document.getElementById('projection-table').innerHTML = proj && Object.keys(proj).length
+                    ? renderTable([proj])
+                    : '<p style="color:#aaa;">No projection available.</p>';
+            });
     });
 });
 

@@ -169,6 +169,24 @@ def _ranking_extras(df):
         bye_weeks,
     )
 
+# Load stat data once at startup
+_data_dir = Path(__file__).parent.parent / 'Models' / 'PickleFiles'
+
+def _load(filename):
+    try:
+        return pd.read_pickle(_data_dir / filename)
+    except Exception:
+        return pd.DataFrame()
+
+_qb_stats    = _load('final_qb_data.pkl')
+_rb_stats    = _load('final_rb_data.pkl')
+_wrte_stats  = _load('final_wrte_data.pkl')
+_qb_model    = _load('QBDFForModelPPR.pkl')
+_rb_model    = _load('RBDFForModelPPR.pkl')
+_wrte_model  = _load('WRTEDFForModelPPR.pkl')
+_rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
+_curr_avs    = _load('currAVs.pkl')
+
 @main.route('/', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -343,6 +361,84 @@ def delete_ranking(ranking_id):
     db.session.delete(ranking)
     db.session.commit()
     return jsonify({'message': 'Ranking deleted successfully!'})
+
+@main.route('/player_stats')
+@login_required
+def player_stats():
+    name = request.args.get('name', '').strip()
+    pos  = request.args.get('pos', '').strip().upper()
+
+    if not name:
+        return jsonify({})
+
+    # Pick the right stat tables based on position
+    if pos == 'QB':
+        hist_df  = _qb_stats
+        model_df = _qb_model
+        stat_cols = ['season', 'GP', 'completions', 'attempts', 'passing_yards',
+                     'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points']
+        model_cols = ['GP', 'completions', 'attempts', 'passing_yards',
+                      'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'PPG']
+    elif pos == 'RB':
+        hist_df  = _rb_stats
+        model_df = _rb_model
+        stat_cols = ['season', 'GP', 'carries', 'rushing_yards', 'rushing_tds',
+                     'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points']
+        model_cols = ['GP', 'carries', 'rushing_yards', 'rushing_tds',
+                      'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'PPG']
+    else:  # WR / TE
+        hist_df  = _wrte_stats
+        model_df = _wrte_model
+        stat_cols = ['season', 'GP', 'receptions', 'targets', 'receiving_yards',
+                     'receiving_tds', 'rushing_yards', 'fantasy_points']
+        model_cols = ['GP', 'receptions', 'targets', 'receiving_yards',
+                      'receiving_tds', 'rushing_yards', 'PPG']
+
+    # Historical seasons
+    hist = hist_df[hist_df['player_display_name'] == name]
+    hist = hist[hist['season_type'] == 'REG'] if 'season_type' in hist.columns else hist
+    hist = hist.sort_values('season')[stat_cols].tail(5)
+    history = hist.round(1).to_dict(orient='records')
+
+    # Model projection (current season)
+    proj_row = model_df[model_df['player_display_name'] == name]
+    projection = {}
+    if not proj_row.empty:
+        row = proj_row.iloc[0]
+        projection = {c: round(float(row[c]), 2) if pd.notna(row[c]) else None for c in model_cols if c in row}
+
+    # Rankings info
+    rank_row = _rankings[_rankings['Name'] == name]
+    ranking = {}
+    if not rank_row.empty:
+        r = rank_row.iloc[0]
+        ranking = {
+            'Rank': int(r['Rank']),
+            'Final PPG': round(float(r['Final PPG']), 2) if pd.notna(r['Final PPG']) else None,
+            'ESPN ADP': round(float(r['ESPN ADP']), 1) if pd.notna(r['ESPN ADP']) else None,
+            'VBD': round(float(r['VBD']), 2) if pd.notna(r['VBD']) else None,
+            'Bye Week': int(r['Bye Week']) if pd.notna(r['Bye Week']) else None,
+        }
+
+    # Team grade
+    team_grade = {}
+    if not proj_row.empty:
+        row = proj_row.iloc[0]
+        team_grade = {
+            'OLine':  round(float(row['oline']), 2) if pd.notna(row.get('oline')) else None,
+            'QB':     round(float(row['qb']), 2)    if pd.notna(row.get('qb'))    else None,
+            'RB':     round(float(row['rb']), 2)    if pd.notna(row.get('rb'))    else None,
+            'WR/TE':  round(float(row['wrte']), 2)  if pd.notna(row.get('wrte'))  else None,
+            'DST':    round(float(row['dst']), 2)   if pd.notna(row.get('dst'))   else None,
+        }
+
+    return jsonify({
+        'history': history,
+        'projection': projection,
+        'ranking': ranking,
+        'team_grade': team_grade,
+    })
+
 
 @main.route('/mockdraft', methods=['GET', 'POST'])
 @login_required
