@@ -9,8 +9,11 @@
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 <header class="banner">
+    <div class="nav-logo">
+        <img src="{{ url_for('static', filename='images/flask_logo.png') }}" alt="Darkhorse" class="nav-logo-img">
+    </div>
     <nav>
         <ul>
             <li><a href="{{ url_for('main.home') }}">Home</a></li>
@@ -28,7 +31,7 @@
         </ul>
     </nav>
 </header>
-    <main>
+    <main class="{% block main_class %}{% endblock %}">
         {% block content %}{% endblock %}
     </main>
     <footer>

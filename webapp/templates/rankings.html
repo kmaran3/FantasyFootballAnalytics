@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 
+{% block body_class %}rankings-body{% endblock %}
+{% block main_class %}rankings-main{% endblock %}
 {% block title %}Rankings{% endblock %}
 
 {% block content %}
@@ -8,16 +10,43 @@
         <input type="text" id="playerSearch" class="player-search-input" placeholder="Search player...">
         <div class="filter-buttons">
             <button class="position-filter-btn active" data-pos="ALL">All Positions</button>
-    <button class="position-filter-btn" data-pos="QB">QB</button>
-    <button class="position-filter-btn" data-pos="RB">RB</button>
-    <button class="position-filter-btn" data-pos="WR">WR</button>
-    <button class="position-filter-btn" data-pos="TE">TE</button>
-    <button class="position-filter-btn" data-pos="K">K</button>
+            <button class="position-filter-btn" data-pos="QB">QB</button>
+            <button class="position-filter-btn" data-pos="RB">RB</button>
+            <button class="position-filter-btn" data-pos="WR">WR</button>
+            <button class="position-filter-btn" data-pos="TE">TE</button>
+            <button class="position-filter-btn" data-pos="K">K</button>
             <button class="position-filter-btn" data-pos="DEF">DEF</button>
             <button class="position-filter-btn" id="deepDiveToggle">Deep Dive</button>
+
+            <!-- Team custom dropdown -->
+            <div class="custom-dropdown" id="teamDropdown">
+                <button class="custom-dropdown-btn" id="teamDropdownBtn">
+                    <span class="dd-btn-label">Team</span><span class="dd-arrow">▼</span>
+                </button>
+                <div class="custom-dropdown-panel" id="teamDropdownPanel">
+                    <div class="dd-opt dd-opt-clear" data-clear="team">Clear</div>
+                    {% for team in teams %}
+                    <div class="dd-opt" data-value="{{ team }}">{{ team }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Bye Week custom dropdown -->
+            <div class="custom-dropdown" id="byeDropdown">
+                <button class="custom-dropdown-btn" id="byeDropdownBtn">
+                    <span class="dd-btn-label">Bye Week</span><span class="dd-arrow">▼</span>
+                </button>
+                <div class="custom-dropdown-panel" id="byeDropdownPanel">
+                    <div class="dd-opt dd-opt-clear" data-clear="bye">Clear</div>
+                    {% for week in bye_weeks %}
+                    <div class="dd-opt" data-value="{{ week }}">Week {{ week }}</div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
 <div class="left-panel">
     <h2>Ranking Type</h2>
     <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
@@ -80,29 +109,126 @@
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 
 <script>
+var playerDetails = {{ player_details_json | safe }};
+var teamSchedule  = {{ team_schedule_json  | safe }};
+
 $(document).ready(function() {
-    // Find column indices
-    var posColIndex = -1;
+    // ── Column index resolution ────────────────────────────────────────────
+    var posColIndex  = -1;
     var nameColIndex = -1;
+    var teamColIndex = -1;
+    var byeColIndex  = -1;
+
     $('#sortable-table thead th').each(function(i) {
-        var header = $(this).text().trim();
-        if (header === 'Position') posColIndex = i;
-        if (header === 'Name') nameColIndex = i;
+        var h = $(this).text().trim();
+        if (h === 'Position') posColIndex  = i;
+        if (h === 'Name')     nameColIndex = i;
+        if (h === 'Team')     teamColIndex = i;
+        if (h === 'Bye Week') byeColIndex  = i;
     });
 
-    // Player search
-    $('#playerSearch').on('input', function() {
-        var query = $(this).val().trim().toLowerCase();
+    // ── Filter state ───────────────────────────────────────────────────────
+    var selectedTeams = new Set();
+    var selectedBye   = new Set();
+
+    // ── Unified filter function ────────────────────────────────────────────
+    function applyFilters() {
+        var query = $('#playerSearch').val().trim().toLowerCase();
+
+        var activePos = [];
+        $('.position-filter-btn[data-pos].active').each(function() {
+            activePos.push($(this).data('pos'));
+        });
+        var showAllPos = activePos.indexOf('ALL') !== -1;
+
         $('#sortable-table tbody tr.player-row').each(function() {
-            if (query === '') {
-                $(this).show();
-            } else {
+            var show = true;
+
+            if (query) {
                 var name = $(this).find('td').eq(nameColIndex).text().trim().toLowerCase();
-                $(this).toggle(name.indexOf(query) !== -1);
+                if (name.indexOf(query) === -1) show = false;
+            }
+
+            if (show && !showAllPos) {
+                var pos = $(this).find('td').eq(posColIndex).text().trim().toUpperCase();
+                var posMatch = false;
+                for (var i = 0; i < activePos.length; i++) {
+                    if (pos.startsWith(activePos[i])) { posMatch = true; break; }
+                }
+                if (!posMatch) show = false;
+            }
+
+            if (show && selectedTeams.size > 0) {
+                var team = $(this).find('td').eq(teamColIndex).text().trim();
+                if (!selectedTeams.has(team)) show = false;
+            }
+
+            if (show && selectedBye.size > 0) {
+                var bye = $(this).find('td').eq(byeColIndex).text().trim();
+                if (!selectedBye.has(bye)) show = false;
+            }
+
+            $(this).toggle(show);
+        });
+    }
+
+    // ── Custom dropdown logic ──────────────────────────────────────────────
+    function setupDropdown(btnId, panelId, selSet, defaultLabel) {
+        var $btn   = $('#' + btnId);
+        var $panel = $('#' + panelId);
+
+        // Toggle open/close
+        $btn.on('click', function(e) {
+            e.stopPropagation();
+            var isOpen = $panel.is(':visible');
+            // Close all panels first
+            $('.custom-dropdown-panel').hide();
+            $('.custom-dropdown-btn').removeClass('open');
+            if (!isOpen) {
+                $panel.show();
+                $btn.addClass('open');
             }
         });
+
+        // Clear option
+        $panel.on('click', '.dd-opt-clear', function(e) {
+            e.stopPropagation();
+            selSet.clear();
+            $panel.find('.dd-opt').removeClass('selected');
+            $btn.find('.dd-btn-label').text(defaultLabel);
+            applyFilters();
+        });
+
+        // Toggle individual option
+        $panel.on('click', '.dd-opt:not(.dd-opt-clear)', function(e) {
+            e.stopPropagation();
+            var val = String($(this).data('value'));
+            if (selSet.has(val)) {
+                selSet.delete(val);
+                $(this).removeClass('selected');
+            } else {
+                selSet.add(val);
+                $(this).addClass('selected');
+            }
+            var count = selSet.size;
+            $btn.find('.dd-btn-label').text(count > 0 ? defaultLabel + ' (' + count + ')' : defaultLabel);
+            applyFilters();
+        });
+    }
+
+    setupDropdown('teamDropdownBtn', 'teamDropdownPanel', selectedTeams, 'Team');
+    setupDropdown('byeDropdownBtn',  'byeDropdownPanel',  selectedBye,   'Bye Week');
+
+    // Close all dropdowns when clicking outside
+    $(document).on('click', function() {
+        $('.custom-dropdown-panel').hide();
+        $('.custom-dropdown-btn').removeClass('open');
     });
 
+    // ── Search ─────────────────────────────────────────────────────────────
+    $('#playerSearch').on('input', applyFilters);
+
+    // ── Position filter ────────────────────────────────────────────────────
     $('.position-filter-btn[data-pos]').click(function() {
         var clicked = $(this).data('pos');
         if (clicked === 'ALL') {
@@ -115,45 +241,133 @@ $(document).ready(function() {
                 $('.position-filter-btn[data-pos="ALL"]').addClass('active');
             }
         }
-
-        var activePositions = [];
-        $('.position-filter-btn[data-pos].active').each(function() {
-            activePositions.push($(this).data('pos'));
-        });
-        var showAll = activePositions.indexOf('ALL') !== -1;
-
-        $('#sortable-table tbody tr.player-row').each(function() {
-            if (showAll) {
-                $(this).show();
-            } else {
-                var cellText = $(this).find('td').eq(posColIndex).text().trim().toUpperCase();
-                var match = false;
-                for (var i = 0; i < activePositions.length; i++) {
-                    if (cellText.startsWith(activePositions[i])) { match = true; break; }
-                }
-                $(this).toggle(match);
-            }
-        });
+        applyFilters();
     });
 
-    // Deep dive toggle
+    // ── Deep dive helpers ──────────────────────────────────────────────────
+    function buildStatsRows(details) {
+        var s   = details.stats || {};
+        var pos = (details.position || '').toUpperCase();
+        var html = '';
+
+        html += '<div class="dd-stats-row">';
+        html += '<span class="dd-stat"><b>GP:</b> ' + (s.GP || 0) + '</span>';
+        html += '<span class="dd-stat"><b>Fantasy Pts:</b> ' + (s.fantasy_points || 0) + '</span>';
+        html += '</div>';
+
+        html += '<div class="dd-stats-row">';
+        if (pos === 'QB') {
+            html += '<span class="dd-stat"><b>Comp/Att:</b> ' + (s.completions||0) + '/' + (s.attempts||0) + '</span>';
+            html += '<span class="dd-stat"><b>Pass Yds:</b> ' + (s.passing_yards||0) + '</span>';
+            html += '<span class="dd-stat"><b>Pass TDs:</b> ' + (s.passing_tds||0) + '</span>';
+            html += '<span class="dd-stat"><b>INTs:</b> ' + (s.interceptions||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rush Yds:</b> ' + (s.rushing_yards||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rush TDs:</b> ' + (s.rushing_tds||0) + '</span>';
+        } else if (pos === 'RB') {
+            html += '<span class="dd-stat"><b>Carries:</b> ' + (s.carries||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rush Yds:</b> ' + (s.rushing_yards||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rush TDs:</b> ' + (s.rushing_tds||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rec:</b> ' + (s.receptions||0) + '</span>';
+            html += '<span class="dd-stat"><b>Tgts:</b> ' + (s.targets||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rec Yds:</b> ' + (s.receiving_yards||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rec TDs:</b> ' + (s.receiving_tds||0) + '</span>';
+        } else if (pos === 'WR' || pos === 'TE') {
+            html += '<span class="dd-stat"><b>Tgts:</b> ' + (s.targets||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rec:</b> ' + (s.receptions||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rec Yds:</b> ' + (s.receiving_yards||0) + '</span>';
+            html += '<span class="dd-stat"><b>Rec TDs:</b> ' + (s.receiving_tds||0) + '</span>';
+            if (s.carries && s.carries > 0) {
+                html += '<span class="dd-stat"><b>Rush Yds:</b> ' + (s.rushing_yards||0) + '</span>';
+            }
+        } else {
+            html = '<span class="dd-na">Detailed stats not available for this position.</span>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function buildDeepDiveHTML(name, team) {
+        var details  = playerDetails[name] || null;
+        var schedule = teamSchedule[team]  || [];
+        var html = '<div class="dd-content">';
+
+        html += '<div class="dd-header">';
+        html += '<span class="dd-player-name">' + name + '</span>';
+        if (details) {
+            html += '<span class="dd-badge">Age: ' + (details.age !== null ? details.age : 'N/A') + '</span>';
+            html += '<span class="dd-badge">' + (details.position || '') + '</span>';
+        }
+        html += '</div>';
+
+        html += '<div class="dd-section">';
+        if (details && details.stats_year && Object.keys(details.stats).length > 0) {
+            html += '<div class="dd-section-title">' + details.stats_year + ' Season Stats</div>';
+            html += buildStatsRows(details);
+        } else {
+            html += '<div class="dd-section-title">Last Season Stats</div>';
+            html += '<span class="dd-na">Stats not available for this player.</span>';
+        }
+        html += '</div>';
+
+        html += '<div class="dd-section">';
+        html += '<div class="dd-section-title">2024 Season — First 5 Games</div>';
+        if (schedule.length > 0) {
+            html += '<div class="dd-schedule">';
+            for (var i = 0; i < schedule.length; i++) {
+                var g = schedule[i];
+                var label = (g.home_away === 'home' ? 'vs ' : '@ ') + g.opponent;
+                html += '<span class="dd-game"><b>Wk ' + g.week + '</b> ' + label + '</span>';
+            }
+            html += '</div>';
+        } else {
+            html += '<span class="dd-na">Schedule not available.</span>';
+        }
+        html += '</div>';
+
+        html += '</div>';
+        return html;
+    }
+
+    // ── Deep dive toggle (individual rows) ─────────────────────────────────
     var deepDiveAllOpen = false;
 
     $('.player-row').click(function() {
-        var deepDive = $(this).next('.deep-dive-row');
+        var $row      = $(this);
+        var $deepDive = $row.next('.deep-dive-row');
+
         if (!deepDiveAllOpen) {
-            $('.deep-dive-row').not(deepDive).hide();
-            $('.player-row').not(this).removeClass('active-player');
+            $('.deep-dive-row').not($deepDive).hide();
+            $('.player-row').not($row).removeClass('active-player');
         }
-        deepDive.toggle();
-        $(this).toggleClass('active-player');
+
+        $deepDive.toggle();
+        $row.toggleClass('active-player');
+
+        var panel = $deepDive.find('.deep-dive-panel');
+        if (!panel.data('loaded')) {
+            var playerName = $row.find('td').eq(nameColIndex).text().trim();
+            var playerTeam = $row.find('td').eq(teamColIndex).text().trim();
+            panel.html(buildDeepDiveHTML(playerName, playerTeam));
+            panel.data('loaded', true);
+        }
     });
 
-    // Deep Dive all toggle
+    // ── Deep Dive ALL toggle ───────────────────────────────────────────────
     $('#deepDiveToggle').click(function() {
         deepDiveAllOpen = !deepDiveAllOpen;
         $(this).toggleClass('active');
         if (deepDiveAllOpen) {
+            $('.player-row').each(function() {
+                var $row  = $(this);
+                var panel = $row.next('.deep-dive-row').find('.deep-dive-panel');
+                if (!panel.data('loaded')) {
+                    panel.html(buildDeepDiveHTML(
+                        $row.find('td').eq(nameColIndex).text().trim(),
+                        $row.find('td').eq(teamColIndex).text().trim()
+                    ));
+                    panel.data('loaded', true);
+                }
+            });
             $('.deep-dive-row').show();
             $('.player-row').addClass('active-player');
         } else {
@@ -162,12 +376,10 @@ $(document).ready(function() {
         }
     });
 
-    // Make the table rows sortable (only player rows, not deep-dive rows)
-    // First, detach all deep-dive rows and store references
+    // ── Sortable rows ──────────────────────────────────────────────────────
     $('.player-row').each(function() {
         $(this).data('deep-dive', $(this).next('.deep-dive-row').detach());
     });
-    // Re-append them after their player rows
     $('.player-row').each(function() {
         $(this).after($(this).data('deep-dive'));
     });
@@ -183,80 +395,60 @@ $(document).ready(function() {
             return $helper;
         },
         start: function(e, ui) {
-            // Detach the deep-dive row so sortable doesn't mess with it
             ui.item.data('deep-dive', ui.item.next('.deep-dive-row').detach());
         },
         stop: function(e, ui) {
-            // Reattach deep-dive row after its player row
             ui.item.after(ui.item.data('deep-dive'));
         }
     }).disableSelection();
 
-    // Save the reordered list
-    var savedRankingId = {{ saved_ranking_id if saved_ranking_id is defined else 'null' }};
+    // ── Save / update ranking ──────────────────────────────────────────────
+    var savedRankingId   = {{ saved_ranking_id if saved_ranking_id is defined else 'null' }};
     var savedRankingName = {{ saved_ranking_name|tojson if saved_ranking_name is defined else 'null' }};
 
     $('#saveRanking').click(function() {
         var rows = [];
         $('#sortable-table tbody tr.player-row').each(function() {
             var row = [];
-            $(this).find('td').each(function() {
-                row.push($(this).text());
-            });
+            $(this).find('td').each(function() { row.push($(this).text()); });
             rows.push(row);
         });
 
         if (savedRankingId) {
-            // Update existing saved ranking
             $.ajax({
                 type: 'PUT',
                 url: '/update_ranking/' + savedRankingId,
                 contentType: 'application/json;charset=UTF-8',
                 data: JSON.stringify({ranking: rows}),
-                success: function(response) {},
-                error: function(xhr) {
-                    alert('Failed to update ranking.');
-                }
+                error: function() { alert('Failed to update ranking.'); }
             });
         } else {
-            // New ranking - prompt for name
             var name = prompt('Enter a name for this ranking list:');
             if (name === null || name.trim() === '') return;
-
             $.ajax({
                 type: 'POST',
                 url: '{{ url_for("main.save_rankings") }}',
                 contentType: 'application/json;charset=UTF-8',
                 data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}", name: name.trim()}),
-                success: function(response) {
-                    window.location.href = '/rankings/saved/' + response.ranking_id;
-                },
+                success: function(response) { window.location.href = '/rankings/saved/' + response.ranking_id; },
                 error: function(xhr) {
                     var msg = 'Failed to save rankings. Please try again.';
-                    if (xhr.responseJSON && xhr.responseJSON.error) {
-                        msg = xhr.responseJSON.error;
-                    }
+                    if (xhr.responseJSON && xhr.responseJSON.error) msg = xhr.responseJSON.error;
                     alert(msg);
                 }
             });
         }
     });
 
-    // Delete a saved ranking
+    // ── Delete saved ranking ───────────────────────────────────────────────
     $('.delete-ranking').click(function() {
         var rankingId = $(this).data('id');
         if (!confirm('Delete this saved ranking?')) return;
-
         $.ajax({
             type: 'DELETE',
             url: '/delete_ranking/' + rankingId,
-            success: function(response) {
-                // Always redirect to PPR page after deletion
-                window.location.href = '{{ url_for("main.get_ppr_rankings") }}';
-            },
-            error: function(error) {
-                alert('Failed to delete ranking.');
-            }
+            success: function() { window.location.href = '{{ url_for("main.get_ppr_rankings") }}'; },
+            error: function() { alert('Failed to delete ranking.'); }
         });
     });
 });

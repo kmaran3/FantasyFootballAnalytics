@@ -11,7 +11,163 @@ import json
 
 main = Blueprint('main', __name__)
 
-engine = create_engine('sqlite:///webapp/my_database.db', echo=True)
+_DB_PATH = Path(__file__).resolve().parent.parent / 'webapp' / 'my_database.db'
+engine = create_engine(f'sqlite:///{_DB_PATH}', echo=True)
+
+_BASE_DIR = Path(__file__).parent.parent
+_PICKLE_DIR = _BASE_DIR / 'Models' / 'PickleFiles'
+
+# nfl_data_py uses 'LA' for Rams; our DB uses 'LAR'
+_TEAM_ABBR_MAP = {'LA': 'LAR'}
+
+_player_details_cache = None
+_team_schedule_cache = None
+
+
+def _normalize_team(team):
+    return _TEAM_ABBR_MAP.get(str(team), str(team))
+
+
+def _get_player_details():
+    global _player_details_cache
+    if _player_details_cache is not None:
+        return _player_details_cache
+
+    details = {}
+
+    # Age from currYearRoster
+    roster_path = _PICKLE_DIR / 'currYearRoster.pkl'
+    if roster_path.exists():
+        roster_df = pd.read_pickle(roster_path)
+        for _, row in roster_df.iterrows():
+            name = str(row['Player']).strip()
+            details[name] = {
+                'age': int(row['Age']) if pd.notna(row['Age']) else None,
+                'position': str(row['Pos']),
+                'stats_year': None,
+                'stats': {}
+            }
+
+    def _int(val):
+        return int(val) if pd.notna(val) else 0
+
+    def _float1(val):
+        return round(float(val), 1) if pd.notna(val) else 0.0
+
+    # QB stats (YearsBack=1 = 2023 season)
+    qb_path = _PICKLE_DIR / 'final_qb_data.pkl'
+    if qb_path.exists():
+        df = pd.read_pickle(qb_path)
+        df = df[(df['YearsBack'] == 1) & (df['season_type'] == 'REG')]
+        for _, row in df.iterrows():
+            name = str(row['player_display_name']).strip()
+            stat = {
+                'GP': _int(row['GP']),
+                'completions': _int(row['completions']),
+                'attempts': _int(row['attempts']),
+                'passing_yards': _int(row['passing_yards']),
+                'passing_tds': _int(row['passing_tds']),
+                'interceptions': _int(row['interceptions']),
+                'rushing_yards': _int(row['rushing_yards']),
+                'rushing_tds': _int(row['rushing_tds']),
+                'fantasy_points': _float1(row['fantasy_points']),
+            }
+            entry = details.setdefault(name, {'age': _int(row['age']) if pd.notna(row['age']) else None, 'position': 'QB', 'stats_year': None, 'stats': {}})
+            entry['stats_year'] = int(row['season'])
+            entry['stats'] = stat
+
+    # RB stats
+    rb_path = _PICKLE_DIR / 'final_rb_data.pkl'
+    if rb_path.exists():
+        df = pd.read_pickle(rb_path)
+        df = df[(df['YearsBack'] == 1) & (df['season_type'] == 'REG')]
+        for _, row in df.iterrows():
+            name = str(row['player_display_name']).strip()
+            stat = {
+                'GP': _int(row['GP']),
+                'carries': _int(row['carries']),
+                'rushing_yards': _int(row['rushing_yards']),
+                'rushing_tds': _int(row['rushing_tds']),
+                'receptions': _int(row['receptions']),
+                'targets': _int(row['targets']),
+                'receiving_yards': _int(row['receiving_yards']),
+                'receiving_tds': _int(row['receiving_tds']),
+                'fantasy_points': _float1(row['fantasy_points']),
+            }
+            entry = details.setdefault(name, {'age': _int(row['age']) if pd.notna(row['age']) else None, 'position': 'RB', 'stats_year': None, 'stats': {}})
+            entry['stats_year'] = int(row['season'])
+            entry['stats'] = stat
+
+    # WR/TE stats
+    wrte_path = _PICKLE_DIR / 'final_wrte_data.pkl'
+    if wrte_path.exists():
+        df = pd.read_pickle(wrte_path)
+        df = df[(df['YearsBack'] == 1) & (df['season_type'] == 'REG')]
+        for _, row in df.iterrows():
+            name = str(row['player_display_name']).strip()
+            stat = {
+                'GP': _int(row['GP']),
+                'receptions': _int(row['receptions']),
+                'targets': _int(row['targets']),
+                'receiving_yards': _int(row['receiving_yards']),
+                'receiving_tds': _int(row['receiving_tds']),
+                'carries': _int(row['carries']),
+                'rushing_yards': _int(row['rushing_yards']),
+                'fantasy_points': _float1(row['fantasy_points']),
+            }
+            entry = details.setdefault(name, {'age': _int(row['age']) if pd.notna(row['age']) else None, 'position': str(row['position']), 'stats_year': None, 'stats': {}})
+            entry['stats_year'] = int(row['season'])
+            entry['stats'] = stat
+
+    _player_details_cache = details
+    return details
+
+
+def _get_team_schedule():
+    global _team_schedule_cache
+    if _team_schedule_cache is not None:
+        return _team_schedule_cache
+
+    try:
+        import nfl_data_py as nfl
+        schedule_df = nfl.import_schedules([2024])
+        reg_df = schedule_df[schedule_df['game_type'] == 'REG'].sort_values('week')
+
+        team_games = {}
+        for _, row in reg_df.iterrows():
+            week = int(row['week'])
+            home = _normalize_team(row['home_team'])
+            away = _normalize_team(row['away_team'])
+
+            team_games.setdefault(home, [])
+            if len(team_games[home]) < 5:
+                team_games[home].append({'week': week, 'opponent': away, 'home_away': 'home'})
+
+            team_games.setdefault(away, [])
+            if len(team_games[away]) < 5:
+                team_games[away].append({'week': week, 'opponent': home, 'home_away': 'away'})
+
+        _team_schedule_cache = team_games
+    except Exception as e:
+        print(f'Warning: Could not load NFL schedule data: {e}')
+        _team_schedule_cache = {}
+
+    return _team_schedule_cache
+
+
+def _ranking_extras(df):
+    """Return player_details_json, team_schedule_json, teams, bye_weeks for a ranking df."""
+    player_details = _get_player_details()
+    team_schedule = _get_team_schedule()
+    rows = df.to_dict(orient='records')
+    teams = sorted(set(str(r['Team']) for r in rows if r.get('Team')))
+    bye_weeks = sorted(set(int(r['Bye Week']) for r in rows if r.get('Bye Week') is not None))
+    return (
+        json.dumps(player_details),
+        json.dumps(team_schedule),
+        teams,
+        bye_weeks,
+    )
 
 @main.route('/', methods=['GET', 'POST'])
 def login():
@@ -67,29 +223,35 @@ def rankings():
 @main.route('/rankings/ppr')
 @login_required
 def get_ppr_rankings():
-    # Query the Full PPR table
-    with engine.connect() as connection:  # Use the engine to establish a connection
+    with engine.connect() as connection:
         df = pd.read_sql(text('SELECT * FROM Full_PPR'), con=connection)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='PPR', user_rankings=saved)
+    pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
+    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='PPR',
+                           user_rankings=saved, player_details_json=pd_json,
+                           team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
 
 @main.route('/rankings/half-ppr')
 @login_required
 def get_half_ppr_rankings():
-    # Query the Half PPR table
     with engine.connect() as connection:
         df = pd.read_sql(text('SELECT * FROM Half_PPR'), con=connection)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Half PPR', user_rankings=saved)
+    pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
+    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Half PPR',
+                           user_rankings=saved, player_details_json=pd_json,
+                           team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
 
 @main.route('/rankings/standard')
 @login_required
 def get_standard_rankings():
-    # Query the Non PPR table
     with engine.connect() as connection:
         df = pd.read_sql(text('SELECT * FROM Non_PPR'), con=connection)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Standard', user_rankings=saved)
+    pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
+    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Standard',
+                           user_rankings=saved, player_details_json=pd_json,
+                           team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
 
 @main.route('/save_rankings', methods=['POST'])
 @login_required
@@ -149,7 +311,15 @@ def view_saved_ranking(ranking_id):
             row_dict[header] = row[i] if i < len(row) else ''
         table_data.append(row_dict)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    return render_template('rankings.html', table_data=table_data, table_type=ranking.name, user_rankings=saved, saved_ranking_id=ranking.id, saved_ranking_name=ranking.name)
+    player_details = _get_player_details()
+    team_schedule = _get_team_schedule()
+    teams = sorted(set(str(r.get('Team', '')) for r in table_data if r.get('Team')))
+    bye_weeks = sorted(set(int(r['Bye Week']) for r in table_data if r.get('Bye Week') is not None))
+    return render_template('rankings.html', table_data=table_data, table_type=ranking.name,
+                           user_rankings=saved, saved_ranking_id=ranking.id, saved_ranking_name=ranking.name,
+                           player_details_json=json.dumps(player_details),
+                           team_schedule_json=json.dumps(team_schedule),
+                           teams=teams, bye_weeks=bye_weeks)
 
 @main.route('/user_rankings')
 @login_required
@@ -204,15 +374,16 @@ def fetch_player_data():
         soup = BeautifulSoup(response.text, 'html.parser')
         rows = soup.find_all('tr')
         for row in rows:
-            name_td = row.find('td', class_='name sticky-col text-start')
+            name_td = row.find('td', class_='name sticky-col text-start text-nowrap')
             if name_td:
                 name_a = name_td.find('a')
                 if name_a:
                     player_name = name_a.get_text().strip()
                     tds = row.find_all('td')
-                    if len(tds) >= 9:
-                        espn_value = tds[8].get_text().strip()
-                        player_data.append((player_name, espn_value))
+                    if len(tds) >= 15:
+                        adp_value = tds[14].get_text().strip()
+                        if adp_value != '-':
+                            player_data.append((player_name, adp_value))
         player_data_sorted = sorted(player_data, key=lambda x: int(x[1]) if x[1].isdigit() else float('inf'))
         return player_data_sorted
     else:

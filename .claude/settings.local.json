@@ -10,7 +10,24 @@
       "Bash(/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3:*)",
       "Bash(pip3 install:*)",
       "Bash(pip install flask-sqlalchemy)",
-      "Bash(/Users/kmaran3/anaconda3/bin/python3 -c \"import sklearn; print\\(''sklearn:'', sklearn.__version__\\)\")"
+      "Bash(/Users/kmaran3/anaconda3/bin/python3 -c \"import sklearn; print\\(''sklearn:'', sklearn.__version__\\)\")",
+      "Bash(ls requirements*.txt)",
+      "Bash(jq .cells[0:3].source)",
+      "Bash(2)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python3 -c \":*)",
+      "Bash(pip install:*)",
+      "Bash(cd:*)",
+      "Bash(/opt/anaconda3/bin/python3 -c \"import xgboost as xgb; print\\(''xgboost OK:'', xgb.__version__\\)\")",
+      "Bash(/opt/anaconda3/bin/python3 -c \":*)",
+      "Bash(/opt/anaconda3/bin/python3 -c \"\nimport nfl_data_py as nfl\nimport warnings; warnings.filterwarnings\\('ignore'\\)\nd = nfl.import_seasonal_data\\([2023]\\)\nrb_cols = [c for c in d.columns if 'rush' in c.lower\\(\\) or 'ry' in c.lower\\(\\) or 'target' in c.lower\\(\\) or 'air' in c.lower\\(\\) or 'share' in c.lower\\(\\)]\nprint\\(rb_cols\\)\nprint\\('ry_sh' in d.columns\\)\nprint\\('target_share' in d.columns\\)\nprint\\('air_yards_share' in d.columns\\)\n\" 2>&1)",
+      "Bash(/opt/homebrew/bin/python3 -c \"import pandas; print\\(pandas.__version__\\)\")",
+      "Bash(/opt/homebrew/bin/python3 /Users/kmaran3/Dropbox/Darkhorse/webapp/csvtosql.py)",
+      "Bash(/opt/homebrew/bin/python3 webapp/csvtosql.py)",
+      "Bash(/opt/anaconda3/bin/python3 -c \"\nimport json\nwith open\\('/Users/kmaran3/Dropbox/Darkhorse/Models/MLModel.ipynb'\\) as f:\n    nb = json.load\\(f\\)\nfor i, cell in enumerate\\(nb['cells']\\):\n    print\\(f'=== Cell {i} FULL SOURCE ==='\\)\n    print\\(''.join\\(cell['source']\\)\\)\n    print\\(\\)\n\")",
+      "Bash(/opt/anaconda3/bin/python3 -c \"\nimport json\nwith open\\('/Users/kmaran3/Dropbox/Darkhorse/Models/PredictionCode.ipynb'\\) as f:\n    nb = json.load\\(f\\)\nfor i in [1,2,3,4]:\n    print\\(f'=== Cell {i} FULL SOURCE ==='\\)\n    print\\(''.join\\(nb['cells'][i]['source']\\)\\)\n    print\\(\\)\n\")",
+      "Bash(/opt/anaconda3/bin/python3 patch_mlmodel.py)",
+      "Bash(/opt/anaconda3/bin/python3 patch_predcode.py)"
     ]
   }
 }

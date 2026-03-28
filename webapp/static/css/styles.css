@@ -10,15 +10,34 @@ body {
 
 header.banner {
     width: 100%;
-    background-color: #333; /* Change this to the color you want */
-    color: #f8f39fee; /* Text color */
-    text-align: center; /* Center the text */
-    padding: 20px 0; /* Top and bottom padding */
-    box-sizing: border-box; /* Ensure padding is included in width calculation */
-    position: fixed; /* Make the banner stay at the top */
+    background-color: #333;
+    color: #f8f39fee;
+    text-align: center;
+    padding: 10px 20px;
+    box-sizing: border-box;
+    position: fixed;
     top: 0;
     left: 0;
-    z-index: 1000; /* Ensure the banner stays on top of other content */
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+}
+
+.nav-logo {
+    flex-shrink: 0;
+    margin-right: 16px;
+}
+
+.nav-logo-img {
+    height: 44px;
+    width: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+nav {
+    flex: 1;
 }
 
 nav ul {
@@ -38,9 +57,7 @@ nav ul li {
 .btn-group-vertical {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    position: fixed;
-    top: 152px;
+    align-items: stretch;
 }
 
 .btn-group-vertical .btn {
@@ -55,25 +72,28 @@ nav ul li {
     display: block;
     padding: 8px 16px;
     margin-bottom: 6px;
-    background-color: #444;
-    color: #f8f39fee;
+    background-color: #16213e;
+    color: #a0b8ff;
     text-decoration: none;
     border-radius: 4px;
     text-align: center;
     font-size: 1.3em;
     cursor: pointer;
-    transition: background-color 0.2s;
+    border: 1px solid #2a2a5e;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .ranking-type-btn:hover {
-    background-color: #666;
-    color: #fff;
+    background-color: #0f3460;
+    color: #e0e0e0;
+    border-color: #4a6aae;
 }
 
 .ranking-type-btn.active {
     background-color: #f8f39fee;
-    color: #333;
+    color: #1a1a2e;
     font-weight: bold;
+    border-color: #f8f39fee;
 }
 
 
@@ -90,6 +110,7 @@ nav ul li.login {
 main {
     flex: 1;
     padding: 2em;
+    padding-top: 80px;
     text-align: center;
 }
 
@@ -148,7 +169,7 @@ footer {
 }
 
 table {
-    width: 65%;
+    width: 78%;
     margin-left: auto;
     margin-right: auto;
 }
@@ -160,17 +181,24 @@ th, td {
 }
 
 .left-panel {
-    position: fixed; /* Keeps the panel fixed on the page */
-    top: 82px; /* Adjust this value to position the panel higher or lower */
-    left: 40px; /* Adjust this value to position the panel left or right */
-    width: 130px; /* Adjust the width as needed */
-    padding: 5px; /* Optional: Add some padding */
+    position: fixed;
+    top: 130px;
+    left: 20px;
+    width: 105px;
+    padding: 8px;
     z-index: 1000;
-    background-color: #555; /* Optional: Add a background color */ /* Optional: Add a border */
-    /* box-shadow: 0 0 10px rgba(117, 108, 108, 0.1); */
-    font-size: 0.65em; /* Optional: Add a shadow */
-    color: #f8f39fee;
+    background-color: #0d1b2a;
+    border: 1px solid #2a2a5e;
+    border-radius: 6px;
+    font-size: 0.65em;
+    color: #e0e0e0;
     flex-direction: column;
+}
+
+.left-panel h2 {
+    color: #a0b8ff;
+    font-size: 1.4em;
+    margin: 0 0 8px 0;
 }
 .btn-group-vertical {
     flex-grow: 1;
@@ -187,14 +215,16 @@ th, td {
 
 .right-panel {
     position: fixed;
-    top: 82px;
-    right: 40px;
-    width: 160px;
-    padding: 5px;
+    top: 130px;
+    right: 20px;
+    width: 130px;
+    padding: 8px;
     z-index: 1000;
-    background-color: #555;
+    background-color: #0d1b2a;
+    border: 1px solid #2a2a5e;
+    border-radius: 6px;
     font-size: 0.65em;
-    color: #f8f39fee;
+    color: #e0e0e0;
     display: flex;
     flex-direction: column;
 }
@@ -202,6 +232,7 @@ th, td {
 .right-panel h2 {
     margin: 0 0 8px 0;
     font-size: 1.4em;
+    color: #a0b8ff;
 }
 
 .saved-ranking-item {
@@ -215,22 +246,24 @@ th, td {
     text-align: left;
     font-size: 1.1em;
     padding: 6px 10px;
-    background-color: #444;
-    color: #f8f39fee;
+    background-color: #16213e;
+    color: #a0b8ff;
     text-decoration: none;
     border-radius: 4px;
-    transition: background-color 0.2s;
+    border: 1px solid #2a2a5e;
+    transition: background-color 0.2s, color 0.2s;
 }
 
 .saved-ranking-link:hover {
-    background-color: #666;
-    color: #fff;
+    background-color: #0f3460;
+    color: #e0e0e0;
 }
 
 .saved-ranking-link.active {
     background-color: #f8f39fee;
-    color: #333;
+    color: #1a1a2e;
     font-weight: bold;
+    border-color: #f8f39fee;
 }
 
 .saved-ranking-item .btn-danger {
@@ -251,26 +284,124 @@ th, td {
 
 .position-filter-bar {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     margin-top: 40px;
     margin-bottom: 12px;
     position: sticky;
-    top: 55px;
+    top: 64px;
     z-index: 999;
     background-color: #fff;
-    padding: 14px 0;
+    padding: 10px 0;
 }
 
 .filter-bar-inner {
-    width: 65%;
+    width: 78%;
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .filter-buttons {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ── Custom multi-select dropdown ─────────────────────────────── */
+
+.custom-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.custom-dropdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: #444;
+    color: #f8f39fee;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.95em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+    user-select: none;
+}
+
+.custom-dropdown-btn:hover {
+    background-color: #666;
+    color: #fff;
+}
+
+.custom-dropdown-btn.open {
+    background-color: #f8f39fee;
+    color: #333;
+    font-weight: bold;
+}
+
+.dd-arrow {
+    font-size: 0.65em;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.custom-dropdown-btn.open .dd-arrow {
+    transform: rotate(180deg);
+}
+
+.custom-dropdown-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 130px;
+    background-color: #16213e;
+    border: 1px solid #4a4a7e;
+    border-radius: 4px;
+    z-index: 1100;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.dd-opt {
+    padding: 7px 14px;
+    cursor: pointer;
+    font-size: 0.9em;
+    color: #e0e0e0;
+    white-space: nowrap;
+    transition: background-color 0.15s;
+}
+
+.dd-opt:hover {
+    background-color: #2a2a5e;
+}
+
+.dd-opt.selected {
+    background-color: #0f3460;
+    color: #f8f39fee;
+    font-weight: 600;
+}
+
+.dd-opt.selected::before {
+    content: '✓  ';
+    color: #f8f39fee;
+}
+
+.dd-opt-clear {
+    border-bottom: 1px solid #2a2a5e;
+    color: #a0b8ff;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.dd-opt-clear:hover {
+    background-color: #0d1b2a;
+    color: #fff;
 }
 
 .position-filter-btn {
@@ -332,22 +463,242 @@ th, td {
 }
 
 .save-ranking-btn {
-    padding: 10px 24px;
-    background-color: #f8f39fee;
-    color: #333;
-    border: none;
+    padding: 8px 12px;
+    background-color: #16213e;
+    color: #f8f39fee;
+    border: 1px solid #f8f39fee;
     border-radius: 6px;
-    font-size: 1.3em;
+    font-size: 1.2em;
     font-weight: bold;
     cursor: pointer;
-    transition: background-color 0.2s, transform 0.1s;
+    transition: background-color 0.2s, color 0.2s, transform 0.1s;
 }
 
 .save-ranking-btn:hover {
-    background-color: #e6e08c;
+    background-color: #0f3460;
+    color: #fff;
+    border-color: #fff;
     transform: scale(1.03);
 }
 
 .save-ranking-btn:active {
     transform: scale(0.97);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RANKINGS PAGE — DARK MODE
+   Scoped to body.rankings-body / main.rankings-main
+═══════════════════════════════════════════════════════════════ */
+
+body.rankings-body {
+    background-color: #1a1a2e;
+}
+
+.rankings-main {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    padding-top: 2em;
+}
+
+/* Left panel: 20px offset + 105px width + 20px gap = 145px
+   Right panel: 20px offset + 130px width + 20px gap = 170px  */
+.rankings-main .filter-bar-inner {
+    width: 100%;
+}
+
+/* Matching margins on the table wrapper and the table itself */
+.rankings-main #ranking_table {
+    margin-left: 145px;
+    margin-right: 170px;
+}
+
+.rankings-main table {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Filter bar dark background */
+.rankings-main .position-filter-bar {
+    background-color: #1a1a2e;
+    border-bottom: 1px solid #2a2a4e;
+    padding-left: 145px;
+    padding-right: 170px;
+    box-sizing: border-box;
+}
+
+/* Keep dropdown panel dark even when rankings-main is active */
+.rankings-main .custom-dropdown-panel {
+    background-color: #0d1b2a;
+    border-color: #2a2a5e;
+}
+
+/* Table container */
+.rankings-main .ranking-table {
+    padding-top: 8px;
+}
+
+/* Table base */
+.rankings-main #sortable-table {
+    color: #e0e0e0;
+    border-collapse: collapse;
+}
+
+.rankings-main #sortable-table th,
+.rankings-main #sortable-table td {
+    border-bottom: 1px solid #2a2a5e;
+    color: #e0e0e0;
+}
+
+.rankings-main #sortable-table thead th {
+    background-color: #0f3460;
+    color: #e8e8ff;
+    font-weight: bold;
+}
+
+/* Override Bootstrap table-striped */
+.rankings-main .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: #16213e;
+    color: #e0e0e0;
+    --bs-table-striped-color: #e0e0e0;
+    --bs-table-striped-bg: #16213e;
+}
+
+.rankings-main .table-striped > tbody > tr:nth-of-type(even) > * {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+}
+
+/* Row hover and active */
+.rankings-main .player-row:hover {
+    background-color: #2a2a4e !important;
+    cursor: pointer;
+}
+
+.rankings-main .player-row.active-player td {
+    background-color: #1a4a6e !important;
+    color: #fff !important;
+}
+
+/* Deep dive row */
+.rankings-main .deep-dive-row td {
+    background-color: #1a1a2e !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+}
+
+.rankings-main .deep-dive-panel {
+    background-color: #0d1b2a;
+    border: 1px solid #2a2a5e;
+    border-radius: 6px;
+    margin: 6px 0;
+    min-height: 0;
+}
+
+/* Search input dark */
+.rankings-main .player-search-input {
+    background-color: #16213e;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+.rankings-main .player-search-input::placeholder {
+    color: #888;
+}
+
+.rankings-main .player-search-input:focus {
+    border-color: #f8f39fee;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DEEP DIVE PANEL CONTENT
+═══════════════════════════════════════════════════════════════ */
+
+.dd-content {
+    padding: 14px 18px;
+    font-size: 0.88em;
+    color: #e0e0e0;
+}
+
+.dd-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.dd-player-name {
+    font-size: 1.15em;
+    font-weight: bold;
+    color: #f8f39fee;
+}
+
+.dd-badge {
+    background-color: #0f3460;
+    color: #e0e0e0;
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.dd-section {
+    margin-bottom: 12px;
+}
+
+.dd-section-title {
+    font-weight: bold;
+    font-size: 0.95em;
+    color: #a0b8ff;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.dd-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.dd-stat {
+    background-color: #16213e;
+    border: 1px solid #2a2a5e;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.88em;
+    white-space: nowrap;
+}
+
+.dd-stat b {
+    color: #a0b8ff;
+    margin-right: 3px;
+}
+
+.dd-schedule {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.dd-game {
+    background-color: #0f3460;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.88em;
+    white-space: nowrap;
+    color: #e0e0e0;
+}
+
+.dd-game b {
+    color: #f8f39fee;
+    margin-right: 4px;
+}
+
+.dd-na {
+    color: #888;
+    font-style: italic;
+    font-size: 0.85em;
 }
