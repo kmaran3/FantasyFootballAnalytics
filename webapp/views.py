@@ -498,6 +498,24 @@ def _compute_roster_stats():
 _composite_grades  = _compute_composite_grades()
 _roster_stats, _fp_thresholds = _compute_roster_stats()
 
+# Load stat data once at startup
+_data_dir = Path(__file__).parent.parent / 'Models' / 'PickleFiles'
+
+def _load(filename):
+    try:
+        return pd.read_pickle(_data_dir / filename)
+    except Exception:
+        return pd.DataFrame()
+
+_qb_stats    = _load('final_qb_data.pkl')
+_rb_stats    = _load('final_rb_data.pkl')
+_wrte_stats  = _load('final_wrte_data.pkl')
+_qb_model    = _load('QBDFForModelPPR.pkl')
+_rb_model    = _load('RBDFForModelPPR.pkl')
+_wrte_model  = _load('WRTEDFForModelPPR.pkl')
+_rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
+_curr_avs    = _load('currAVs.pkl')
+
 @main.route('/', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
