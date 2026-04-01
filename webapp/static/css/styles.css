@@ -1,17 +1,24 @@
+/* ═══════════════════════════════════════════════════════════════
+   OCEAN DEPTHS THEME
+   Deep Navy #1a2332 | Teal #2d8b8b | Seafoam #a8dadc | Cream #f1faee
+═══════════════════════════════════════════════════════════════ */
+
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'DejaVu Sans', Arial, sans-serif;
     margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    background-color: #1a2332;
+    color: #f1faee;
 }
 
 
 header.banner {
     width: 100%;
-    background-color: #333;
-    color: #f8f39fee;
+    background-color: #0d1b2a;
+    color: #f1faee;
     text-align: center;
     padding: 10px 20px;
     box-sizing: border-box;
@@ -21,6 +28,7 @@ header.banner {
     z-index: 1000;
     display: flex;
     align-items: center;
+    border-bottom: 2px solid #2d8b8b;
 }
 
 .nav-logo {
@@ -72,39 +80,42 @@ nav ul li {
     display: block;
     padding: 8px 16px;
     margin-bottom: 6px;
-    background-color: #16213e;
-    color: #a0b8ff;
+    background-color: #162535;
+    color: #a8dadc;
     text-decoration: none;
     border-radius: 4px;
     text-align: center;
     font-size: 1.3em;
     cursor: pointer;
-    border: 1px solid #2a2a5e;
+    border: 1px solid #1e5555;
     transition: background-color 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .ranking-type-btn:hover {
-    background-color: #0f3460;
-    color: #e0e0e0;
-    border-color: #4a6aae;
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #3a9b9b;
 }
 
 .ranking-type-btn.active {
-    background-color: #f8f39fee;
-    color: #1a1a2e;
+    background-color: #f1faee;
+    color: #1a2332;
     font-weight: bold;
-    border-color: #f8f39fee;
+    border-color: #f1faee;
 }
 
 
 nav ul li a {
-    color: #f8f39fee;
+    color: #f1faee;
     text-decoration: none;
-    
+}
+
+nav ul li a:hover {
+    color: #a8dadc;
 }
 
 nav ul li.login {
-    margin-left: auto;  /* This will push the login/logout item to the right */
+    margin-left: auto;
 }
 
 main {
@@ -112,15 +123,18 @@ main {
     padding: 2em;
     padding-top: 80px;
     text-align: center;
+    background-color: #1a2332;
+    color: #f1faee;
 }
 
 footer {
-    background-color: #333;
-    color: #f8f39fee;
+    background-color: #0d1b2a;
+    color: #a8dadc;
     text-align: center;
     padding: 1em 0;
     position: relative;
     bottom: 0;
+    border-top: 2px solid #2d8b8b;
 }
 
 .profile-container {
@@ -153,13 +167,14 @@ footer {
 .profile-info h2 {
     margin-top: 0;
     font-size: 1.5em;
+    color: #a8dadc;
 }
 
 .profile-info p {
     font-size: 1em;
-    color: #555;
+    color: #a8dadc;
     margin: 0.5em 0;
-    max-width: 300px; /* Adjust the width as needed */
+    max-width: 300px;
 }
 
 .logo {
@@ -177,8 +192,111 @@ table {
 th, td {
     padding: 8px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #1e5555;
+    color: #f1faee;
 }
+
+/* ── Global select ───────────────────────────────────────────── */
+
+select {
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 1em;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+select:focus {
+    border-color: #2d8b8b;
+}
+
+select option {
+    background-color: #162535;
+    color: #f1faee;
+}
+
+/* ── Global button (non-class) ───────────────────────────────── */
+
+button:not([class]) {
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+button:not([class]):hover {
+    background-color: #2d8b8b;
+    border-color: #3a9b9b;
+}
+
+button:not([class]):disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Form styles (login / register) ─────────────────────────── */
+
+form input[type="text"],
+form input[type="password"],
+form input[type="email"] {
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #2d8b8b;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 1em;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+form input[type="text"]:focus,
+form input[type="password"]:focus,
+form input[type="email"]:focus {
+    border-color: #a8dadc;
+}
+
+form input[type="submit"],
+form button[type="submit"] {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 20px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-top: 8px;
+}
+
+form input[type="submit"]:hover,
+form button[type="submit"]:hover {
+    background-color: #3a9b9b;
+}
+
+form label {
+    color: #a8dadc;
+    font-weight: bold;
+}
+
+/* Flash messages */
+.alert, .flash {
+    background-color: #162535;
+    color: #a8dadc;
+    border: 1px solid #2d8b8b;
+    border-radius: 4px;
+    padding: 8px 16px;
+    margin-bottom: 12px;
+}
+
+/* ── Panels ──────────────────────────────────────────────────── */
 
 .left-panel {
     position: fixed;
@@ -188,29 +306,32 @@ th, td {
     padding: 8px;
     z-index: 1000;
     background-color: #0d1b2a;
-    border: 1px solid #2a2a5e;
+    border: 1px solid #1e5555;
     border-radius: 6px;
     font-size: 0.65em;
-    color: #e0e0e0;
+    color: #f1faee;
     flex-direction: column;
 }
 
 .left-panel h2 {
-    color: #a0b8ff;
+    color: #a8dadc;
     font-size: 1.4em;
     margin: 0 0 8px 0;
 }
+
 .btn-group-vertical {
     flex-grow: 1;
 }
+
 .saved-lists {
     left: 40px;
     position: fixed;
     top: 280px;
-    background-color: #555;
-    color: #f8f39fee;
+    background-color: #0d1b2a;
+    color: #f1faee;
     width: 130px;
     font-size: 1.2em;
+    border: 1px solid #1e5555;
 }
 
 .right-panel {
@@ -221,10 +342,10 @@ th, td {
     padding: 8px;
     z-index: 1000;
     background-color: #0d1b2a;
-    border: 1px solid #2a2a5e;
+    border: 1px solid #1e5555;
     border-radius: 6px;
     font-size: 0.65em;
-    color: #e0e0e0;
+    color: #f1faee;
     display: flex;
     flex-direction: column;
 }
@@ -232,7 +353,7 @@ th, td {
 .right-panel h2 {
     margin: 0 0 8px 0;
     font-size: 1.4em;
-    color: #a0b8ff;
+    color: #a8dadc;
 }
 
 .saved-ranking-item {
@@ -246,24 +367,24 @@ th, td {
     text-align: left;
     font-size: 1.1em;
     padding: 6px 10px;
-    background-color: #16213e;
-    color: #a0b8ff;
+    background-color: #162535;
+    color: #a8dadc;
     text-decoration: none;
     border-radius: 4px;
-    border: 1px solid #2a2a5e;
+    border: 1px solid #1e5555;
     transition: background-color 0.2s, color 0.2s;
 }
 
 .saved-ranking-link:hover {
-    background-color: #0f3460;
-    color: #e0e0e0;
+    background-color: #2d8b8b;
+    color: #f1faee;
 }
 
 .saved-ranking-link.active {
-    background-color: #f8f39fee;
-    color: #1a1a2e;
+    background-color: #f1faee;
+    color: #1a2332;
     font-weight: bold;
-    border-color: #f8f39fee;
+    border-color: #f1faee;
 }
 
 .saved-ranking-item .btn-danger {
@@ -282,6 +403,8 @@ th, td {
     background-color: #e74c3c;
 }
 
+/* ── Filter bar ──────────────────────────────────────────────── */
+
 .position-filter-bar {
     display: flex;
     justify-content: flex-start;
@@ -290,8 +413,9 @@ th, td {
     position: sticky;
     top: 64px;
     z-index: 999;
-    background-color: #fff;
+    background-color: #1a2332;
     padding: 10px 0;
+    border-bottom: 1px solid #1e5555;
 }
 
 .filter-bar-inner {
@@ -321,9 +445,9 @@ th, td {
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background-color: #444;
-    color: #f8f39fee;
-    border: none;
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
     border-radius: 4px;
     font-size: 0.95em;
     cursor: pointer;
@@ -333,14 +457,16 @@ th, td {
 }
 
 .custom-dropdown-btn:hover {
-    background-color: #666;
-    color: #fff;
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #3a9b9b;
 }
 
 .custom-dropdown-btn.open {
-    background-color: #f8f39fee;
-    color: #333;
+    background-color: #f1faee;
+    color: #1a2332;
     font-weight: bold;
+    border-color: #f1faee;
 }
 
 .dd-arrow {
@@ -359,8 +485,8 @@ th, td {
     top: calc(100% + 4px);
     left: 0;
     min-width: 130px;
-    background-color: #16213e;
-    border: 1px solid #4a4a7e;
+    background-color: #162535;
+    border: 1px solid #1e5555;
     border-radius: 4px;
     z-index: 1100;
     max-height: 220px;
@@ -372,43 +498,45 @@ th, td {
     padding: 7px 14px;
     cursor: pointer;
     font-size: 0.9em;
-    color: #e0e0e0;
+    color: #f1faee;
     white-space: nowrap;
     transition: background-color 0.15s;
 }
 
 .dd-opt:hover {
-    background-color: #2a2a5e;
+    background-color: #1e5555;
 }
 
 .dd-opt.selected {
-    background-color: #0f3460;
-    color: #f8f39fee;
+    background-color: #2d8b8b;
+    color: #f1faee;
     font-weight: 600;
 }
 
 .dd-opt.selected::before {
     content: '✓  ';
-    color: #f8f39fee;
+    color: #f1faee;
 }
 
 .dd-opt-clear {
-    border-bottom: 1px solid #2a2a5e;
-    color: #a0b8ff;
+    border-bottom: 1px solid #1e5555;
+    color: #a8dadc;
     font-size: 0.85em;
     font-style: italic;
 }
 
 .dd-opt-clear:hover {
     background-color: #0d1b2a;
-    color: #fff;
+    color: #f1faee;
 }
+
+/* ── Position filter buttons ─────────────────────────────────── */
 
 .position-filter-btn {
     padding: 6px 16px;
-    background-color: #444;
-    color: #f8f39fee;
-    border: none;
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
     border-radius: 4px;
     font-size: 0.95em;
     cursor: pointer;
@@ -416,37 +544,51 @@ th, td {
 }
 
 .position-filter-btn:hover {
-    background-color: #666;
-    color: #fff;
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #3a9b9b;
 }
 
 .position-filter-btn.active {
-    background-color: #f8f39fee;
-    color: #333;
+    background-color: #f1faee;
+    color: #1a2332;
     font-weight: bold;
+    border-color: #f1faee;
 }
+
+/* ── Search input ────────────────────────────────────────────── */
 
 .player-search-input {
     padding: 6px 12px;
     font-size: 0.95em;
-    border: 2px solid #444;
+    border: 2px solid #1e5555;
     border-radius: 4px;
     width: 180px;
     outline: none;
+    background-color: #162535;
+    color: #f1faee;
     transition: border-color 0.2s;
 }
 
-.player-search-input:focus {
-    border-color: #f8f39fee;
+.player-search-input::placeholder {
+    color: #6a9a9a;
 }
 
+.player-search-input:focus {
+    border-color: #2d8b8b;
+}
+
+/* ── Table rows ──────────────────────────────────────────────── */
+
 .player-row:hover {
-    background-color: #e8e8e8;
+    background-color: #1e5555;
 }
 
 .player-row.active-player {
-    background-color: #e0dfc8;
+    background-color: #1a5555;
 }
+
+/* ── Deep dive ───────────────────────────────────────────────── */
 
 .deep-dive-row td {
     padding: 0 !important;
@@ -456,17 +598,19 @@ th, td {
 .deep-dive-panel {
     width: 100%;
     min-height: 200px;
-    background-color: #fff;
-    border: 2px solid #ddd;
+    background-color: #0d1b2a;
+    border: 2px solid #1e5555;
     border-radius: 6px;
     margin: 8px 0;
 }
 
+/* ── Save ranking button ─────────────────────────────────────── */
+
 .save-ranking-btn {
     padding: 8px 12px;
-    background-color: #16213e;
-    color: #f8f39fee;
-    border: 1px solid #f8f39fee;
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #f1faee;
     border-radius: 6px;
     font-size: 1.2em;
     font-weight: bold;
@@ -475,9 +619,9 @@ th, td {
 }
 
 .save-ranking-btn:hover {
-    background-color: #0f3460;
-    color: #fff;
-    border-color: #fff;
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #a8dadc;
     transform: scale(1.03);
 }
 
@@ -486,27 +630,23 @@ th, td {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   RANKINGS PAGE — DARK MODE
-   Scoped to body.rankings-body / main.rankings-main
+   RANKINGS PAGE — OCEAN DEPTHS DARK
 ═══════════════════════════════════════════════════════════════ */
 
 body.rankings-body {
-    background-color: #1a1a2e;
+    background-color: #1a2332;
 }
 
 .rankings-main {
-    background-color: #1a1a2e;
-    color: #e0e0e0;
+    background-color: #1a2332;
+    color: #f1faee;
     padding-top: 2em;
 }
 
-/* Left panel: 20px offset + 105px width + 20px gap = 145px
-   Right panel: 20px offset + 130px width + 20px gap = 170px  */
 .rankings-main .filter-bar-inner {
     width: 100%;
 }
 
-/* Matching margins on the table wrapper and the table itself */
 .rankings-main #ranking_table {
     margin-left: 145px;
     margin-right: 170px;
@@ -518,96 +658,89 @@ body.rankings-body {
     margin-right: 0;
 }
 
-/* Filter bar dark background */
 .rankings-main .position-filter-bar {
-    background-color: #1a1a2e;
-    border-bottom: 1px solid #2a2a4e;
+    background-color: #1a2332;
+    border-bottom: 1px solid #1e5555;
     padding-left: 145px;
     padding-right: 170px;
     box-sizing: border-box;
 }
 
-/* Keep dropdown panel dark even when rankings-main is active */
 .rankings-main .custom-dropdown-panel {
     background-color: #0d1b2a;
-    border-color: #2a2a5e;
+    border-color: #1e5555;
 }
 
-/* Table container */
 .rankings-main .ranking-table {
     padding-top: 8px;
 }
 
-/* Table base */
 .rankings-main #sortable-table {
-    color: #e0e0e0;
+    color: #f1faee;
     border-collapse: collapse;
 }
 
 .rankings-main #sortable-table th,
 .rankings-main #sortable-table td {
-    border-bottom: 1px solid #2a2a5e;
-    color: #e0e0e0;
+    border-bottom: 1px solid #1e5555;
+    color: #f1faee;
 }
 
 .rankings-main #sortable-table thead th {
-    background-color: #0f3460;
-    color: #e8e8ff;
+    background-color: #2d8b8b;
+    color: #f1faee;
     font-weight: bold;
 }
 
 /* Override Bootstrap table-striped */
 .rankings-main .table-striped > tbody > tr:nth-of-type(odd) > * {
-    background-color: #16213e;
-    color: #e0e0e0;
-    --bs-table-striped-color: #e0e0e0;
-    --bs-table-striped-bg: #16213e;
+    background-color: #162535;
+    color: #f1faee;
+    --bs-table-striped-color: #f1faee;
+    --bs-table-striped-bg: #162535;
 }
 
 .rankings-main .table-striped > tbody > tr:nth-of-type(even) > * {
-    background-color: #1a1a2e;
-    color: #e0e0e0;
+    background-color: #1a2332;
+    color: #f1faee;
 }
 
-/* Row hover and active */
 .rankings-main .player-row:hover {
-    background-color: #2a2a4e !important;
+    background-color: #1e5555 !important;
     cursor: pointer;
 }
 
 .rankings-main .player-row.active-player td {
-    background-color: #1a4a6e !important;
-    color: #fff !important;
+    background-color: #1a5555 !important;
+    color: #f1faee !important;
 }
 
-/* Deep dive row */
 .rankings-main .deep-dive-row td {
-    background-color: #1a1a2e !important;
+    background-color: #1a2332 !important;
     padding: 0 !important;
     border-bottom: none !important;
 }
 
 .rankings-main .deep-dive-panel {
     background-color: #0d1b2a;
-    border: 1px solid #2a2a5e;
+    border: 1px solid #1e5555;
     border-radius: 6px;
     margin: 6px 0;
     min-height: 0;
 }
 
-/* Search input dark */
 .rankings-main .player-search-input {
-    background-color: #16213e;
-    color: #e0e0e0;
-    border-color: #555;
+    background-color: #162535;
+    color: #f1faee;
+    border-color: #1e5555;
 }
 
 .rankings-main .player-search-input::placeholder {
-    color: #888;
+    color: #6a9a9a;
 }
 
 .rankings-main .player-search-input:focus {
-    border-color: #f8f39fee;
+    border-color: #2d8b8b;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -617,7 +750,7 @@ body.rankings-body {
 .dd-content {
     padding: 14px 18px;
     font-size: 0.88em;
-    color: #e0e0e0;
+    color: #f1faee;
 }
 
 .dd-header {
@@ -631,12 +764,12 @@ body.rankings-body {
 .dd-player-name {
     font-size: 1.15em;
     font-weight: bold;
-    color: #f8f39fee;
+    color: #f1faee;
 }
 
 .dd-badge {
-    background-color: #0f3460;
-    color: #e0e0e0;
+    background-color: #2d8b8b;
+    color: #f1faee;
     border-radius: 12px;
     padding: 2px 10px;
     font-size: 0.85em;
@@ -650,7 +783,7 @@ body.rankings-body {
 .dd-section-title {
     font-weight: bold;
     font-size: 0.95em;
-    color: #a0b8ff;
+    color: #a8dadc;
     margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -664,8 +797,8 @@ body.rankings-body {
 }
 
 .dd-stat {
-    background-color: #16213e;
-    border: 1px solid #2a2a5e;
+    background-color: #162535;
+    border: 1px solid #1e5555;
     border-radius: 4px;
     padding: 3px 10px;
     font-size: 0.88em;
@@ -673,7 +806,7 @@ body.rankings-body {
 }
 
 .dd-stat b {
-    color: #a0b8ff;
+    color: #a8dadc;
     margin-right: 3px;
 }
 
@@ -684,21 +817,21 @@ body.rankings-body {
 }
 
 .dd-game {
-    background-color: #0f3460;
+    background-color: #2d8b8b;
     border-radius: 4px;
     padding: 4px 10px;
     font-size: 0.88em;
     white-space: nowrap;
-    color: #e0e0e0;
+    color: #f1faee;
 }
 
 .dd-game b {
-    color: #f8f39fee;
+    color: #f1faee;
     margin-right: 4px;
 }
 
 .dd-na {
-    color: #888;
+    color: #6a9a9a;
     font-style: italic;
     font-size: 0.85em;
 }

@@ -15,7 +15,7 @@
             <button class="position-filter-btn" data-pos="WR">WR</button>
             <button class="position-filter-btn" data-pos="TE">TE</button>
         </div>
-        <select id="teamFilter" style="padding: 6px 12px; font-size: 0.95em; border: 2px solid #444; border-radius: 4px; outline: none; background: #fff; cursor: pointer;">
+        <select id="teamFilter" style="padding: 6px 12px; font-size: 0.95em; border: 1px solid #1e5555; border-radius: 4px; outline: none; background: #162535; color: #f1faee; cursor: pointer;">
             <option value="ALL">All Teams</option>
             {% for team in ['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC','LA','LAC','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS'] %}
             <option value="{{ team }}">{{ team }}</option>
@@ -35,16 +35,16 @@
             data-pos="{{ row['Pos'] }}"
             data-team="{{ row['Team'] }}"
             data-name="{{ row['Player'] | lower }}"
-            style="background: #444; color: #f8f39fee; border: none; border-radius: 6px; padding: 10px 14px; font-size: 0.95em; text-align: left; cursor: pointer; transition: background-color 0.2s;"
-            onmouseover="this.style.backgroundColor='#666'"
-            onmouseout="this.style.backgroundColor='#444'"
+            style="background: #162535; color: #f1faee; border: 1px solid #1e5555; border-radius: 6px; padding: 10px 14px; font-size: 0.95em; text-align: left; cursor: pointer; transition: background-color 0.2s;"
+            onmouseover="this.style.backgroundColor='#2d8b8b'"
+            onmouseout="this.style.backgroundColor='#162535'"
         >
             <span style="font-weight: bold;">{{ row['Player'] }}</span><br>
             <span style="font-size: 0.8em; opacity: 0.8;">{{ row['Pos'] }} &bull; {{ row['Team'] }}</span>
         </button>
         {% endfor %}
     </div>
-    <p id="no-results" style="display:none; text-align:center; color:#888; margin-top: 40px;">No players match your filters.</p>
+    <p id="no-results" style="display:none; text-align:center; color:#a8dadc; margin-top: 40px;">No players match your filters.</p>
     {% else %}
     <p>No roster data available.</p>
     {% endif %}
@@ -52,49 +52,50 @@
 
 <!-- Player Profile View -->
 <div id="player-profile" style="display:none; padding: 20px 5%;">
-    <button onclick="showList()" style="background:#444; color:#f8f39fee; border:none; border-radius:6px; padding: 8px 18px; cursor:pointer; margin-bottom: 24px; font-size: 1em;">
+    <button onclick="showList()" style="background:#162535; color:#f1faee; border:1px solid #1e5555; border-radius:6px; padding: 8px 18px; cursor:pointer; margin-bottom: 24px; font-size: 1em; transition: background-color 0.2s;"
+        onmouseover="this.style.backgroundColor='#2d8b8b'" onmouseout="this.style.backgroundColor='#162535'">
         &larr; Back to Rosters
     </button>
 
     <!-- Header -->
     <div style="display:flex; align-items:baseline; gap: 16px; margin-bottom: 8px;">
-        <h2 id="profile-name" style="margin:0;"></h2>
-        <span id="profile-subtitle" style="font-size:1em; color:#666;"></span>
+        <h2 id="profile-name" style="margin:0; color:#f1faee;"></h2>
+        <span id="profile-subtitle" style="font-size:1em; color:#a8dadc;"></span>
     </div>
 
     <!-- Info Cards Row -->
     <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom: 28px;">
 
         <!-- Bio card -->
-        <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
-            <h4 style="margin:0 0 10px 0; color:#333;">Player Info</h4>
+        <div style="background:#0d1b2a; border:1px solid #1e5555; border-radius:8px; padding:16px; min-width:200px; flex:1;">
+            <h4 style="margin:0 0 10px 0; color:#a8dadc;">Player Info</h4>
             <table style="font-size:0.9em; border-collapse:collapse;">
                 <tbody id="bio-fields"></tbody>
             </table>
         </div>
 
         <!-- Team Grade card -->
-        <div style="background:#f4f4f4; border-radius:8px; padding:16px; min-width:200px; flex:1;">
-            <h4 style="margin:0 0 10px 0; color:#333;">Team Grades</h4>
+        <div style="background:#0d1b2a; border:1px solid #1e5555; border-radius:8px; padding:16px; min-width:200px; flex:1;">
+            <h4 style="margin:0 0 10px 0; color:#a8dadc;">Team Grades</h4>
             <div id="team-grade-card" style="font-size:0.9em;">
-                <p style="color:#aaa;">Loading...</p>
+                <p style="color:#6a9a9a;">Loading...</p>
             </div>
         </div>
 
     </div>
 
     <!-- Fantasy Points Chart -->
-    <div style="background:#f4f4f4; border-radius:8px; padding:16px; margin-bottom:28px;">
-        <h4 style="margin:0 0 12px 0; color:#333;">Fantasy Points by Season</h4>
-        <div id="chart-placeholder" style="color:#aaa;">Loading...</div>
+    <div style="background:#0d1b2a; border:1px solid #1e5555; border-radius:8px; padding:16px; margin-bottom:28px;">
+        <h4 style="margin:0 0 12px 0; color:#a8dadc;">Fantasy Points by Season</h4>
+        <div id="chart-placeholder" style="color:#6a9a9a;">Loading...</div>
         <canvas id="fantasy-chart" style="display:none; max-height:300px;"></canvas>
     </div>
 
     <!-- Season History Table -->
-    <div style="background:#f4f4f4; border-radius:8px; padding:16px;">
-        <h4 style="margin:0 0 12px 0; color:#333;">Season History</h4>
+    <div style="background:#0d1b2a; border:1px solid #1e5555; border-radius:8px; padding:16px;">
+        <h4 style="margin:0 0 12px 0; color:#a8dadc;">Season History</h4>
         <div id="history-table" style="overflow-x:auto;">
-            <p style="color:#aaa;">Loading...</p>
+            <p style="color:#6a9a9a;">Loading...</p>
         </div>
     </div>
 </div>
@@ -145,20 +146,20 @@ document.getElementById('playerSearch').addEventListener('input', function() {
 });
 
 function renderTable(data) {
-    if (!data || data.length === 0) return '<p style="color:#aaa;">No data available.</p>';
+    if (!data || data.length === 0) return '<p style="color:#6a9a9a;">No data available.</p>';
     var headers = Object.keys(data[0]);
     var html = '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
     html += '<thead><tr>';
     headers.forEach(function(h) {
-        html += '<th style="padding:6px 12px; background:#444; color:#f8f39fee; text-align:left; white-space:nowrap;">' + h + '</th>';
+        html += '<th style="padding:6px 12px; background:#2d8b8b; color:#f1faee; text-align:left; white-space:nowrap;">' + h + '</th>';
     });
     html += '</tr></thead><tbody>';
     data.forEach(function(row, i) {
-        var bg = i % 2 === 0 ? '#fff' : '#ebebeb';
+        var bg = i % 2 === 0 ? '#162535' : '#1a2332';
         html += '<tr style="background:' + bg + ';">';
         headers.forEach(function(h) {
             var val = row[h] !== null && row[h] !== undefined ? row[h] : '—';
-            html += '<td style="padding:6px 12px; white-space:nowrap;">' + val + '</td>';
+            html += '<td style="padding:6px 12px; white-space:nowrap; color:#f1faee;">' + val + '</td>';
         });
         html += '</tr>';
     });
@@ -167,14 +168,14 @@ function renderTable(data) {
 }
 
 function renderKV(obj, labels) {
-    if (!obj || Object.keys(obj).length === 0) return '<p style="color:#aaa;">Not available.</p>';
+    if (!obj || Object.keys(obj).length === 0) return '<p style="color:#6a9a9a;">Not available.</p>';
     var html = '<table style="border-collapse:collapse; font-size:0.9em;">';
     labels.forEach(function(pair) {
         var key = pair[0], label = pair[1];
         if (!(key in obj)) return;
         var val = obj[key] !== null ? obj[key] : '—';
-        html += '<tr><td style="font-weight:bold; padding:4px 20px 4px 0; color:#555;">' + label + '</td>'
-              + '<td style="padding:4px 0;">' + val + '</td></tr>';
+        html += '<tr><td style="font-weight:bold; padding:4px 20px 4px 0; color:#a8dadc;">' + label + '</td>'
+              + '<td style="padding:4px 0; color:#f1faee;">' + val + '</td></tr>';
     });
     html += '</table>';
     return html;
@@ -185,9 +186,9 @@ function gradeBar(val) {
     var pct = Math.min(Math.max(val * 100, 0), 100).toFixed(0);
     var color = val >= 0.7 ? '#2ecc71' : val >= 0.4 ? '#f39c12' : '#e74c3c';
     return '<div style="display:flex; align-items:center; gap:8px;">'
-         + '<div style="width:80px; background:#ddd; border-radius:4px; height:10px;">'
+         + '<div style="width:80px; background:#1e5555; border-radius:4px; height:10px;">'
          + '<div style="width:' + pct + '%; background:' + color + '; height:10px; border-radius:4px;"></div></div>'
-         + '<span>' + pct + '</span></div>';
+         + '<span style="color:#f1faee;">' + pct + '</span></div>';
 }
 
 // Player click
@@ -205,14 +206,14 @@ document.querySelectorAll('.player-btn').forEach(function(btn) {
         bioFields.forEach(function(pair) {
             var val = player[pair[0]];
             if (val === null || val === undefined || val === '') val = '—';
-            bioHtml += '<tr><td style="font-weight:bold; padding:4px 16px 4px 0; color:#555;">' + pair[1] + '</td>'
-                     + '<td style="padding:4px 0;">' + val + '</td></tr>';
+            bioHtml += '<tr><td style="font-weight:bold; padding:4px 16px 4px 0; color:#a8dadc;">' + pair[1] + '</td>'
+                     + '<td style="padding:4px 0; color:#f1faee;">' + val + '</td></tr>';
         });
         document.getElementById('bio-fields').innerHTML = bioHtml;
 
         // Reset loading state
-        document.getElementById('team-grade-card').innerHTML = '<p style="color:#aaa;">Loading...</p>';
-        document.getElementById('history-table').innerHTML = '<p style="color:#aaa;">Loading...</p>';
+        document.getElementById('team-grade-card').innerHTML = '<p style="color:#6a9a9a;">Loading...</p>';
+        document.getElementById('history-table').innerHTML = '<p style="color:#6a9a9a;">Loading...</p>';
         document.getElementById('chart-placeholder').style.display = 'block';
         document.getElementById('chart-placeholder').textContent = 'Loading...';
         document.getElementById('fantasy-chart').style.display = 'none';
@@ -231,13 +232,13 @@ document.querySelectorAll('.player-btn').forEach(function(btn) {
                 if (Object.keys(tg).length) {
                     var tgHtml = '<table style="border-collapse:collapse; font-size:0.9em;">';
                     [['OLine','OLine'],['QB','QB'],['RB','RB'],['WR/TE','WR/TE'],['DST','DST']].forEach(function(p) {
-                        tgHtml += '<tr><td style="font-weight:bold; padding:4px 16px 4px 0; color:#555;">' + p[1] + '</td>'
+                        tgHtml += '<tr><td style="font-weight:bold; padding:4px 16px 4px 0; color:#a8dadc;">' + p[1] + '</td>'
                                 + '<td style="padding:4px 0;">' + gradeBar(tg[p[0]]) + '</td></tr>';
                     });
                     tgHtml += '</table>';
                     document.getElementById('team-grade-card').innerHTML = tgHtml;
                 } else {
-                    document.getElementById('team-grade-card').innerHTML = '<p style="color:#aaa;">Not available.</p>';
+                    document.getElementById('team-grade-card').innerHTML = '<p style="color:#6a9a9a;">Not available.</p>';
                 }
 
                 // Season history chart
@@ -258,10 +259,10 @@ document.querySelectorAll('.player-btn').forEach(function(btn) {
                             datasets: [{
                                 label: 'Fantasy Points',
                                 data: fantasyPts,
-                                borderColor: '#444',
-                                backgroundColor: 'rgba(68,68,68,0.1)',
+                                borderColor: '#2d8b8b',
+                                backgroundColor: 'rgba(45,139,139,0.2)',
                                 borderWidth: 2,
-                                pointBackgroundColor: '#f8f39f',
+                                pointBackgroundColor: '#a8dadc',
                                 pointRadius: 5,
                                 tension: 0.3,
                                 fill: true,
@@ -274,8 +275,17 @@ document.querySelectorAll('.player-btn').forEach(function(btn) {
                                 tooltip: { mode: 'index', intersect: false }
                             },
                             scales: {
-                                x: { title: { display: true, text: 'Season' } },
-                                y: { title: { display: true, text: 'Fantasy Points' }, beginAtZero: true }
+                                x: {
+                                    title: { display: true, text: 'Season', color: '#a8dadc' },
+                                    ticks: { color: '#f1faee' },
+                                    grid: { color: '#1e5555' }
+                                },
+                                y: {
+                                    title: { display: true, text: 'Fantasy Points', color: '#a8dadc' },
+                                    beginAtZero: true,
+                                    ticks: { color: '#f1faee' },
+                                    grid: { color: '#1e5555' }
+                                }
                             }
                         }
                     });
