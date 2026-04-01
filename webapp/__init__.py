@@ -20,6 +20,16 @@ class UserRanking(db.Model):
     ranking_data = db.Column(db.Text, nullable=False)  # Store the ranking data as JSON or plain text
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
+class MockDraft(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(100), db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    draft_type = db.Column(db.String(20), nullable=False)   # 'snake' or 'auction'
+    scoring = db.Column(db.String(20), nullable=False)       # 'ppr', 'half_ppr', 'standard'
+    settings = db.Column(db.Text, nullable=False)            # JSON: all league settings
+    board = db.Column(db.Text, nullable=False)               # JSON: full draft board
+    user_team = db.Column(db.Text, nullable=False)           # JSON: just user's picks
+
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'your-very-secret-key'

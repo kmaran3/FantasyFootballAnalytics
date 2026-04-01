@@ -28,7 +28,8 @@
       "Bash(/opt/anaconda3/bin/python3 -c \"\nimport json\nwith open\\('/Users/kmaran3/Dropbox/Darkhorse/Models/PredictionCode.ipynb'\\) as f:\n    nb = json.load\\(f\\)\nfor i in [1,2,3,4]:\n    print\\(f'=== Cell {i} FULL SOURCE ==='\\)\n    print\\(''.join\\(nb['cells'][i]['source']\\)\\)\n    print\\(\\)\n\")",
       "Bash(/opt/anaconda3/bin/python3 patch_mlmodel.py)",
       "Bash(/opt/anaconda3/bin/python3 patch_predcode.py)",
-      "Bash(brew upgrade:*)"
+      "Bash(brew upgrade:*)",
+      "Bash(sqlite3 /Users/kmaran3/Dropbox/Darkhorse/webapp/my_database.db \".schema\")"
     ]
   }
 }

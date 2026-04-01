@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, text
 from bs4 import BeautifulSoup
 from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
-from webapp import db, User, UserRanking
+from webapp import db, User, UserRanking, MockDraft
 import json
 
 main = Blueprint('main', __name__)
@@ -460,15 +460,179 @@ def player_stats():
     })
 
 
-@main.route('/mockdraft', methods=['GET', 'POST'])
+@main.route('/mockdraft')
 @login_required
 def mock_draft():
-    if request.method == 'POST':
-        draft_position = request.form['position']
-        player_data = fetch_player_data()  # Call function to fetch data
-        return render_template('mockdraft.html', player_data=player_data, draft_position=draft_position)
+    return render_template('mockdraft.html')
+
+
+@main.route('/mockdraft/players')
+@login_required
+def mockdraft_players():
+    import math
+    scoring = request.args.get('scoring', 'ppr')
+    table_map = {'ppr': 'Full_PPR', 'half_ppr': 'Half_PPR', 'standard': 'Non_PPR'}
+    table_name = table_map.get(scoring, 'Full_PPR')
+    with engine.connect() as connection:
+        df = pd.read_sql(text(f'SELECT * FROM {table_name}'), con=connection)
+    # Normalize position strings: 'WR1' -> 'WR', 'RB2' -> 'RB', etc.
+    df['Position'] = df['Position'].str.replace(r'\d+$', '', regex=True).str.strip()
+    # Exclude K and DEF
+    df = df[~df['Position'].isin(['K', 'DEF', 'DST'])]
+    # Replace NaN with None so jsonify produces valid JSON (not literal NaN)
+    players = [
+        {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+        for row in df.to_dict(orient='records')
+    ]
+    return jsonify(players)
+
+
+@main.route('/mockdraft/save', methods=['POST'])
+@login_required
+def mockdraft_save():
+    data = request.get_json()
+    draft = MockDraft(
+        user_id=current_user.id,
+        draft_type=data.get('draft_type', 'snake'),
+        scoring=data.get('scoring', 'ppr'),
+        settings=json.dumps(data.get('settings', {})),
+        board=json.dumps(data.get('board', [])),
+        user_team=json.dumps(data.get('user_team', [])),
+    )
+    db.session.add(draft)
+    db.session.commit()
+    return jsonify({'message': 'Draft saved!', 'id': draft.id})
+
+
+@main.route('/mockdraft/email', methods=['POST'])
+@login_required
+def mockdraft_email():
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    data = request.get_json()
+    send_full = data.get('send_full', False)
+    board = data.get('board', [])
+    user_team = data.get('user_team', [])
+    scoring = data.get('scoring', 'ppr')
+    draft_type = data.get('draft_type', 'snake')
+    settings = data.get('settings', {})
+
+    # Build HTML email
+    from datetime import date
+    subject = f"Darkhorse Mock Draft — {date.today().strftime('%Y-%m-%d')} — {scoring.upper()} {draft_type.capitalize()}"
+
+    if send_full:
+        content = _build_board_html(board, settings)
     else:
-        return render_template('mockdraft.html')
+        content = _build_team_html(user_team, scoring)
+
+    html_body = f"""
+    <html><body style="background:#1a2332;color:#f1faee;font-family:Arial,sans-serif;padding:20px;">
+    <h2 style="color:#2d8b8b;">Darkhorse Mock Draft Results</h2>
+    <p style="color:#a8dadc;">{scoring.upper()} | {draft_type.capitalize()} | {date.today().strftime('%B %d, %Y')}</p>
+    {content}
+    </body></html>
+    """
+
+    try:
+        smtp_host = app.config.get('MAIL_SERVER', '')
+        smtp_port = int(app.config.get('MAIL_PORT', 587))
+        smtp_user = app.config.get('MAIL_USERNAME', '')
+        smtp_pass = app.config.get('MAIL_PASSWORD', '')
+
+        if not smtp_host or not smtp_user:
+            return jsonify({'message': 'Email sent (email server not configured — draft saved instead).'}), 200
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = smtp_user
+        msg['To'] = current_user.email
+        msg.attach(MIMEText(html_body, 'html'))
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, current_user.email, msg.as_string())
+
+        return jsonify({'message': f'Draft emailed to {current_user.email}!'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _build_board_html(board, settings):
+    if not board:
+        return '<p>No draft data.</p>'
+    num_teams = settings.get('num_teams', len(board))
+    team_names = [f'Team {i+1}' for i in range(num_teams)]
+    html = '<table style="border-collapse:collapse;width:100%;">'
+    html += '<tr><th style="padding:6px;border:1px solid #2d8b8b;">Round</th>'
+    for t in team_names:
+        html += f'<th style="padding:6px;border:1px solid #2d8b8b;color:#a8dadc;">{t}</th>'
+    html += '</tr>'
+    for round_picks in board:
+        html += '<tr>'
+        html += f'<td style="padding:6px;border:1px solid #2d8b8b;color:#a8dadc;">{round_picks.get("round","")}</td>'
+        for pick in round_picks.get('picks', []):
+            html += f'<td style="padding:6px;border:1px solid #2d8b8b;">{pick.get("name","—")} <span style="color:#a8dadc;">({pick.get("position","")})</span></td>'
+        html += '</tr>'
+    html += '</table>'
+    return html
+
+
+def _build_team_html(user_team, scoring):
+    if not user_team:
+        return '<p>No picks.</p>'
+    html = '<table style="border-collapse:collapse;width:60%;">'
+    html += '<tr><th style="padding:6px;border:1px solid #2d8b8b;">Round</th><th style="padding:6px;border:1px solid #2d8b8b;">Player</th><th style="padding:6px;border:1px solid #2d8b8b;">Position</th><th style="padding:6px;border:1px solid #2d8b8b;">Team</th></tr>'
+    for pick in user_team:
+        html += f'<tr><td style="padding:6px;border:1px solid #2d8b8b;">{pick.get("round","")}</td><td style="padding:6px;border:1px solid #2d8b8b;">{pick.get("name","")}</td><td style="padding:6px;border:1px solid #2d8b8b;color:#a8dadc;">{pick.get("position","")}</td><td style="padding:6px;border:1px solid #2d8b8b;">{pick.get("nfl_team","")}</td></tr>'
+    html += '</table>'
+    return html
+
+
+@main.route('/my_drafts')
+@login_required
+def my_drafts():
+    drafts = MockDraft.query.filter_by(user_id=current_user.id).order_by(MockDraft.created_at.desc()).all()
+    draft_list = []
+    for d in drafts:
+        settings = json.loads(d.settings)
+        draft_list.append({
+            'id': d.id,
+            'draft_type': d.draft_type,
+            'scoring': d.scoring,
+            'created_at': d.created_at.strftime('%Y-%m-%d %H:%M'),
+            'num_teams': settings.get('num_teams', '?'),
+        })
+    return render_template('my_drafts.html', drafts=draft_list)
+
+
+@main.route('/my_drafts/<int:draft_id>')
+@login_required
+def view_draft(draft_id):
+    draft = MockDraft.query.get_or_404(draft_id)
+    if draft.user_id != current_user.id:
+        flash('Access denied.')
+        return redirect(url_for('main.my_drafts'))
+    return render_template('view_draft.html',
+        draft=draft,
+        board=json.loads(draft.board),
+        user_team=json.loads(draft.user_team),
+        settings=json.loads(draft.settings),
+    )
+
+
+@main.route('/my_drafts/<int:draft_id>/delete', methods=['DELETE'])
+@login_required
+def delete_draft(draft_id):
+    draft = MockDraft.query.get_or_404(draft_id)
+    if draft.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+    db.session.delete(draft)
+    db.session.commit()
+    return jsonify({'message': 'Draft deleted.'})
 
 
 @main.route('/rosters')
