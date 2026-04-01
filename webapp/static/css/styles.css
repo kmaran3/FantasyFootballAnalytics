@@ -835,3 +835,220 @@ body.rankings-body {
     font-style: italic;
     font-size: 0.85em;
 }
+
+/* ── Rosters page ─────────────────────────────────────────────── */
+
+.group-toggle-btn {
+    padding: 6px 14px;
+    background: #162535;
+    color: #a8dadc;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background 0.2s;
+}
+.group-toggle-btn:hover,
+.group-toggle-btn.active {
+    background: #2d8b8b;
+    color: #f1faee;
+}
+
+/* Roster sortable table */
+.roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+.roster-table thead th {
+    background: #0d1b2a;
+    color: #a8dadc;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 2px solid #1e5555;
+    user-select: none;
+}
+.roster-table thead th.sortable {
+    cursor: pointer;
+}
+.roster-table thead th.sortable:hover {
+    color: #2d8b8b;
+}
+.roster-table tbody tr {
+    border-bottom: 1px solid #1e3040;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.roster-table tbody tr:hover {
+    background: #1e3d4d !important;
+}
+.roster-table tbody td {
+    padding: 7px 12px;
+    color: #f1faee;
+    white-space: nowrap;
+}
+.sort-arrow { color: #2d8b8b; margin-left: 4px; }
+.sort-arrow-inactive { color: #2d3d4d; margin-left: 4px; font-size: 0.8em; }
+
+/* Fantasy points color tiers */
+.fp-cell { font-weight: 600; }
+.fp-green  { background: rgba(45,139,139,0.25); color: #2d8b8b; }
+.fp-yellow { background: rgba(139,139,45,0.25); color: #c8c870; }
+.fp-red    { background: rgba(139,45,45,0.25);  color: #c87070; }
+
+/* Position pills */
+.pos-pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 700;
+}
+.pos-QB  { background: #1a3d5c; color: #a8dadc; }
+.pos-RB  { background: #1a3d2a; color: #88dca8; }
+.pos-WR  { background: #3d2a1a; color: #dca888; }
+.pos-TE  { background: #3d1a3d; color: #dca8dc; }
+
+/* Player name link style in table */
+.player-name-link {
+    font-weight: 600;
+    color: #f1faee;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    transition: color 0.15s, text-decoration-color 0.15s;
+}
+.roster-table tbody tr:hover .player-name-link {
+    color: #2d8b8b;
+    text-decoration-color: #2d8b8b;
+}
+
+/* Grouped sections */
+.roster-section { margin-bottom: 28px; }
+.roster-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 6px 6px 0 0;
+    padding: 10px 16px;
+    cursor: pointer;
+    color: #a8dadc;
+    font-weight: 700;
+    font-size: 1em;
+}
+.roster-section-header:hover { background: #162535; }
+.section-toggle { color: #2d8b8b; font-size: 0.85em; }
+.roster-section-body { border: 1px solid #1e5555; border-top: none; border-radius: 0 0 6px 6px; overflow: hidden; }
+
+/* Profile panel */
+.roster-back-btn,
+.compare-open-btn,
+.compare-clear-btn {
+    padding: 8px 18px;
+    background: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background 0.2s;
+}
+.roster-back-btn:hover  { background: #1e3d4d; }
+.compare-open-btn       { border-color: #2d8b8b; color: #2d8b8b; }
+.compare-open-btn:hover { background: #2d8b8b; color: #f1faee; }
+.compare-clear-btn      { border-color: #8b2d2d; color: #c87070; }
+.compare-clear-btn:hover { background: #8b2d2d; color: #f1faee; }
+
+.profile-card {
+    background: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 8px;
+    padding: 16px;
+    min-width: 200px;
+    flex: 1;
+}
+.card-heading { margin: 0 0 10px 0; color: #a8dadc; font-size: 0.95em; }
+.loading-text { color: #6a9a9a; margin: 0; }
+
+/* Bio / grade kv rows */
+.bio-label { font-weight: bold; padding: 4px 16px 4px 0; color: #a8dadc; }
+.bio-val   { padding: 4px 0; color: #f1faee; }
+
+/* Grade bar */
+.grade-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.grade-bar-track { width: 80px; background: #1e5555; border-radius: 4px; height: 10px; }
+.grade-bar-fill  { height: 10px; border-radius: 4px; }
+
+/* Grade info tooltip (ⓘ) */
+.grade-info {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    color: #6b8fa3;
+    font-size: 0.8em;
+    vertical-align: middle;
+}
+.grade-info::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0d1b2a;
+    color: #f1faee;
+    border: 1px solid #2d8b8b;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    width: 240px;
+    white-space: normal;
+    z-index: 999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    text-align: left;
+}
+.grade-info:hover::after { opacity: 1; }
+
+/* History table */
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88em;
+}
+.history-table thead th {
+    background: #162535;
+    color: #a8dadc;
+    padding: 6px 10px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid #1e5555;
+}
+.history-table tbody td {
+    padding: 6px 10px;
+    color: #f1faee;
+    white-space: nowrap;
+}
+
+/* Best-season highlight */
+td.best-season {
+    background: #1a3d3d !important;
+    color: #2d8b8b !important;
+    font-weight: 700;
+}
+
+/* Compare side-by-side layout */
+.profile-panels-single {
+    display: block;
+}
+.profile-panels-split {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+.profile-panel-wrap {
+    flex: 1;
+    min-width: 0;
+}

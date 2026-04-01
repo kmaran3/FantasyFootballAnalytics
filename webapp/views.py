@@ -180,15 +180,44 @@ def _load(filename):
 
 _rankings = _load('Full PPR Rankings with Weighted VBD.pkl')
 
-# Load live seasonal stats from nfl_data_py (includes 2024)
-_nfl_seasonal = pd.DataFrame()
+# Load live seasonal stats from nfl_data_py
+_nfl_seasonal  = pd.DataFrame()
+_nfl_latest    = pd.DataFrame()   # most-recent season with accurate position + team per player
 _nfl_roster_map = {}
 try:
     import nfl_data_py as nfl
-    _seasons = list(range(2020, 2025))
-    _stats_raw = nfl.import_seasonal_data(_seasons, s_type='REG')
+    from datetime import date as _date
+    _today = _date.today()
+    # NFL season Y runs Sep Y – Jan/Feb Y+1; before September the latest complete season is Y-1
+    _nfl_end_year = _today.year if _today.month >= 9 else _today.year - 1
+
+    # Try loading up to _nfl_end_year; if nfl_data_py doesn't have that year yet, fall back one year
+    _stats_raw = pd.DataFrame()
+    for _try_year in [_nfl_end_year, _nfl_end_year - 1]:
+        try:
+            _seasons = list(range(2020, _try_year + 1))
+            _stats_raw = nfl.import_seasonal_data(_seasons, s_type='REG')
+            if not _stats_raw.empty:
+                print(f'NFL stats loaded through season {_try_year}')
+                break
+        except Exception as _ye:
+            print(f'NFL data unavailable for seasons through {_try_year}: {_ye}')
+
+    if _stats_raw.empty:
+        raise RuntimeError('Could not load NFL seasonal stats for any year')
+
+    # For history charts: name + position keyed by player_id
     _roster_raw = nfl.import_seasonal_rosters(_seasons)[['player_id', 'player_name', 'position']].drop_duplicates('player_id')
     _nfl_seasonal = _stats_raw.merge(_roster_raw, on='player_id', how='left')
+
+    # For grades + roster stats: use the most recent season actually present in the data
+    _latest_season = int(_stats_raw['season'].max())
+    _r_latest = (nfl.import_seasonal_rosters([_latest_season])
+                 [['player_id', 'player_name', 'position', 'team']]
+                 .drop_duplicates('player_id')
+                 .rename(columns={'position': '_pos', 'team': '_team', 'player_name': '_name'}))
+    _nfl_latest = _stats_raw[_stats_raw['season'] == _latest_season].merge(_r_latest, on='player_id', how='left')
+    print(f'NFL data ready: history 2020–{max(_seasons)}, grades/roster from season {_latest_season} ({len(_nfl_latest)} players)')
 except Exception as e:
     print(f'Warning: could not load nfl_data_py stats: {e}')
 
@@ -223,6 +252,251 @@ if not _raw_avs.empty:
     _curr_avs = _raw_avs.set_index('team')
 else:
     _curr_avs = _raw_avs
+
+# ── Helpers shared by composite grades and roster stats ───────────
+import math as _math
+
+def _safe_f(v, digits=1):
+    try:
+        f = float(v)
+        return round(f, digits) if not (_math.isnan(f) or _math.isinf(f)) else None
+    except (TypeError, ValueError):
+        return None
+
+def _safe_i(v):
+    r = _safe_f(v, 0)
+    return int(r) if r is not None else None
+
+def _find_team_col(df):
+    for c in ['recent_team', 'team', 'Team', 'posteam']:
+        if c in df.columns:
+            return c
+    return None
+
+def _norm_team(t):
+    t = str(t).strip().upper()
+    return _TEAM_ABBR_MAP.get(t, t)
+
+# ── Composite team grades from starter fantasy performance ─────────
+def _compute_composite_grades():
+    per_team = {}
+
+    use_live = (not _nfl_latest.empty
+                and '_pos' in _nfl_latest.columns
+                and '_team' in _nfl_latest.columns)
+
+    if use_live:
+        fpc = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_latest.columns), None)
+        gpc = next((c for c in ['games', 'GP'] if c in _nfl_latest.columns), None)
+
+        if fpc and gpc:
+            df = _nfl_latest.dropna(subset=['_pos', '_team']).copy()
+            df['_team'] = df['_team'].apply(_norm_team)
+            df['fpg']   = df[fpc] / df[gpc].clip(lower=1)
+
+            def _process_live(pos_filter, pos_label, n_starters):
+                pos_df = df[df['_pos'].str.upper() == pos_filter].copy()
+                pos_df = pos_df.sort_values(fpc, ascending=False)
+                top = pos_df.groupby('_team').head(n_starters)
+                for team, val in top.groupby('_team')['fpg'].mean().items():
+                    sf = _safe_f(val, 3)
+                    if sf is not None:
+                        per_team.setdefault(team, {})[pos_label] = sf
+
+            _process_live('QB', 'QB', 1)
+            _process_live('RB', 'RB', 2)
+            _process_live('WR', 'WR', 3)
+            _process_live('TE', 'TE', 2)
+
+    else:
+        # Fallback: pickle files (2023 data)
+        def _process_pkl(df_raw, pos_label, n_starters, pos_filter=None):
+            if df_raw.empty:
+                return
+            df = df_raw[(df_raw['YearsBack'] == 1) & (df_raw['season_type'] == 'REG')].copy()
+            tc = _find_team_col(df)
+            if tc is None or 'fantasy_points' not in df.columns or 'GP' not in df.columns:
+                return
+            df[tc] = df[tc].apply(_norm_team)
+            df['fpg'] = df['fantasy_points'] / df['GP'].clip(lower=1)
+            df_sorted = df.sort_values('fantasy_points', ascending=False)
+            if pos_filter:
+                pc = next((c for c in ['position', 'Position'] if c in df.columns), None)
+                if pc:
+                    df_sorted = df_sorted[df_sorted[pc].str.upper() == pos_filter]
+            top = df_sorted.groupby(tc).head(n_starters)
+            for team, val in top.groupby(tc)['fpg'].mean().items():
+                sf = _safe_f(val, 3)
+                if sf is not None:
+                    per_team.setdefault(team, {})[pos_label] = sf
+
+        _process_pkl(_load('final_qb_data.pkl'), 'QB', 1)
+        _process_pkl(_load('final_rb_data.pkl'), 'RB', 2)
+        wrte = _load('final_wrte_data.pkl')
+        _process_pkl(wrte, 'WR', 3, 'WR')
+        _process_pkl(wrte, 'TE', 2, 'TE')
+
+    # Min-max normalize each position group across all teams
+    composite = {}
+    for pos in ['QB', 'RB', 'WR', 'TE']:
+        vals = {t: d[pos] for t, d in per_team.items() if pos in d}
+        if not vals:
+            continue
+        mn, mx = min(vals.values()), max(vals.values())
+        rng = mx - mn if mx > mn else 1.0
+        for team, v in vals.items():
+            composite.setdefault(team, {})[pos] = round((v - mn) / rng, 2)
+
+    # OLine + DST from currAVs (no player-level proxy available)
+    if not _curr_avs.empty:
+        for team in _curr_avs.index:
+            row = _curr_avs.loc[team]
+            composite.setdefault(team, {})
+            for col, key in [('oline', 'OLine'), ('dst', 'DST')]:
+                if col in _curr_avs.columns:
+                    v = _safe_f(row[col], 2)
+                    if v is not None:
+                        composite[team][key] = v
+
+    return composite
+
+# ── Per-player stats for roster list view ─────────────────────────
+def _compute_roster_stats():
+    stats = {}
+
+    # Prefer live 2024 nfl_data_py data; fall back to pickle files
+    use_live = (not _nfl_latest.empty
+                and '_pos' in _nfl_latest.columns
+                and '_team' in _nfl_latest.columns)
+
+    if use_live:
+        fpc = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_latest.columns), None)
+        gpc = next((c for c in ['games', 'GP'] if c in _nfl_latest.columns), None)
+
+        if fpc and gpc:
+            df = _nfl_latest.dropna(subset=['_pos', '_team', '_name']).copy()
+            for _, row in df.iterrows():
+                name = str(row.get('_name', '')).strip()
+                if not name:
+                    continue
+                pos = str(row.get('_pos', '')).upper().strip()
+                if pos not in ('QB', 'RB', 'WR', 'TE'):
+                    continue
+                team = _norm_team(row.get('_team', ''))
+                gp   = max(_safe_i(row.get(gpc, 1)) or 1, 1)
+                fp   = _safe_f(row.get(fpc))
+
+                if pos == 'QB':
+                    stats[name] = {
+                        'pos': 'QB', 'team': team, 'gp': gp,
+                        'fantasy_points': fp,
+                        'pass_yds': _safe_i(row.get('passing_yards')),
+                        'pass_td':  _safe_i(row.get('passing_tds')),
+                        'int':      _safe_i(row.get('interceptions')),
+                        'rush_yds': _safe_i(row.get('rushing_yards')),
+                    }
+                elif pos == 'RB':
+                    carries  = _safe_i(row.get('carries', 1)) or 1
+                    rush_yds = _safe_i(row.get('rushing_yards', 0)) or 0
+                    stats[name] = {
+                        'pos': 'RB', 'team': team, 'gp': gp,
+                        'fantasy_points': fp,
+                        'rush_yds': rush_yds,
+                        'ypc':      round(rush_yds / carries, 1) if carries > 0 else None,
+                        'rec':      _safe_i(row.get('receptions')),
+                        'rec_yds':  _safe_i(row.get('receiving_yards')),
+                    }
+                else:  # WR / TE
+                    tgts = _safe_i(row.get('targets'))
+                    rec  = _safe_i(row.get('receptions'))
+                    stats[name] = {
+                        'pos': pos, 'team': team, 'gp': gp,
+                        'fantasy_points': fp,
+                        'targets':    tgts,
+                        'receptions': rec,
+                        'catch_pct':  round(rec / tgts * 100, 1) if tgts and tgts > 0 and rec is not None else None,
+                        'rec_yds':    _safe_i(row.get('receiving_yards')),
+                    }
+
+    else:
+        # Fallback: pickle files (2023 data)
+        def _team_pkl(row, tc):
+            return _norm_team(row.get(tc, '')) if tc else ''
+
+        qb_df = _load('final_qb_data.pkl')
+        if not qb_df.empty:
+            df = qb_df[(qb_df['YearsBack'] == 1) & (qb_df['season_type'] == 'REG')]
+            tc = _find_team_col(df)
+            for _, row in df.iterrows():
+                name = str(row.get('player_display_name', '')).strip()
+                if not name:
+                    continue
+                rush_yds = _safe_i(row.get('rushing_yards', 0)) or 0
+                stats[name] = {
+                    'pos': 'QB', 'team': _team_pkl(row, tc),
+                    'gp': _safe_i(row.get('GP', 1)) or 1,
+                    'fantasy_points': _safe_f(row.get('fantasy_points')),
+                    'pass_yds': _safe_i(row.get('passing_yards')),
+                    'pass_td':  _safe_i(row.get('passing_tds')),
+                    'int':      _safe_i(row.get('interceptions')),
+                    'rush_yds': rush_yds,
+                }
+
+        rb_df = _load('final_rb_data.pkl')
+        if not rb_df.empty:
+            df = rb_df[(rb_df['YearsBack'] == 1) & (rb_df['season_type'] == 'REG')]
+            tc = _find_team_col(df)
+            for _, row in df.iterrows():
+                name = str(row.get('player_display_name', '')).strip()
+                if not name:
+                    continue
+                carries  = _safe_i(row.get('carries', 1)) or 1
+                rush_yds = _safe_i(row.get('rushing_yards', 0)) or 0
+                stats[name] = {
+                    'pos': 'RB', 'team': _team_pkl(row, tc),
+                    'gp': _safe_i(row.get('GP', 1)) or 1,
+                    'fantasy_points': _safe_f(row.get('fantasy_points')),
+                    'rush_yds': rush_yds,
+                    'ypc':      round(rush_yds / carries, 1) if carries > 0 else None,
+                    'rec':      _safe_i(row.get('receptions')),
+                    'rec_yds':  _safe_i(row.get('receiving_yards')),
+                }
+
+        wrte_df = _load('final_wrte_data.pkl')
+        if not wrte_df.empty:
+            df = wrte_df[(wrte_df['YearsBack'] == 1) & (wrte_df['season_type'] == 'REG')]
+            tc = _find_team_col(df)
+            pc = next((c for c in ['position', 'Position'] if c in df.columns), None)
+            for _, row in df.iterrows():
+                name = str(row.get('player_display_name', '')).strip()
+                if not name:
+                    continue
+                pos  = str(row.get(pc, 'WR')).upper() if pc else 'WR'
+                tgts = _safe_i(row.get('targets'))
+                rec  = _safe_i(row.get('receptions'))
+                stats[name] = {
+                    'pos': pos, 'team': _team_pkl(row, tc),
+                    'gp': _safe_i(row.get('GP', 1)) or 1,
+                    'fantasy_points': _safe_f(row.get('fantasy_points')),
+                    'targets':    tgts,
+                    'receptions': rec,
+                    'catch_pct':  round(rec / tgts * 100, 1) if tgts and tgts > 0 and rec is not None else None,
+                    'rec_yds':    _safe_i(row.get('receiving_yards')),
+                }
+
+    # Fantasy-point thresholds per position for color coding
+    fp_thresholds = {}
+    for pos in ['QB', 'RB', 'WR', 'TE']:
+        fps = sorted(v['fantasy_points'] for v in stats.values()
+                     if v.get('pos') == pos and v.get('fantasy_points') is not None)
+        if fps:
+            n = len(fps)
+            fp_thresholds[pos] = {'p25': fps[n // 4], 'p75': fps[3 * n // 4]}
+
+    return stats, fp_thresholds
+
+_composite_grades  = _compute_composite_grades()
+_roster_stats, _fp_thresholds = _compute_roster_stats()
 
 @main.route('/', methods=['GET', 'POST'])
 def login():
@@ -423,10 +697,14 @@ def player_stats():
             cols = ['season', 'games', 'receptions', 'targets', 'receiving_yards',
                     'receiving_tds', 'target_share', 'air_yards_share', 'fantasy_points_ppr']
 
+        import math as _m
         available = [c for c in cols if c in player_rows.columns]
         hist = player_rows[available].tail(5).round(1)
         hist = hist.rename(columns={'games': 'GP', 'fantasy_points_ppr': 'fantasy_points'})
-        history = hist.to_dict(orient='records')
+        history = [
+            {k: (None if isinstance(v, float) and _m.isnan(v) else v) for k, v in row.items()}
+            for row in hist.to_dict(orient='records')
+        ]
 
     # --- Rankings info ---
     rank_row = _rankings[_rankings['Name'] == name]
@@ -441,16 +719,17 @@ def player_stats():
             'Bye Week': int(r['Bye Week']) if pd.notna(r['Bye Week']) else None,
         }
 
-    # --- Team grade ---
+    # --- Team grade (composite from starter fantasy performance) ---
     team_grade = {}
-    if team and not _curr_avs.empty and team in _curr_avs.index:
-        row = _curr_avs.loc[team]
+    if team and team in _composite_grades:
+        cg = _composite_grades[team]
         team_grade = {
-            'OLine': round(float(row['oline']), 2) if pd.notna(row['oline']) else None,
-            'QB':    round(float(row['qb']), 2)    if pd.notna(row['qb'])    else None,
-            'RB':    round(float(row['rb']), 2)    if pd.notna(row['rb'])    else None,
-            'WR/TE': round(float(row['wrte']), 2)  if pd.notna(row['wrte'])  else None,
-            'DST':   round(float(row['dst']), 2)   if pd.notna(row['dst'])   else None,
+            'OLine': cg.get('OLine'),
+            'QB':    cg.get('QB'),
+            'RB':    cg.get('RB'),
+            'WR':    cg.get('WR'),
+            'TE':    cg.get('TE'),
+            'DST':   cg.get('DST'),
         }
 
     return jsonify({
@@ -649,7 +928,9 @@ def rosters():
     return render_template(
         'rosters.html',
         table_data=df.to_dict(orient='records'),
-        columns=df.columns.tolist()
+        columns=df.columns.tolist(),
+        roster_stats_json=json.dumps(_roster_stats),
+        fp_thresholds_json=json.dumps(_fp_thresholds),
     )
 
 def fetch_player_data():
