@@ -253,6 +253,32 @@ if not _raw_avs.empty:
 else:
     _curr_avs = _raw_avs
 
+# ── New model predictions (Phase 3) ──────────────────────────────────
+def _load_new_model_rankings():
+    try:
+        _new_model_dir = _BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel'
+        combined = pd.read_pickle(_new_model_dir / 'combined_predictions_ppr.pkl')
+        combined = combined.rename(columns={
+            'player_name': 'Name',
+            'position':    'Position',
+            'team':        'Team',
+            'predicted_ppg_2026': 'Predicted PPG',
+            'weighted_ppg': 'Weighted PPG',
+            'ppg':         '2025 PPG',
+        })
+        combined['Predicted PPG'] = combined['Predicted PPG'].round(2)
+        combined['Weighted PPG']  = combined['Weighted PPG'].round(2)
+        combined['2025 PPG']      = combined['2025 PPG'].round(2)
+        combined['Age']           = combined['age'].fillna('').apply(lambda x: int(x) if x != '' else '')
+        combined = combined[['rank','Name','Position','Team','Age','Predicted PPG','Weighted PPG','2025 PPG','strategy']].copy()
+        combined = combined.rename(columns={'rank': 'Rank', 'strategy': 'Model'})
+        return combined
+    except Exception as e:
+        print(f'Warning: could not load new model predictions: {e}')
+        return pd.DataFrame()
+
+_new_model_rankings = _load_new_model_rankings()
+
 # ── Helpers shared by composite grades and roster stats ───────────
 import math as _math
 
@@ -605,6 +631,22 @@ def get_standard_rankings():
     return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Standard',
                            user_rankings=saved, player_details_json=pd_json,
                            team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
+
+@main.route('/rankings/new-model')
+@login_required
+def get_new_model_rankings():
+    import math
+    saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
+    if _new_model_rankings.empty:
+        table_data = []
+    else:
+        table_data = [
+            {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+            for row in _new_model_rankings.to_dict(orient='records')
+        ]
+    return render_template('rankings.html', table_data=table_data, table_type='New Model (PPR)',
+                           user_rankings=saved, player_details_json='{}',
+                           team_schedule_json='{}', teams=[], bye_weeks={})
 
 @main.route('/save_rankings', methods=['POST'])
 @login_required
