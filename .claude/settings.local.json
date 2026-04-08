@@ -29,7 +29,16 @@
       "Bash(/opt/anaconda3/bin/python3 patch_mlmodel.py)",
       "Bash(/opt/anaconda3/bin/python3 patch_predcode.py)",
       "Bash(brew upgrade:*)",
-      "Bash(sqlite3 /Users/kmaran3/Dropbox/Darkhorse/webapp/my_database.db \".schema\")"
+      "Bash(sqlite3 /Users/kmaran3/Dropbox/Darkhorse/webapp/my_database.db \".schema\")",
+      "Bash(xargs cat:*)",
+      "WebSearch",
+      "WebFetch(domain:nflreadpy.nflverse.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:nflreadr.nflverse.com)",
+      "Bash(grep -rl \"nfl_data_py\\\\|import_pbp_data\\\\|import_seasonal_data\\\\|import_seasonal_rosters\\\\|import_schedules\\\\|import_weekly_data\\\\|import_ngs_data\\\\|import_players\\\\|import_qbr\" /Users/kmaran3/Dropbox/Darkhorse/Models /Users/kmaran3/Dropbox/Darkhorse/webapp --include=*.py --include=*.ipynb)",
+      "Bash(grep -rl \"nfl_data_py\\\\|import_pbp_data\\\\|import_seasonal_data\\\\|import_seasonal_rosters\\\\|import_schedules\\\\|import_weekly_data\\\\|import_ngs_data\\\\|import_players\\\\b\\\\|import_qbr\" /Users/kmaran3/Dropbox/Darkhorse/Models /Users/kmaran3/Dropbox/Darkhorse/webapp --include=*.py --include=*.ipynb)",
+      "Bash(head -20 echo \"---\" grep -n \"age\\\\|birth_date\\\\|load_rosters\" /Users/kmaran3/Dropbox/Darkhorse/Models/NewModel/_run_phase3.py)"
     ]
   }
 }

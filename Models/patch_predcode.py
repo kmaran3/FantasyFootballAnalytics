@@ -8,18 +8,18 @@ with open(NB_PATH) as f:
     nb = json.load(f)
 
 # ── CELL 1 : QB dfMaker ────────────────────────────────────────────────────────
-CELL1 = r"""import nfl_data_py as nfl
+CELL1 = r"""import nflreadpy
 import pandas as pd
 import numpy as np
 from unidecode import unidecode
 
-CURRENT_YEAR = 2024
+CURRENT_YEAR = 2025
 PEAK_AGE_QB = 30
 
-# Load advanced features ONCE outside dfMaker — covers both YearsBack=1 (2023) and YearsBack=2 (2022)
-print("Fetching QB advanced features (passing_epa, pacr, dakota) for 2022-2023...")
-qb_adv_raw = nfl.import_seasonal_data([2022, 2023])
-qb_adv = qb_adv_raw[['player_id', 'season', 'passing_epa', 'pacr', 'dakota']].copy()
+# Load advanced features ONCE outside dfMaker — covers both YearsBack=1 (2024) and YearsBack=2 (2023)
+print("Fetching QB advanced features (passing_epa, pacr) for 2023-2024...")
+qb_adv_raw = nflreadpy.load_player_stats([2023, 2024], summary_level='reg').to_pandas()
+qb_adv = qb_adv_raw[['player_id', 'season', 'passing_epa', 'pacr']].copy()
 qb_adv['season'] = qb_adv['season'].astype(int)
 
 QB_COLS = ["team", "position", "penalty", "GP", "player_display_name", "age",
@@ -28,7 +28,7 @@ QB_COLS = ["team", "position", "penalty", "GP", "player_display_name", "age",
            'passing_first_downs', 'passing_2pt_conversions',
            'carries', 'rushing_yards', 'rushing_tds',
            'rushing_fumbles_lost', 'rushing_first_downs', 'rushing_2pt_conversions',
-           'passing_epa', 'pacr', 'dakota',
+           'passing_epa', 'pacr',
            "PPG", 'ppg_prev', 'ppg_last_year', 'delta_ppg',
            'age_from_peak', 'age_squared', 'games_missed']
 
@@ -90,7 +90,6 @@ def dfMaker():
             # Advanced features
             passing_epa = float(row['passing_epa']) / gp if pd.notna(row.get('passing_epa')) else 0.0
             pacr         = float(row['pacr'])           if pd.notna(row.get('pacr'))         else 0.0
-            dakota       = float(row['dakota'])         if pd.notna(row.get('dakota'))        else 0.0
 
             # PPG from per-game stats
             PPG = (per_game['rushing_yards'] * 0.1 +
@@ -130,7 +129,7 @@ def dfMaker():
                 "team": team, "position": pos, "penalty": penalty, "GP": gp,
                 "player_display_name": name, "age": float(age),
                 **per_game,
-                "passing_epa": passing_epa, "pacr": pacr, "dakota": dakota,
+                "passing_epa": passing_epa, "pacr": pacr,
                 "PPG": PPG,
                 "ppg_prev": ppg_prev, "ppg_last_year": ppg_last_year, "delta_ppg": delta_ppg,
                 "age_from_peak": age_from_peak, "age_squared": age_squared,
@@ -154,21 +153,20 @@ dfMaker()
 """
 
 # ── CELL 2 : RB dfMaker ────────────────────────────────────────────────────────
-CELL2 = r"""import nfl_data_py as nfl
+CELL2 = r"""import nflreadpy
 import pandas as pd
 import numpy as np
 from unidecode import unidecode
 
-CURRENT_YEAR = 2024
+CURRENT_YEAR = 2025
 PEAK_AGE_RB = 25
 
 # Load opportunity + EPA features ONCE outside dfMaker
-print("Fetching RB opportunity/EPA features for 2022-2023...")
-rb_opp_raw = nfl.import_seasonal_data([2022, 2023])
+print("Fetching RB opportunity/EPA features for 2023-2024...")
+rb_opp_raw = nflreadpy.load_player_stats([2023, 2024], summary_level='reg').to_pandas()
 rb_opp = rb_opp_raw[['player_id', 'season',
-                       'target_share', 'ry_sh',
-                       'rushing_epa', 'receiving_epa',
-                       'rtd_sh', 'rfd_sh']].copy()
+                       'target_share',
+                       'rushing_epa', 'receiving_epa']].copy()
 rb_opp['season'] = rb_opp['season'].astype(int)
 
 RB_COLS = ["team", "position", "penalty", "GP", "player_display_name", "age",
@@ -178,7 +176,7 @@ RB_COLS = ["team", "position", "penalty", "GP", "player_display_name", "age",
            'receiving_fumbles_lost', 'receiving_air_yards', 'receiving_yards_after_catch',
            'receiving_first_downs', 'receiving_2pt_conversions', 'special_teams_tds', 'rrtd',
            "PPG",
-           'target_share', 'ry_sh', 'rushing_epa', 'receiving_epa', 'rtd_sh', 'rfd_sh',
+           'target_share', 'rushing_epa', 'receiving_epa',
            'ppg_prev', 'ppg_last_year', 'delta_ppg',
            'age_from_peak', 'age_squared', 'games_missed']
 
@@ -233,9 +231,6 @@ def dfMaker():
 
             # Opportunity: shares/ratios — no divide
             target_share  = float(row['target_share'])  if pd.notna(row.get('target_share'))  else 0.0
-            ry_sh         = float(row['ry_sh'])         if pd.notna(row.get('ry_sh'))         else 0.0
-            rtd_sh        = float(row['rtd_sh'])        if pd.notna(row.get('rtd_sh'))        else 0.0
-            rfd_sh        = float(row['rfd_sh'])        if pd.notna(row.get('rfd_sh'))        else 0.0
             # EPA totals -> per game
             rushing_epa   = float(row['rushing_epa'])   / gp if pd.notna(row.get('rushing_epa'))   else 0.0
             receiving_epa = float(row['receiving_epa']) / gp if pd.notna(row.get('receiving_epa')) else 0.0
@@ -283,9 +278,8 @@ def dfMaker():
                 "player_display_name": name, "age": float(age),
                 **per_game,
                 "PPG": PPG,
-                "target_share": target_share, "ry_sh": ry_sh,
+                "target_share": target_share,
                 "rushing_epa": rushing_epa, "receiving_epa": receiving_epa,
-                "rtd_sh": rtd_sh, "rfd_sh": rfd_sh,
                 "ppg_prev": ppg_prev, "ppg_last_year": ppg_last_year, "delta_ppg": delta_ppg,
                 "age_from_peak": age_from_peak, "age_squared": age_squared,
                 "games_missed": games_missed
@@ -307,21 +301,20 @@ dfMaker()
 """
 
 # ── CELL 3 : WRTE dfMaker ──────────────────────────────────────────────────────
-CELL3 = r"""import nfl_data_py as nfl
+CELL3 = r"""import nflreadpy
 import pandas as pd
 import numpy as np
 from unidecode import unidecode
 
-CURRENT_YEAR = 2024
+CURRENT_YEAR = 2025
 PEAK_AGE_WRTE = 26
 
 # Load opportunity + EPA features ONCE outside dfMaker
-print("Fetching WR/TE opportunity/EPA features for 2022-2023...")
-wrte_opp_raw = nfl.import_seasonal_data([2022, 2023])
+print("Fetching WR/TE opportunity/EPA features for 2023-2024...")
+wrte_opp_raw = nflreadpy.load_player_stats([2023, 2024], summary_level='reg').to_pandas()
 wrte_opp = wrte_opp_raw[['player_id', 'season',
                            'target_share', 'air_yards_share',
-                           'wopr_x', 'racr', 'receiving_epa',
-                           'yac_sh', 'tgt_sh']].copy()
+                           'wopr', 'racr', 'receiving_epa']].copy()
 wrte_opp['season'] = wrte_opp['season'].astype(int)
 
 WRTE_COLS = ["team", "position", "penalty", "GP", "player_display_name", "age",
@@ -331,7 +324,7 @@ WRTE_COLS = ["team", "position", "penalty", "GP", "player_display_name", "age",
              'receiving_fumbles_lost', 'receiving_air_yards', 'receiving_yards_after_catch',
              'receiving_first_downs', 'receiving_2pt_conversions', 'special_teams_tds', 'rrtd',
              "PPG",
-             'target_share', 'air_yards_share', 'wopr_x', 'racr', 'receiving_epa', 'yac_sh', 'tgt_sh',
+             'target_share', 'air_yards_share', 'wopr', 'racr', 'receiving_epa',
              'ppg_prev', 'ppg_last_year', 'delta_ppg',
              'age_from_peak', 'age_squared', 'games_missed']
 
@@ -387,10 +380,8 @@ def dfMaker():
             # Shares/ratios — no divide
             target_share    = float(row['target_share'])    if pd.notna(row.get('target_share'))    else 0.0
             air_yards_share = float(row['air_yards_share']) if pd.notna(row.get('air_yards_share')) else 0.0
-            wopr_x          = float(row['wopr_x'])          if pd.notna(row.get('wopr_x'))          else 0.0
+            wopr            = float(row['wopr'])             if pd.notna(row.get('wopr'))             else 0.0
             racr            = float(row['racr'])             if pd.notna(row.get('racr'))             else 0.0
-            yac_sh          = float(row['yac_sh'])           if pd.notna(row.get('yac_sh'))           else 0.0
-            tgt_sh          = float(row['tgt_sh'])           if pd.notna(row.get('tgt_sh'))           else 0.0
             # receiving_epa is season total -> per game
             receiving_epa   = float(row['receiving_epa']) / gp if pd.notna(row.get('receiving_epa')) else 0.0
 
@@ -436,8 +427,7 @@ def dfMaker():
                 **per_game,
                 "PPG": PPG,
                 "target_share": target_share, "air_yards_share": air_yards_share,
-                "wopr_x": wopr_x, "racr": racr, "receiving_epa": receiving_epa,
-                "yac_sh": yac_sh, "tgt_sh": tgt_sh,
+                "wopr": wopr, "racr": racr, "receiving_epa": receiving_epa,
                 "ppg_prev": ppg_prev, "ppg_last_year": ppg_last_year, "delta_ppg": delta_ppg,
                 "age_from_peak": age_from_peak, "age_squared": age_squared,
                 "games_missed": games_missed

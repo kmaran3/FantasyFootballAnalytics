@@ -4,22 +4,22 @@ Within folder: approximate value data
 
     Run AVgrades.ipynb
 
-    Run ScaleAVs.ipynb
-    
+    Run ScaleAVs.ipynb (update the PFF URL in cell 0 to the current year before running)
+
 Within folder: final position group data
 
     Run PositionalData.ipynb
-    
+
 Within folder: Models
 
     Run MLModel.ipynb (Creates the MLModel to be run in the prediction code)
-    
+
     Run PredictionCode.ipynb (Current Year predictions for the MLModel to use)
-    
+
 Within folder: Final Rankings
 
     Run RankingsCSVCreation.ipynb (Makes the rankings from prediction code)
-    
+
     Run VBD.ipynb (adds VBD and ADP weights to rankings)
 
 Within folder: webapp

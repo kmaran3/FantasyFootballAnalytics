@@ -17,7 +17,7 @@ engine = create_engine(f'sqlite:///{_DB_PATH}', echo=True)
 _BASE_DIR = Path(__file__).parent.parent
 _PICKLE_DIR = _BASE_DIR / 'Models' / 'PickleFiles'
 
-# nfl_data_py uses 'LA' for Rams; our DB uses 'LAR'
+# nflverse uses 'LA' for Rams; our DB uses 'LAR'
 _TEAM_ABBR_MAP = {'LA': 'LAR'}
 
 _player_details_cache = None
@@ -54,11 +54,13 @@ def _get_player_details():
     def _float1(val):
         return round(float(val), 1) if pd.notna(val) else 0.0
 
-    # QB stats (YearsBack=1 = 2023 season)
+    # QB stats (most recent season)
     qb_path = _PICKLE_DIR / 'final_qb_data.pkl'
     if qb_path.exists():
         df = pd.read_pickle(qb_path)
-        df = df[(df['YearsBack'] == 1) & (df['season_type'] == 'REG')]
+        df = df[df['season'] == df['season'].max()]
+        if 'season_type' in df.columns:
+            df = df[df['season_type'] == 'REG']
         for _, row in df.iterrows():
             name = str(row['player_display_name']).strip()
             stat = {
@@ -80,7 +82,9 @@ def _get_player_details():
     rb_path = _PICKLE_DIR / 'final_rb_data.pkl'
     if rb_path.exists():
         df = pd.read_pickle(rb_path)
-        df = df[(df['YearsBack'] == 1) & (df['season_type'] == 'REG')]
+        df = df[df['season'] == df['season'].max()]
+        if 'season_type' in df.columns:
+            df = df[df['season_type'] == 'REG']
         for _, row in df.iterrows():
             name = str(row['player_display_name']).strip()
             stat = {
@@ -102,7 +106,9 @@ def _get_player_details():
     wrte_path = _PICKLE_DIR / 'final_wrte_data.pkl'
     if wrte_path.exists():
         df = pd.read_pickle(wrte_path)
-        df = df[(df['YearsBack'] == 1) & (df['season_type'] == 'REG')]
+        df = df[df['season'] == df['season'].max()]
+        if 'season_type' in df.columns:
+            df = df[df['season_type'] == 'REG']
         for _, row in df.iterrows():
             name = str(row['player_display_name']).strip()
             stat = {
@@ -129,8 +135,8 @@ def _get_team_schedule():
         return _team_schedule_cache
 
     try:
-        import nfl_data_py as nfl
-        schedule_df = nfl.import_schedules([2024])
+        import nflreadpy
+        schedule_df = nflreadpy.load_schedules([2025]).to_pandas()
         reg_df = schedule_df[schedule_df['game_type'] == 'REG'].sort_values('week')
 
         team_games = {}
@@ -180,23 +186,23 @@ def _load(filename):
 
 _rankings = _load('Full PPR Rankings with Weighted VBD.pkl')
 
-# Load live seasonal stats from nfl_data_py
+# Load live seasonal stats from nflreadpy
 _nfl_seasonal  = pd.DataFrame()
 _nfl_latest    = pd.DataFrame()   # most-recent season with accurate position + team per player
 _nfl_roster_map = {}
 try:
-    import nfl_data_py as nfl
+    import nflreadpy
     from datetime import date as _date
     _today = _date.today()
     # NFL season Y runs Sep Y – Jan/Feb Y+1; before September the latest complete season is Y-1
     _nfl_end_year = _today.year if _today.month >= 9 else _today.year - 1
 
-    # Try loading up to _nfl_end_year; if nfl_data_py doesn't have that year yet, fall back one year
+    # Try loading up to _nfl_end_year; if nflreadpy doesn't have that year yet, fall back one year
     _stats_raw = pd.DataFrame()
     for _try_year in [_nfl_end_year, _nfl_end_year - 1]:
         try:
             _seasons = list(range(2020, _try_year + 1))
-            _stats_raw = nfl.import_seasonal_data(_seasons, s_type='REG')
+            _stats_raw = nflreadpy.load_player_stats(_seasons, summary_level='reg').to_pandas()
             if not _stats_raw.empty:
                 print(f'NFL stats loaded through season {_try_year}')
                 break
@@ -206,20 +212,19 @@ try:
     if _stats_raw.empty:
         raise RuntimeError('Could not load NFL seasonal stats for any year')
 
-    # For history charts: name + position keyed by player_id
-    _roster_raw = nfl.import_seasonal_rosters(_seasons)[['player_id', 'player_name', 'position']].drop_duplicates('player_id')
-    _nfl_seasonal = _stats_raw.merge(_roster_raw, on='player_id', how='left')
+    # nflreadpy player stats already includes player_name, position, recent_team — no roster merge needed
+    _nfl_seasonal = _stats_raw.copy()
 
     # For grades + roster stats: use the most recent season actually present in the data
     _latest_season = int(_stats_raw['season'].max())
-    _r_latest = (nfl.import_seasonal_rosters([_latest_season])
-                 [['player_id', 'player_name', 'position', 'team']]
-                 .drop_duplicates('player_id')
-                 .rename(columns={'position': '_pos', 'team': '_team', 'player_name': '_name'}))
-    _nfl_latest = _stats_raw[_stats_raw['season'] == _latest_season].merge(_r_latest, on='player_id', how='left')
+    _nfl_latest = (_stats_raw[_stats_raw['season'] == _latest_season]
+                   .assign(_pos=lambda x: x['position'],
+                           _team=lambda x: x['recent_team'],
+                           _name=lambda x: x['player_name'])
+                   .copy())
     print(f'NFL data ready: history 2020–{max(_seasons)}, grades/roster from season {_latest_season} ({len(_nfl_latest)} players)')
 except Exception as e:
-    print(f'Warning: could not load nfl_data_py stats: {e}')
+    print(f'Warning: could not load nflreadpy stats: {e}')
 
 # Normalize currAVs team names to abbreviations
 _TEAM_NAME_MAP = {
@@ -339,7 +344,12 @@ def _compute_composite_grades():
         def _process_pkl(df_raw, pos_label, n_starters, pos_filter=None):
             if df_raw.empty:
                 return
-            df = df_raw[(df_raw['YearsBack'] == 1) & (df_raw['season_type'] == 'REG')].copy()
+            latest = df_raw['season'].max()
+            st_col = 'season_type' if 'season_type' in df_raw.columns else None
+            mask = df_raw['season'] == latest
+            if st_col:
+                mask = mask & (df_raw[st_col] == 'REG')
+            df = df_raw[mask].copy()
             tc = _find_team_col(df)
             if tc is None or 'fantasy_points' not in df.columns or 'GP' not in df.columns:
                 return
@@ -390,7 +400,7 @@ def _compute_composite_grades():
 def _compute_roster_stats():
     stats = {}
 
-    # Prefer live 2024 nfl_data_py data; fall back to pickle files
+    # Prefer live nflreadpy data; fall back to pickle files
     use_live = (not _nfl_latest.empty
                 and '_pos' in _nfl_latest.columns
                 and '_team' in _nfl_latest.columns)
@@ -418,7 +428,7 @@ def _compute_roster_stats():
                         'fantasy_points': fp,
                         'pass_yds': _safe_i(row.get('passing_yards')),
                         'pass_td':  _safe_i(row.get('passing_tds')),
-                        'int':      _safe_i(row.get('interceptions')),
+                        'int':      _safe_i(row.get('passing_interceptions')),
                         'rush_yds': _safe_i(row.get('rushing_yards')),
                     }
                 elif pos == 'RB':
@@ -451,7 +461,9 @@ def _compute_roster_stats():
 
         qb_df = _load('final_qb_data.pkl')
         if not qb_df.empty:
-            df = qb_df[(qb_df['YearsBack'] == 1) & (qb_df['season_type'] == 'REG')]
+            df = qb_df[qb_df['season'] == qb_df['season'].max()]
+            if 'season_type' in df.columns:
+                df = df[df['season_type'] == 'REG']
             tc = _find_team_col(df)
             for _, row in df.iterrows():
                 name = str(row.get('player_display_name', '')).strip()
@@ -470,7 +482,9 @@ def _compute_roster_stats():
 
         rb_df = _load('final_rb_data.pkl')
         if not rb_df.empty:
-            df = rb_df[(rb_df['YearsBack'] == 1) & (rb_df['season_type'] == 'REG')]
+            df = rb_df[rb_df['season'] == rb_df['season'].max()]
+            if 'season_type' in df.columns:
+                df = df[df['season_type'] == 'REG']
             tc = _find_team_col(df)
             for _, row in df.iterrows():
                 name = str(row.get('player_display_name', '')).strip()
@@ -490,7 +504,9 @@ def _compute_roster_stats():
 
         wrte_df = _load('final_wrte_data.pkl')
         if not wrte_df.empty:
-            df = wrte_df[(wrte_df['YearsBack'] == 1) & (wrte_df['season_type'] == 'REG')]
+            df = wrte_df[wrte_df['season'] == wrte_df['season'].max()]
+            if 'season_type' in df.columns:
+                df = df[df['season_type'] == 'REG']
             tc = _find_team_col(df)
             pc = next((c for c in ['position', 'Position'] if c in df.columns), None)
             for _, row in df.iterrows():
@@ -743,13 +759,13 @@ def player_stats():
     if not name:
         return jsonify({})
 
-    # --- Historical stats from nfl_data_py (2020-2024) ---
+    # --- Historical stats from nflreadpy (2020–2025) ---
     history = []
     if not _nfl_seasonal.empty:
         player_rows = _nfl_seasonal[_nfl_seasonal['player_name'] == name].sort_values('season')
         if pos == 'QB':
             cols = ['season', 'games', 'completions', 'attempts', 'passing_yards',
-                    'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points_ppr']
+                    'passing_tds', 'passing_interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points_ppr']
         elif pos == 'RB':
             cols = ['season', 'games', 'carries', 'rushing_yards', 'rushing_tds',
                     'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points_ppr']

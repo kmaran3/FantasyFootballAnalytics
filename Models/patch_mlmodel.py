@@ -12,7 +12,7 @@ CELL0 = r"""#QB ML MODEL - IMPROVED
 import pandas as pd
 import numpy as np
 import warnings
-import nfl_data_py as nfl
+import nflreadpy
 import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error
@@ -30,10 +30,10 @@ dfFantasy.replace([np.inf, -np.inf], np.nan, inplace=True)
 for column in dfFantasy.select_dtypes(include=[np.number]).columns:
     dfFantasy[column].fillna(dfFantasy[column].mean(), inplace=True)
 
-# ---- Add advanced EPA/efficiency features from nfl_data_py ----
-print("Fetching QB advanced features (passing_epa, pacr, dakota) for 2015-2023...")
-seasonal_all = nfl.import_seasonal_data(list(range(2015, 2024)))
-adv = seasonal_all[['player_id', 'season', 'passing_epa', 'pacr', 'dakota']].copy()
+# ---- Add advanced EPA/efficiency features from nflreadpy ----
+print("Fetching QB advanced features (passing_epa, pacr) for 2015-2025...")
+seasonal_all = nflreadpy.load_player_stats(list(range(2015, 2026)), summary_level='reg').to_pandas()
+adv = seasonal_all[['player_id', 'season', 'passing_epa', 'pacr']].copy()
 adv['season'] = adv['season'].astype(int)
 dfFantasy['season'] = dfFantasy['season'].astype(int)
 dfFantasy = dfFantasy.merge(adv, on=['player_id', 'season'], how='left')
@@ -52,9 +52,9 @@ def correctData(df, pprTF):
     df['ppg_prev'] = df['PPG']
     for col in count_cols:
         df.loc[:, col] = df[col] / df['GP']
-    # passing_epa is a season total -> divide by GP; pacr/dakota are ratios -> leave as-is
+    # passing_epa is a season total -> divide by GP; pacr is a ratio -> leave as-is
     df.loc[:, 'passing_epa'] = df['passing_epa'] / df['GP'].replace(0, np.nan)
-    # pacr and dakota: already normalised, do NOT divide
+    # pacr: already normalised, do NOT divide
     df = df[df.GP > 7]
     df = df[df.fantasy_points >= 0]
     df = df[df.PPG > 5]
@@ -76,7 +76,7 @@ def makeCorrectShift(df):
                 'passing_first_downs', 'passing_2pt_conversions',
                 'carries', 'rushing_yards', 'rushing_tds', 'rushing_fumbles_lost',
                 'rushing_first_downs', 'rushing_2pt_conversions',
-                'passing_epa', 'pacr', 'dakota',
+                'passing_epa', 'pacr',
                 'ppg_prev', 'ppg_last_year', 'delta_ppg']
     # Only shift columns that actually exist in df
     shifters = [c for c in shifters if c in df.columns]
@@ -162,7 +162,7 @@ CELL1 = r"""#RB ML MODEL - IMPROVED
 import pandas as pd
 import numpy as np
 import warnings
-import nfl_data_py as nfl
+import nflreadpy
 import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error
@@ -180,11 +180,11 @@ dfFantasy.replace([np.inf, -np.inf], np.nan, inplace=True)
 for column in dfFantasy.select_dtypes(include=[np.number]).columns:
     dfFantasy[column].fillna(dfFantasy[column].mean(), inplace=True)
 
-# ---- Add opportunity + EPA features from nfl_data_py ----
-print("Fetching RB opportunity/EPA features for 2015-2023...")
-seasonal_all = nfl.import_seasonal_data(list(range(2015, 2024)))
-opp = seasonal_all[['player_id', 'season', 'target_share', 'ry_sh',
-                     'rushing_epa', 'receiving_epa', 'rtd_sh', 'rfd_sh']].copy()
+# ---- Add opportunity + EPA features from nflreadpy ----
+print("Fetching RB opportunity/EPA features for 2015-2025...")
+seasonal_all = nflreadpy.load_player_stats(list(range(2015, 2026)), summary_level='reg').to_pandas()
+opp = seasonal_all[['player_id', 'season', 'target_share',
+                     'rushing_epa', 'receiving_epa']].copy()
 opp['season'] = opp['season'].astype(int)
 dfFantasy['season'] = dfFantasy['season'].astype(int)
 dfFantasy = dfFantasy.merge(opp, on=['player_id', 'season'], how='left')
@@ -211,7 +211,7 @@ def correctData(df, pprTF):
     gp_safe = df['GP'].replace(0, np.nan)
     df.loc[:, 'rushing_epa'] = df['rushing_epa'] / gp_safe
     df.loc[:, 'receiving_epa'] = df['receiving_epa'] / gp_safe
-    # rtd_sh, rfd_sh are share columns — do NOT divide
+    # target_share is a ratio — do NOT divide
     df = df[df.GP > 7]
     df = df[df.fantasy_points >= 0]
     df = df[df.PPG > 2]
@@ -233,7 +233,7 @@ def makeCorrectShift(df):
                 'receiving_fumbles_lost', 'receiving_air_yards', 'receiving_yards_after_catch',
                 'receiving_first_downs', 'receiving_2pt_conversions', 'special_teams_tds',
                 'fantasy_points', 'rrtd',
-                'target_share', 'ry_sh', 'rushing_epa', 'receiving_epa', 'rtd_sh', 'rfd_sh',
+                'target_share', 'rushing_epa', 'receiving_epa',
                 'ppg_prev', 'ppg_last_year', 'delta_ppg']
     shifters = [c for c in shifters if c in df.columns]
     df[shifters] = df.groupby('player_display_name')[shifters].shift(1)
@@ -318,7 +318,7 @@ CELL2 = r"""#WR + TE ML MODELS - IMPROVED (separate models per position)
 import pandas as pd
 import numpy as np
 import warnings
-import nfl_data_py as nfl
+import nflreadpy
 import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error
@@ -336,11 +336,11 @@ dfFantasy.replace([np.inf, -np.inf], np.nan, inplace=True)
 for column in dfFantasy.select_dtypes(include=[np.number]).columns:
     dfFantasy[column].fillna(dfFantasy[column].mean(), inplace=True)
 
-# ---- Add opportunity + EPA features from nfl_data_py ----
-print("Fetching WR/TE opportunity/EPA features for 2015-2023...")
-seasonal_all = nfl.import_seasonal_data(list(range(2015, 2024)))
+# ---- Add opportunity + EPA features from nflreadpy ----
+print("Fetching WR/TE opportunity/EPA features for 2015-2025...")
+seasonal_all = nflreadpy.load_player_stats(list(range(2015, 2026)), summary_level='reg').to_pandas()
 opp = seasonal_all[['player_id', 'season', 'target_share', 'air_yards_share',
-                     'wopr_x', 'racr', 'receiving_epa', 'yac_sh', 'tgt_sh']].copy()
+                     'wopr', 'racr', 'receiving_epa']].copy()
 opp['season'] = opp['season'].astype(int)
 dfFantasy['season'] = dfFantasy['season'].astype(int)
 dfFantasy = dfFantasy.merge(opp, on=['player_id', 'season'], how='left')
@@ -362,10 +362,10 @@ def correctData(df, pprTF):
     df['ppg_prev'] = df['PPG']
     for col in count_cols:
         df.loc[:, col] = df[col] / df['GP']
-    # receiving_epa is season total -> per game; wopr_x, racr, yac_sh, tgt_sh are ratios
+    # receiving_epa is season total -> per game; wopr, racr are ratios
     gp_safe = df['GP'].replace(0, np.nan)
     df.loc[:, 'receiving_epa'] = df['receiving_epa'] / gp_safe
-    # wopr_x, racr, yac_sh, tgt_sh: do NOT divide
+    # wopr, racr: do NOT divide
     df = df[df.GP > 7]
     df = df[df.fantasy_points >= 0]
     df = df[df.PPG > 2]
@@ -387,8 +387,8 @@ def makeCorrectShift(df):
                 'receiving_fumbles_lost', 'receiving_air_yards', 'receiving_yards_after_catch',
                 'receiving_first_downs', 'receiving_2pt_conversions', 'special_teams_tds',
                 'fantasy_points', 'rrtd',
-                'target_share', 'air_yards_share', 'wopr_x', 'racr',
-                'receiving_epa', 'yac_sh', 'tgt_sh',
+                'target_share', 'air_yards_share', 'wopr', 'racr',
+                'receiving_epa',
                 'ppg_prev', 'ppg_last_year', 'delta_ppg']
     shifters = [c for c in shifters if c in df.columns]
     df[shifters] = df.groupby('player_display_name')[shifters].shift(1)
