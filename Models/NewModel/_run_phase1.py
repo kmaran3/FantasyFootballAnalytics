@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 import os
 import warnings
-from datetime import datetime
 warnings.filterwarnings('ignore')
 
 SEASONS = [2020, 2021, 2022, 2023, 2024, 2025]
@@ -21,12 +20,12 @@ pbp = pbp_raw[pbp_raw['season_type'] == 'REG'].copy()
 print(f'Total regular season plays: {len(pbp):,}')
 
 print('Loading roster data...')
-roster_raw = (nflreadpy.load_rosters(SEASONS).to_pandas()
-              .rename(columns={'gsis_id': 'player_id', 'full_name': 'player_name'}))
-roster_raw['age'] = roster_raw.apply(
-    lambda row: (datetime(int(row['season']), 9, 1) - pd.Timestamp(row['birth_date'])).days // 365
-    if pd.notna(row['birth_date']) else None, axis=1
-)
+roster_raw = nflreadpy.load_rosters(SEASONS).to_pandas()
+# nflreadpy uses gsis_id / full_name; compute age from birth_date + season
+roster_raw = roster_raw.rename(columns={'gsis_id': 'player_id', 'full_name': 'player_name'})
+roster_raw['birth_date'] = pd.to_datetime(roster_raw['birth_date'], errors='coerce')
+roster_raw['age'] = roster_raw['season'] - roster_raw['birth_date'].dt.year
+
 roster = (
     roster_raw[roster_raw['game_type'] == 'REG']
     [['player_id','player_name','position','team','age','entry_year','rookie_year','draft_number','season']]
