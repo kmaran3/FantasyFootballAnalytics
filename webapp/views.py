@@ -274,15 +274,21 @@ def _load_new_model_rankings():
         combined['Predicted PPG'] = combined['Predicted PPG'].round(2)
         combined['Weighted PPG']  = combined['Weighted PPG'].round(2)
         combined['2025 PPG']      = combined['2025 PPG'].round(2)
-        combined['Age']           = combined['age'].fillna('').apply(lambda x: int(x) if x != '' else '')
+        combined['Age']           = combined['age'].apply(lambda x: int(x) if pd.notna(x) and x != '' else '')
         combined = combined[['rank','Name','Position','Team','Age','Predicted PPG','Weighted PPG','2025 PPG','strategy']].copy()
         combined = combined.rename(columns={'rank': 'Rank', 'strategy': 'Model'})
+        print(f'New model rankings loaded: {len(combined)} players')
         return combined
     except Exception as e:
+        import traceback
         print(f'Warning: could not load new model predictions: {e}')
+        traceback.print_exc()
         return pd.DataFrame()
 
 _new_model_rankings = _load_new_model_rankings()
+print(f'_new_model_rankings shape: {_new_model_rankings.shape}, empty: {_new_model_rankings.empty}')
+_new_model_table_data = _new_model_rankings.to_dict(orient='records') if not _new_model_rankings.empty else []
+print(f'_new_model_table_data prebuilt: {len(_new_model_table_data)} rows')
 
 # ── Helpers shared by composite grades and roster stats ───────────
 import math as _math
@@ -618,8 +624,9 @@ def rankings():
 @main.route('/rankings/ppr')
 @login_required
 def get_ppr_rankings():
-    with engine.connect() as connection:
-        df = pd.read_sql(text('SELECT * FROM Full_PPR'), con=connection)
+    import sqlite3
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        df = pd.read_sql('SELECT * FROM Full_PPR', con=conn)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
     pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
     return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='PPR',
@@ -629,8 +636,9 @@ def get_ppr_rankings():
 @main.route('/rankings/half-ppr')
 @login_required
 def get_half_ppr_rankings():
-    with engine.connect() as connection:
-        df = pd.read_sql(text('SELECT * FROM Half_PPR'), con=connection)
+    import sqlite3
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        df = pd.read_sql('SELECT * FROM Half_PPR', con=conn)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
     pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
     return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Half PPR',
@@ -640,8 +648,9 @@ def get_half_ppr_rankings():
 @main.route('/rankings/standard')
 @login_required
 def get_standard_rankings():
-    with engine.connect() as connection:
-        df = pd.read_sql(text('SELECT * FROM Non_PPR'), con=connection)
+    import sqlite3
+    with sqlite3.connect(str(_DB_PATH)) as conn:
+        df = pd.read_sql('SELECT * FROM Non_PPR', con=conn)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
     pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
     return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Standard',
@@ -651,18 +660,10 @@ def get_standard_rankings():
 @main.route('/rankings/new-model')
 @login_required
 def get_new_model_rankings():
-    import math
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    if _new_model_rankings.empty:
-        table_data = []
-    else:
-        table_data = [
-            {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
-            for row in _new_model_rankings.to_dict(orient='records')
-        ]
-    return render_template('rankings.html', table_data=table_data, table_type='New Model (PPR)',
+    return render_template('rankings.html', table_data=_new_model_table_data, table_type='New Model (PPR)',
                            user_rankings=saved, player_details_json='{}',
-                           team_schedule_json='{}', teams=[], bye_weeks={})
+                           team_schedule_json='{}', teams=[], bye_weeks=[])
 
 @main.route('/save_rankings', methods=['POST'])
 @login_required
