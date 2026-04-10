@@ -26,12 +26,24 @@ roster_raw = roster_raw.rename(columns={'gsis_id': 'player_id', 'full_name': 'pl
 roster_raw['birth_date'] = pd.to_datetime(roster_raw['birth_date'], errors='coerce')
 roster_raw['age'] = roster_raw['season'] - roster_raw['birth_date'].dt.year
 
+# Prefer REG game_type rows but don't exclude players who only appear under playoff entries.
+# Sort so REG comes first, then drop duplicates to keep the REG row when available.
+roster_raw = roster_raw.sort_values(
+    'game_type',
+    key=lambda x: x.map({'REG': 0}).fillna(1)  # REG=0 sorts first
+)
 roster = (
-    roster_raw[roster_raw['game_type'] == 'REG']
-    [['player_id','player_name','position','team','age','entry_year','rookie_year','draft_number','season']]
-    .drop_duplicates(['player_id','season'])
+    roster_raw
+    [['player_id','player_name','position','team','age','entry_year','rookie_year','draft_number','season','game_type']]
+    .drop_duplicates(['player_id','season'])  # keeps REG row where available
+    .drop(columns=['game_type'])
+    .reset_index(drop=True)
 )
 print(f'Roster rows: {len(roster):,}')
+
+# Sanity check
+cw = roster[roster['player_name'].str.contains('Caleb Williams', na=False)]
+print('Caleb Williams in roster:', cw[['player_name','season','team','age']].to_string())
 
 # =========
 
