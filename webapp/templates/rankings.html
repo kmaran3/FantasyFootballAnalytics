@@ -53,7 +53,6 @@
         <a href="{{ url_for('main.get_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}">PPR</a>
         <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}">Half PPR</a>
         <a href="{{ url_for('main.get_standard_rankings') }}" class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}">Standard</a>
-        <a href="{{ url_for('main.get_new_model_rankings') }}" class="ranking-type-btn {% if table_type == 'New Model (PPR)' %}active{% endif %}">New Model</a>
     </div>
 </div>
 
@@ -158,8 +157,10 @@ $(document).ready(function() {
     var colTooltips = {
         'Predicted PPG':  'ML model projection of fantasy points per game for the 2026 season, based on historical performance, age trajectory, and usage trends.',
         'VBD':            'Value Over Baseline — how much better a player scores compared to the last startable player at their position. Higher VBD = more value over a replacement-level player.',
+        'ADP':            'Average Draft Position from Sleeper — where the fantasy community is drafting this player on average.',
+        'vs ADP':         'Difference between our model rank and Sleeper ADP. Positive (+) means we rank the player higher than consensus. Negative (−) means we are lower on them.',
         'Weighted PPG':   'Average fantasy points per game across recent seasons, weighted to give stronger emphasis to more recent performance.',
-        '2025 PPG':       'Actual fantasy points per game scored during the 2025 NFL season (PPR scoring).'
+        '2025 PPG':       'Actual fantasy points per game scored during the 2025 NFL season, adjusted for the selected scoring format (PPR / Half PPR / Standard).'
     };
 
     $('#sortable-table thead th').each(function() {
