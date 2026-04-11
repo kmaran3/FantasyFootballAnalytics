@@ -270,13 +270,15 @@ def _load_new_model_rankings():
             'predicted_ppg_2026': 'Predicted PPG',
             'weighted_ppg': 'Weighted PPG',
             'ppg':         '2025 PPG',
+            'vbd':         'VBD',
         })
         combined['Predicted PPG'] = combined['Predicted PPG'].round(2)
         combined['Weighted PPG']  = combined['Weighted PPG'].round(2)
         combined['2025 PPG']      = combined['2025 PPG'].round(2)
+        combined['VBD']           = combined['VBD'].round(2)
         combined['Age']           = combined['age'].apply(lambda x: int(x) if pd.notna(x) and x != '' else '')
-        combined = combined[['rank','Name','Position','Team','Age','Predicted PPG','Weighted PPG','2025 PPG','strategy']].copy()
-        combined = combined.rename(columns={'rank': 'Rank', 'strategy': 'Model'})
+        combined = combined[['rank','Name','Position','Team','Age','Predicted PPG','VBD','Weighted PPG','2025 PPG']].copy()
+        combined = combined.rename(columns={'rank': 'Rank'})
         print(f'New model rankings loaded: {len(combined)} players')
         return combined
     except Exception as e:
