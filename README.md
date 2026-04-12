@@ -36,5 +36,5 @@ Lastly, VBD.ipynb has merged the model created rankings at 30% and ESPN ADP at 7
 
 RUNNING THE WEB APP:
 
-Run app.py
+Run python3 app.py
 
