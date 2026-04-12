@@ -53,9 +53,14 @@
                     <h4 class="card-heading">Player Info</h4>
                     <table style="font-size:0.9em;border-collapse:collapse;"><tbody id="bio-fields"></tbody></table>
                 </div>
-                <div class="profile-card">
-                    <h4 class="card-heading">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
-                    <div id="team-grade-card"><p class="loading-text">Loading...</p></div>
+                <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
+                    <img id="player-headshot" src="" alt=""
+                         style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
+                         onerror="this.style.display='none'">
+                    <div style="width:100%;margin-top:auto;padding-top:10px;">
+                        <h4 class="card-heading" style="margin-bottom:4px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                        <div id="team-grade-card"><p class="loading-text">Loading...</p></div>
+                    </div>
                 </div>
             </div>
             <div class="profile-card" style="margin-bottom:24px;">
@@ -85,9 +90,14 @@
                         <h4 class="card-heading">Player Info</h4>
                         <table style="font-size:0.9em;border-collapse:collapse;"><tbody id="cmp-bio-fields"></tbody></table>
                     </div>
-                    <div class="profile-card">
-                        <h4 class="card-heading">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
-                        <div id="cmp-grade-card"><p class="loading-text">Loading...</p></div>
+                    <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
+                        <img id="cmp-player-headshot" src="" alt=""
+                             style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
+                             onerror="this.style.display='none'">
+                        <div style="width:100%;margin-top:auto;padding-top:10px;">
+                            <h4 class="card-heading" style="margin-bottom:4px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                            <div id="cmp-grade-card"><p class="loading-text">Loading...</p></div>
+                        </div>
                     </div>
                 </div>
                 <div class="profile-card" style="margin-bottom:24px;">
@@ -358,6 +368,15 @@ function openProfile(player) {
     document.getElementById('profile-name').textContent = player['Player'];
     document.getElementById('profile-subtitle').textContent = player._pos + ' · ' + player._team;
 
+    var headshot = document.getElementById('player-headshot');
+    var espnId = player['espn_id'];
+    if (espnId) {
+        headshot.src = 'https://a.espncdn.com/i/headshots/nfl/players/full/' + espnId + '.png';
+        headshot.style.display = 'block';
+    } else {
+        headshot.style.display = 'none';
+    }
+
     // Bio
     var bioHtml = '';
     bioFields.forEach(function(pair) {
@@ -397,13 +416,13 @@ function renderStatsIntoPanel(data, panelId, pos) {
     var tg = data.team_grade || {};
     var gradeEl = document.getElementById(gradeElId);
     if (Object.keys(tg).length) {
-        var tgHtml = '<table style="border-collapse:collapse;font-size:0.9em;">';
+        var tgHtml = '<table style="border-collapse:collapse;font-size:0.82em;">';
         ['OLine','QB','RB','WR','TE','DST'].forEach(function(key) {
             if (tg[key] === undefined || tg[key] === null) return;
             var tip = GRADE_TIPS[key] || '';
-            tgHtml += '<tr><td class="bio-label">' + key
+            tgHtml += '<tr style="line-height:1.4;"><td class="bio-label" style="padding:1px 6px 1px 0;">' + key
                     + ' <span class="grade-info" data-tip="' + escAttr(tip) + '">ⓘ</span></td>'
-                    + '<td class="bio-val">' + gradeBar(tg[key]) + '</td></tr>';
+                    + '<td class="bio-val" style="padding:1px 0;">' + gradeBar(tg[key]) + '</td></tr>';
         });
         tgHtml += '</table>';
         gradeEl.innerHTML = tgHtml;
@@ -568,8 +587,17 @@ $(function() {
             document.getElementById('cmp-name').textContent = cmpName;
             document.getElementById('cmp-subtitle').textContent = cmpPos + ' · ' + cmpTeam;
 
-            // Fill compare bio from allPlayers
+            // Fill compare headshot
             var cmpPlayer = enriched.find(function(p) { return p['Player'] === cmpName; });
+            var cmpHeadshot = document.getElementById('cmp-player-headshot');
+            if (cmpPlayer && cmpPlayer['espn_id']) {
+                cmpHeadshot.src = 'https://a.espncdn.com/i/headshots/nfl/players/full/' + cmpPlayer['espn_id'] + '.png';
+                cmpHeadshot.style.display = 'block';
+            } else {
+                cmpHeadshot.style.display = 'none';
+            }
+
+            // Fill compare bio from allPlayers
             var cmpBioHtml = '';
             if (cmpPlayer) {
                 bioFields.forEach(function(pair) {

@@ -17,8 +17,7 @@ engine = create_engine(f'sqlite:///{_DB_PATH}', echo=True)
 _BASE_DIR = Path(__file__).parent.parent
 _PICKLE_DIR = _BASE_DIR / 'Models' / 'PickleFiles'
 
-# nflverse uses 'LA' for Rams; our DB uses 'LAR'
-_TEAM_ABBR_MAP = {'LA': 'LAR'}
+_TEAM_ABBR_MAP = {}
 
 _player_details_cache = None
 _team_schedule_cache = None
@@ -220,7 +219,7 @@ try:
     _nfl_latest = (_stats_raw[_stats_raw['season'] == _latest_season]
                    .assign(_pos=lambda x: x['position'],
                            _team=lambda x: x['recent_team'],
-                           _name=lambda x: x['player_name'])
+                           _name=lambda x: x['player_display_name'])
                    .copy())
     print(f'NFL data ready: history 2020–{max(_seasons)}, grades/roster from season {_latest_season} ({len(_nfl_latest)} players)')
 except Exception as e:
@@ -312,6 +311,16 @@ def _norm_team(t):
 def _compute_composite_grades():
     per_team = {}
 
+    def _minmax_normalize(vals_dict, invert=False):
+        if not vals_dict:
+            return {}
+        mn, mx = min(vals_dict.values()), max(vals_dict.values())
+        rng = mx - mn if mx > mn else 1.0
+        return {
+            t: round(1.0 - (v - mn) / rng if invert else (v - mn) / rng, 2)
+            for t, v in vals_dict.items()
+        }
+
     use_live = (not _nfl_latest.empty
                 and '_pos' in _nfl_latest.columns
                 and '_team' in _nfl_latest.columns)
@@ -329,18 +338,68 @@ def _compute_composite_grades():
                 pos_df = df[df['_pos'].str.upper() == pos_filter].copy()
                 pos_df = pos_df.sort_values(fpc, ascending=False)
                 top = pos_df.groupby('_team').head(n_starters)
+                raw = {}
                 for team, val in top.groupby('_team')['fpg'].mean().items():
                     sf = _safe_f(val, 3)
                     if sf is not None:
-                        per_team.setdefault(team, {})[pos_label] = sf
+                        raw[team] = sf
+                for team, v in _minmax_normalize(raw).items():
+                    per_team.setdefault(team, {})[pos_label] = v
 
             _process_live('QB', 'QB', 1)
             _process_live('RB', 'RB', 2)
             _process_live('WR', 'WR', 3)
             _process_live('TE', 'TE', 2)
 
+            # OLine proxy: team rushing YPC (top 2 RBs) + inverse sacks-per-game (QB)
+            rb_df = df[df['_pos'] == 'RB'].copy()
+            if 'rushing_yards' in rb_df.columns and 'carries' in rb_df.columns:
+                rb_df = rb_df[rb_df['carries'].fillna(0) > 0]
+                rb_df['ypc'] = rb_df['rushing_yards'] / rb_df['carries'].clip(lower=1)
+                top_rb = rb_df.sort_values('rushing_yards', ascending=False).groupby('_team').head(2)
+                ypc_by_team = top_rb.groupby('_team')['ypc'].mean()
+            else:
+                ypc_by_team = pd.Series(dtype=float)
+
+            qb_df = df[df['_pos'] == 'QB'].copy()
+            sack_col = next((c for c in ['sacks_suffered', 'sacks'] if c in qb_df.columns), None)
+            if sack_col and gpc in qb_df.columns:
+                qb_df['spg'] = qb_df[sack_col] / qb_df[gpc].clip(lower=1)
+                top_qb = qb_df.sort_values(fpc, ascending=False).groupby('_team').head(1)
+                spg_by_team = top_qb.groupby('_team')['spg'].mean()
+            else:
+                spg_by_team = pd.Series(dtype=float)
+
+            all_teams = set(ypc_by_team.index) | set(spg_by_team.index)
+            oline_raw = {}
+            for team in all_teams:
+                ypc_norm = _minmax_normalize(ypc_by_team.to_dict()).get(team, 0.5)
+                spg_norm = _minmax_normalize(spg_by_team.to_dict(), invert=True).get(team, 0.5)
+                oline_raw[team] = (ypc_norm + spg_norm) / 2.0
+            for team, v in oline_raw.items():
+                per_team.setdefault(team, {})['OLine'] = round(v, 2)
+
+            # DST proxy: points allowed per game from 2025 schedule
+            try:
+                sched = nflreadpy.load_schedules([2025]).to_pandas()
+                sched = sched.dropna(subset=['home_score', 'away_score', 'home_team', 'away_team'])
+                pts_allowed = {}
+                games_played = {}
+                for _, row in sched.iterrows():
+                    ht, at = _norm_team(row['home_team']), _norm_team(row['away_team'])
+                    hs, as_ = float(row['home_score']), float(row['away_score'])
+                    pts_allowed[ht] = pts_allowed.get(ht, 0) + as_
+                    pts_allowed[at] = pts_allowed.get(at, 0) + hs
+                    games_played[ht] = games_played.get(ht, 0) + 1
+                    games_played[at] = games_played.get(at, 0) + 1
+                dst_raw = {t: pts_allowed[t] / max(games_played[t], 1) for t in pts_allowed}
+                for team, v in _minmax_normalize(dst_raw, invert=True).items():
+                    per_team.setdefault(team, {})['DST'] = v
+            except Exception as _de:
+                print(f'Warning: could not compute DST grades: {_de}')
+
     else:
-        # Fallback: pickle files (2023 data)
+        # Fallback: pickle files
         def _process_pkl(df_raw, pos_label, n_starters, pos_filter=None):
             if df_raw.empty:
                 return
@@ -361,10 +420,13 @@ def _compute_composite_grades():
                 if pc:
                     df_sorted = df_sorted[df_sorted[pc].str.upper() == pos_filter]
             top = df_sorted.groupby(tc).head(n_starters)
+            raw = {}
             for team, val in top.groupby(tc)['fpg'].mean().items():
                 sf = _safe_f(val, 3)
                 if sf is not None:
-                    per_team.setdefault(team, {})[pos_label] = sf
+                    raw[team] = sf
+            for team, v in _minmax_normalize(raw).items():
+                per_team.setdefault(team, {})[pos_label] = v
 
         _process_pkl(_load('final_qb_data.pkl'), 'QB', 1)
         _process_pkl(_load('final_rb_data.pkl'), 'RB', 2)
@@ -372,29 +434,16 @@ def _compute_composite_grades():
         _process_pkl(wrte, 'WR', 3, 'WR')
         _process_pkl(wrte, 'TE', 2, 'TE')
 
-    # Min-max normalize each position group across all teams
-    composite = {}
-    for pos in ['QB', 'RB', 'WR', 'TE']:
-        vals = {t: d[pos] for t, d in per_team.items() if pos in d}
-        if not vals:
-            continue
-        mn, mx = min(vals.values()), max(vals.values())
-        rng = mx - mn if mx > mn else 1.0
-        for team, v in vals.items():
-            composite.setdefault(team, {})[pos] = round((v - mn) / rng, 2)
+    # Ensure every team that appears in any grade has all 6 keys (fill missing with median)
+    all_teams = set(per_team.keys())
+    for grade_key in ['QB', 'RB', 'WR', 'TE', 'OLine', 'DST']:
+        present = [per_team[t][grade_key] for t in all_teams if grade_key in per_team.get(t, {})]
+        median = sorted(present)[len(present) // 2] if present else 0.5
+        for team in all_teams:
+            if grade_key not in per_team.get(team, {}):
+                per_team.setdefault(team, {})[grade_key] = median
 
-    # OLine + DST from currAVs (no player-level proxy available)
-    if not _curr_avs.empty:
-        for team in _curr_avs.index:
-            row = _curr_avs.loc[team]
-            composite.setdefault(team, {})
-            for col, key in [('oline', 'OLine'), ('dst', 'DST')]:
-                if col in _curr_avs.columns:
-                    v = _safe_f(row[col], 2)
-                    if v is not None:
-                        composite[team][key] = v
-
-    return composite
+    return per_team
 
 # ── Per-player stats for roster list view ─────────────────────────
 def _compute_roster_stats():
@@ -760,9 +809,17 @@ def player_stats():
         return jsonify({})
 
     # --- Historical stats from nflreadpy (2020–2025) ---
+    import math as _m
+
+    def _clean_hist(df):
+        return [
+            {k: (None if isinstance(v, float) and _m.isnan(v) else v) for k, v in row.items()}
+            for row in df.to_dict(orient='records')
+        ]
+
     history = []
     if not _nfl_seasonal.empty:
-        player_rows = _nfl_seasonal[_nfl_seasonal['player_name'] == name].sort_values('season')
+        player_rows = _nfl_seasonal[_nfl_seasonal['player_display_name'] == name].sort_values('season')
         if pos == 'QB':
             cols = ['season', 'games', 'completions', 'attempts', 'passing_yards',
                     'passing_tds', 'passing_interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points_ppr']
@@ -773,14 +830,33 @@ def player_stats():
             cols = ['season', 'games', 'receptions', 'targets', 'receiving_yards',
                     'receiving_tds', 'target_share', 'air_yards_share', 'fantasy_points_ppr']
 
-        import math as _m
         available = [c for c in cols if c in player_rows.columns]
         hist = player_rows[available].tail(5).round(1)
         hist = hist.rename(columns={'games': 'GP', 'fantasy_points_ppr': 'fantasy_points'})
-        history = [
-            {k: (None if isinstance(v, float) and _m.isnan(v) else v) for k, v in row.items()}
-            for row in hist.to_dict(orient='records')
-        ]
+        history = _clean_hist(hist)
+
+    # Fallback: build history from pkl files when nflreadpy is unavailable
+    if not history:
+        pkl_map = {'QB': 'final_qb_data.pkl', 'RB': 'final_rb_data.pkl',
+                   'WR': 'final_wrte_data.pkl', 'TE': 'final_wrte_data.pkl'}
+        pkl_file = pkl_map.get(pos)
+        if pkl_file:
+            pkl_path = _PICKLE_DIR / pkl_file
+            if pkl_path.exists():
+                pkl_df = pd.read_pickle(pkl_path)
+                player_rows = pkl_df[pkl_df['player_display_name'] == name].sort_values('season')
+                if pos == 'QB':
+                    cols = ['season', 'GP', 'completions', 'attempts', 'passing_yards',
+                            'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points']
+                elif pos == 'RB':
+                    cols = ['season', 'GP', 'carries', 'rushing_yards', 'rushing_tds',
+                            'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points']
+                else:
+                    cols = ['season', 'GP', 'receptions', 'targets', 'receiving_yards',
+                            'receiving_tds', 'fantasy_points']
+                available = [c for c in cols if c in player_rows.columns]
+                hist = player_rows[available].tail(5).round(1)
+                history = _clean_hist(hist)
 
     # --- Rankings info ---
     rank_row = _rankings[_rankings['Name'] == name]
