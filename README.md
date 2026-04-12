@@ -4,8 +4,6 @@ Within folder: approximate value data
 
     Run AVgrades.ipynb
 
-    Run ScaleAVs.ipynb (update the PFF URL in cell 0 to the current year before running)
-
 Within folder: final position group data
 
     Run PositionalData.ipynb

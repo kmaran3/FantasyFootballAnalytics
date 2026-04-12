@@ -225,37 +225,6 @@ try:
 except Exception as e:
     print(f'Warning: could not load nflreadpy stats: {e}')
 
-# Normalize currAVs team names to abbreviations
-_TEAM_NAME_MAP = {
-    'arizona cardinals': 'ARI', 'atlanta falcons': 'ATL', 'baltimore ravens': 'BAL',
-    'buffalo bills': 'BUF', 'carolina panthers': 'CAR', 'chicago bears': 'CHI',
-    'cincinnati bengals': 'CIN', 'cleveland browns': 'CLE', 'dallas cowboys': 'DAL',
-    'denver broncos': 'DEN', 'detroit lions': 'DET', 'green bay packers': 'GB',
-    'houston texans': 'HOU', 'indianapolis colts': 'IND', 'jacksonville jaguars': 'JAX',
-    'kansas city chiefs': 'KC', 'los angeles rams': 'LA', 'los angeles chargers': 'LAC',
-    'las vegas raiders': 'LV', 'miami dolphins': 'MIA', 'minnesota vikings': 'MIN',
-    'new england patriots': 'NE', 'new orleans saints': 'NO', 'new york giants': 'NYG',
-    'new york jets': 'NYJ', 'philadelphia eagles': 'PHI', 'pittsburgh steelers': 'PIT',
-    'seattle seahawks': 'SEA', 'san francisco 49ers': 'SF', 'tampa bay buccaneers': 'TB',
-    'tennessee titans': 'TEN', 'washington commanders': 'WAS',
-}
-
-def _normalize_av_team(raw):
-    raw = str(raw).strip()
-    # Already an abbreviation
-    if len(raw) <= 3:
-        return raw.upper()
-    # Strip leading "12. " style prefixes then match
-    import re
-    clean = re.sub(r'^\d+\.\s*', '', raw).strip().lower()
-    return _TEAM_NAME_MAP.get(clean, raw.upper())
-
-_raw_avs = _load('currAVs.pkl')
-if not _raw_avs.empty:
-    _raw_avs['team'] = _raw_avs['team'].apply(_normalize_av_team)
-    _curr_avs = _raw_avs.set_index('team')
-else:
-    _curr_avs = _raw_avs
 
 # ── New model predictions (Phase 3) ──────────────────────────────────
 def _load_new_model_rankings():
@@ -605,7 +574,6 @@ _qb_model    = _load('QBDFForModelPPR.pkl')
 _rb_model    = _load('RBDFForModelPPR.pkl')
 _wrte_model  = _load('WRTEDFForModelPPR.pkl')
 _rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
-_curr_avs    = _load('currAVs.pkl')
 
 @main.route('/', methods=['GET', 'POST'])
 def login():
