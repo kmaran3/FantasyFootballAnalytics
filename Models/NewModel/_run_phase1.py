@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 import os
 import warnings
-from datetime import datetime
 warnings.filterwarnings('ignore')
 
 SEASONS = [2020, 2021, 2022, 2023, 2024, 2025]
@@ -21,18 +20,30 @@ pbp = pbp_raw[pbp_raw['season_type'] == 'REG'].copy()
 print(f'Total regular season plays: {len(pbp):,}')
 
 print('Loading roster data...')
-roster_raw = (nflreadpy.load_rosters(SEASONS).to_pandas()
-              .rename(columns={'gsis_id': 'player_id', 'full_name': 'player_name'}))
-roster_raw['age'] = roster_raw.apply(
-    lambda row: (datetime(int(row['season']), 9, 1) - pd.Timestamp(row['birth_date'])).days // 365
-    if pd.notna(row['birth_date']) else None, axis=1
+roster_raw = nflreadpy.load_rosters(SEASONS).to_pandas()
+# nflreadpy uses gsis_id / full_name; compute age from birth_date + season
+roster_raw = roster_raw.rename(columns={'gsis_id': 'player_id', 'full_name': 'player_name'})
+roster_raw['birth_date'] = pd.to_datetime(roster_raw['birth_date'], errors='coerce')
+roster_raw['age'] = roster_raw['season'] - roster_raw['birth_date'].dt.year
+
+# Prefer REG game_type rows but don't exclude players who only appear under playoff entries.
+# Sort so REG comes first, then drop duplicates to keep the REG row when available.
+roster_raw = roster_raw.sort_values(
+    'game_type',
+    key=lambda x: x.map({'REG': 0}).fillna(1)  # REG=0 sorts first
 )
 roster = (
-    roster_raw[roster_raw['game_type'] == 'REG']
-    [['player_id','player_name','position','team','age','entry_year','rookie_year','draft_number','season']]
-    .drop_duplicates(['player_id','season'])
+    roster_raw
+    [['player_id','player_name','position','team','age','entry_year','rookie_year','draft_number','season','game_type']]
+    .drop_duplicates(['player_id','season'])  # keeps REG row where available
+    .drop(columns=['game_type'])
+    .reset_index(drop=True)
 )
 print(f'Roster rows: {len(roster):,}')
+
+# Sanity check
+cw = roster[roster['player_name'].str.contains('Caleb Williams', na=False)]
+print('Caleb Williams in roster:', cw[['player_name','season','team','age']].to_string())
 
 # =========
 

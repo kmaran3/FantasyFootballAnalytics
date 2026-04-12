@@ -53,7 +53,6 @@
         <a href="{{ url_for('main.get_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}">PPR</a>
         <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}">Half PPR</a>
         <a href="{{ url_for('main.get_standard_rankings') }}" class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}">Standard</a>
-        <a href="{{ url_for('main.get_new_model_rankings') }}" class="ranking-type-btn {% if table_type == 'New Model (PPR)' %}active{% endif %}">New Model</a>
     </div>
 </div>
 
@@ -106,6 +105,46 @@
     {% endif %}
 </div>
 
+<style>
+.col-info {
+    position: relative;
+    display: inline-block;
+    margin-left: 4px;
+    cursor: default;
+}
+.col-info-icon {
+    font-size: 0.75em;
+    opacity: 0.6;
+    vertical-align: super;
+}
+.col-info:hover .col-info-icon {
+    opacity: 1;
+}
+.col-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #222;
+    color: #fff;
+    font-size: 0.78em;
+    font-weight: normal;
+    padding: 6px 10px;
+    border-radius: 5px;
+    width: 220px;
+    white-space: normal;
+    z-index: 9999;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    pointer-events: none;
+    line-height: 1.4;
+    margin-top: 4px;
+}
+.col-info:hover .col-tooltip {
+    display: block;
+}
+</style>
+
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 
@@ -114,6 +153,29 @@ var playerDetails = {{ player_details_json | safe }};
 var teamSchedule  = {{ team_schedule_json  | safe }};
 
 $(document).ready(function() {
+    // ── Column info tooltips ───────────────────────────────────────────────
+    var colTooltips = {
+        'Predicted PPG':  'ML model projection of fantasy points per game for the 2026 season, based on historical performance, age trajectory, and usage trends.',
+        'VBD':            'Value Over Baseline — how much better a player scores compared to the last startable player at their position. Higher VBD = more value over a replacement-level player.',
+        'ADP':            'Average Draft Position from Sleeper — where the fantasy community is drafting this player on average.',
+        'vs ADP':         'Difference between our model rank and Sleeper ADP. Positive (+) means we rank the player higher than consensus. Negative (−) means we are lower on them.',
+        'Weighted PPG':   'Average fantasy points per game across recent seasons, weighted to give stronger emphasis to more recent performance.',
+        '2025 PPG':       'Actual fantasy points per game scored during the 2025 NFL season, adjusted for the selected scoring format (PPR / Half PPR / Standard).'
+    };
+
+    $('#sortable-table thead th').each(function() {
+        var header = $(this).text().trim();
+        if (colTooltips[header]) {
+            $(this).css('white-space', 'nowrap');
+            $(this).append(
+                $('<span class="col-info">').attr('title', '').append(
+                    $('<span class="col-info-icon">').text('ⓘ'),
+                    $('<span class="col-tooltip">').text(colTooltips[header])
+                )
+            );
+        }
+    });
+
     // ── Column index resolution ────────────────────────────────────────────
     var posColIndex  = -1;
     var nameColIndex = -1;

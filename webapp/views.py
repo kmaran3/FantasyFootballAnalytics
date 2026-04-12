@@ -226,31 +226,142 @@ except Exception as e:
     print(f'Warning: could not load nflreadpy stats: {e}')
 
 
+# ── Sleeper ADP ───────────────────────────────────────────────────────
+import re as _re
+
+def _normalize_name(name):
+    n = str(name).lower().strip()
+    n = _re.sub(r'\s+(jr\.?|sr\.?|ii|iii|iv)$', '', n)
+    n = _re.sub(r'[^a-z\s]', '', n)
+    return n.strip()
+
+def _fetch_sleeper_adp():
+    try:
+        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=15)
+        resp.raise_for_status()
+        players = resp.json()
+        records = []
+        for p in players.values():
+            pos = p.get('fantasy_positions') or []
+            if not any(x in pos for x in ('QB', 'RB', 'WR', 'TE')):
+                continue
+            rank = p.get('search_rank')
+            if rank is None or rank == 9999999:
+                continue
+            name = p.get('full_name', '')
+            if not name:
+                continue
+            records.append({'player_name': name, 'name_key': _normalize_name(name), 'adp_rank': int(rank)})
+        df = pd.DataFrame(records).sort_values('adp_rank').reset_index(drop=True)
+        print(f'Sleeper ADP loaded: {len(df)} players')
+        return df
+    except Exception as e:
+        print(f'Warning: could not fetch Sleeper ADP: {e}')
+        return pd.DataFrame(columns=['player_name', 'name_key', 'adp_rank'])
+
+_sleeper_adp = _fetch_sleeper_adp()
+
 # ── New model predictions (Phase 3) ──────────────────────────────────
-def _load_new_model_rankings():
+_BASELINES = {'QB': 13, 'RB': 37, 'WR': 37, 'TE': 13}
+
+def _load_model_rankings(scoring='ppr'):
+    """
+    scoring: 'ppr' | 'half_ppr' | 'standard'
+    Half PPR subtracts 0.5 * rec_pg from PPR predicted PPG.
+    Standard subtracts 1.0 * rec_pg.
+    VBD is recalculated per scoring type.
+    """
     try:
         _new_model_dir = _BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel'
         combined = pd.read_pickle(_new_model_dir / 'combined_predictions_ppr.pkl')
+
+        # Build rec_pg lookup from 2025 feature data (RB/WR/TE only; QB gets 0)
+        rec_frames = []
+        for pos in ('rb', 'wr', 'te'):
+            feat = pd.read_pickle(_new_model_dir / f'{pos}_features.pkl')
+            feat = feat[feat['season'] == feat['season'].max()][['player_name', 'receptions_pg']].copy()
+            rec_frames.append(feat)
+        rec_lookup = pd.concat(rec_frames, ignore_index=True).drop_duplicates('player_name')
+        combined = combined.merge(rec_lookup, on='player_name', how='left')
+        combined['receptions_pg'] = combined['receptions_pg'].fillna(0)
+
+        # Adjust predicted PPG for scoring format
+        if scoring == 'half_ppr':
+            rec_deduct = 0.5
+        elif scoring == 'standard':
+            rec_deduct = 1.0
+        else:
+            rec_deduct = 0.0
+        combined['predicted_ppg_2026'] = combined['predicted_ppg_2026'] - rec_deduct * combined['receptions_pg']
+        combined['weighted_ppg']       = combined['weighted_ppg']       - rec_deduct * combined['receptions_pg']
+        combined['ppg']                = combined['ppg']                - rec_deduct * combined['receptions_pg']
+
+        # Recalculate VBD for this scoring format
+        baseline_ppg = {}
+        for pos, n in _BASELINES.items():
+            pos_df = combined[combined['position'] == pos].sort_values('predicted_ppg_2026', ascending=False).reset_index(drop=True)
+            if len(pos_df) >= n:
+                baseline_ppg[pos] = pos_df.loc[n - 1, 'predicted_ppg_2026']
+            elif not pos_df.empty:
+                baseline_ppg[pos] = pos_df.iloc[-1]['predicted_ppg_2026']
+            else:
+                baseline_ppg[pos] = 0.0
+        combined['vbd'] = (combined['predicted_ppg_2026'] - combined['position'].map(baseline_ppg)).round(2)
+        combined = combined.sort_values('vbd', ascending=False).reset_index(drop=True)
+        combined['rank'] = combined.index + 1
+
+        # Join Sleeper ADP
+        if not _sleeper_adp.empty:
+            combined['name_key'] = combined['player_name'].apply(_normalize_name)
+            adp_slim = _sleeper_adp[['name_key', 'adp_rank']].drop_duplicates('name_key')
+            combined = combined.merge(adp_slim, on='name_key', how='left')
+        else:
+            combined['adp_rank'] = None
+
         combined = combined.rename(columns={
-            'player_name': 'Name',
-            'position':    'Position',
-            'team':        'Team',
+            'player_name':        'Name',
+            'position':           'Position',
+            'team':               'Team',
             'predicted_ppg_2026': 'Predicted PPG',
-            'weighted_ppg': 'Weighted PPG',
-            'ppg':         '2025 PPG',
+            'weighted_ppg':       'Weighted PPG',
+            'ppg':                '2025 PPG',
+            'vbd':                'VBD',
+            'adp_rank':           'ADP',
         })
         combined['Predicted PPG'] = combined['Predicted PPG'].round(2)
         combined['Weighted PPG']  = combined['Weighted PPG'].round(2)
         combined['2025 PPG']      = combined['2025 PPG'].round(2)
-        combined['Age']           = combined['age'].fillna('').apply(lambda x: int(x) if x != '' else '')
-        combined = combined[['rank','Name','Position','Team','Age','Predicted PPG','Weighted PPG','2025 PPG','strategy']].copy()
-        combined = combined.rename(columns={'rank': 'Rank', 'strategy': 'Model'})
+        combined['Age']           = combined['age'].apply(lambda x: int(x) if pd.notna(x) and x != '' else '')
+        combined['rank']          = combined['rank'].astype(int)
+
+        # vs ADP: positive = we rank higher than consensus, negative = lower
+        def _adp_diff(row):
+            try:
+                diff = int(row['ADP']) - int(row['rank'])
+                return f'+{diff}' if diff > 0 else str(diff)
+            except (TypeError, ValueError):
+                return 'N/A'
+        combined['vs ADP'] = combined.apply(_adp_diff, axis=1)
+        combined['ADP'] = combined['ADP'].apply(lambda x: int(x) if pd.notna(x) else 'N/A')
+
+        combined = combined[['rank', 'Name', 'Position', 'Team', 'Age', 'Predicted PPG', 'VBD', 'ADP', 'vs ADP', 'Weighted PPG', '2025 PPG']].copy()
+        combined = combined.rename(columns={'rank': 'Rank'})
+        print(f'Model rankings ({scoring}) loaded: {len(combined)} players')
         return combined
     except Exception as e:
-        print(f'Warning: could not load new model predictions: {e}')
+        import traceback
+        print(f'Warning: could not load model predictions ({scoring}): {e}')
+        traceback.print_exc()
         return pd.DataFrame()
 
-_new_model_rankings = _load_new_model_rankings()
+_model_data = {
+    'ppr':      _load_model_rankings('ppr'),
+    'half_ppr': _load_model_rankings('half_ppr'),
+    'standard': _load_model_rankings('standard'),
+}
+_model_table = {k: v.to_dict(orient='records') if not v.empty else [] for k, v in _model_data.items()}
+for k, v in _model_table.items():
+    print(f'Model table ({k}): {len(v)} rows')
 
 # ── Helpers shared by composite grades and roster stats ───────────
 import math as _math
@@ -635,51 +746,31 @@ def rankings():
 @main.route('/rankings/ppr')
 @login_required
 def get_ppr_rankings():
-    with engine.connect() as connection:
-        df = pd.read_sql(text('SELECT * FROM Full_PPR'), con=connection)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
-    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='PPR',
-                           user_rankings=saved, player_details_json=pd_json,
-                           team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
+    return render_template('rankings.html', table_data=_model_table['ppr'], table_type='PPR',
+                           user_rankings=saved, player_details_json='{}',
+                           team_schedule_json='{}', teams=[], bye_weeks=[])
 
 @main.route('/rankings/half-ppr')
 @login_required
 def get_half_ppr_rankings():
-    with engine.connect() as connection:
-        df = pd.read_sql(text('SELECT * FROM Half_PPR'), con=connection)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
-    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Half PPR',
-                           user_rankings=saved, player_details_json=pd_json,
-                           team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
+    return render_template('rankings.html', table_data=_model_table['half_ppr'], table_type='Half PPR',
+                           user_rankings=saved, player_details_json='{}',
+                           team_schedule_json='{}', teams=[], bye_weeks=[])
 
 @main.route('/rankings/standard')
 @login_required
 def get_standard_rankings():
-    with engine.connect() as connection:
-        df = pd.read_sql(text('SELECT * FROM Non_PPR'), con=connection)
     saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    pd_json, ts_json, teams, bye_weeks = _ranking_extras(df)
-    return render_template('rankings.html', table_data=df.to_dict(orient='records'), table_type='Standard',
-                           user_rankings=saved, player_details_json=pd_json,
-                           team_schedule_json=ts_json, teams=teams, bye_weeks=bye_weeks)
+    return render_template('rankings.html', table_data=_model_table['standard'], table_type='Standard',
+                           user_rankings=saved, player_details_json='{}',
+                           team_schedule_json='{}', teams=[], bye_weeks=[])
 
 @main.route('/rankings/new-model')
 @login_required
 def get_new_model_rankings():
-    import math
-    saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
-    if _new_model_rankings.empty:
-        table_data = []
-    else:
-        table_data = [
-            {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
-            for row in _new_model_rankings.to_dict(orient='records')
-        ]
-    return render_template('rankings.html', table_data=table_data, table_type='New Model (PPR)',
-                           user_rankings=saved, player_details_json='{}',
-                           team_schedule_json='{}', teams=[], bye_weeks={})
+    return redirect(url_for('main.get_ppr_rankings'))
 
 @main.route('/save_rankings', methods=['POST'])
 @login_required
