@@ -950,6 +950,181 @@ def player_stats():
     })
 
 
+@main.route('/player_quick_stats')
+@login_required
+def player_quick_stats():
+    name = request.args.get('name', '').strip()
+    pos  = request.args.get('pos', '').strip().upper()
+    team = request.args.get('team', '').strip().upper()
+
+    if not name:
+        return jsonify({})
+
+    # Look up espn_id and bio from teamsPastRoster.pkl
+    espn_id = None
+    bio = {}
+    try:
+        roster_path = Path(app.root_path) / 'data' / 'teamsPastRoster.pkl'
+        if roster_path.exists():
+            roster_df = pd.read_pickle(roster_path)
+            match = roster_df[roster_df['Player'] == name]
+            if not match.empty:
+                _r = match.iloc[0]
+                raw_id = _r['espn_id']
+                if raw_id is not None and str(raw_id) not in ('', 'nan', 'None'):
+                    espn_id = str(raw_id)
+                def _sv(v):
+                    return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
+                bio = {
+                    'Team':             _sv(_r.get('Team')),
+                    'Position':         _sv(_r.get('Pos')),
+                    'Height':           _sv(_r.get('height')),
+                    'Weight':           _sv(_r.get('weight')),
+                    'Birth Date':       _sv(_r.get('BirthDate')),
+                    'College':          _sv(_r.get('College')),
+                    'Rookie Season':    _sv(_r.get('RookieSeason')),
+                    'Experience (yrs)': _sv(_r.get('ExperienceYears')),
+                    'Jersey #':         _sv(_r.get('Jersey')),
+                    'Draft Year':       _sv(_r.get('DraftYear')),
+                    'Round':            _sv(_r.get('DraftRound')),
+                    'Pick':             _sv(_r.get('DraftPick')),
+                    'Draft Team':       _sv(_r.get('DraftTeam')),
+                }
+    except Exception as _e:
+        print(f'Warning: could not look up espn_id: {_e}')
+
+    # Get 2025 stats from _nfl_seasonal
+    stats = {}
+    fantasy_points = None
+    games = None
+    if not _nfl_seasonal.empty:
+        player_rows = _nfl_seasonal[
+            (_nfl_seasonal['player_display_name'] == name) &
+            (_nfl_seasonal['season'] == 2025)
+        ]
+        if not player_rows.empty:
+            row = player_rows.iloc[0]
+            def _gs(col):
+                v = row.get(col)
+                if v is None:
+                    return None
+                try:
+                    import math as _m
+                    f = float(v)
+                    return None if _m.isnan(f) or _m.isinf(f) else (int(f) if f == int(f) else round(f, 1))
+                except (TypeError, ValueError):
+                    return None
+
+            games = _gs('games')
+            fpp = _gs('fantasy_points_ppr')
+            fantasy_points = fpp
+
+            if pos == 'QB':
+                stats = {
+                    'completions': _gs('completions'),
+                    'attempts': _gs('attempts'),
+                    'passing_yards': _gs('passing_yards'),
+                    'passing_tds': _gs('passing_tds'),
+                    'passing_interceptions': _gs('passing_interceptions'),
+                    'rushing_yards': _gs('rushing_yards'),
+                    'rushing_tds': _gs('rushing_tds'),
+                    'games': games,
+                }
+            elif pos == 'RB':
+                stats = {
+                    'carries': _gs('carries'),
+                    'rushing_yards': _gs('rushing_yards'),
+                    'rushing_tds': _gs('rushing_tds'),
+                    'receptions': _gs('receptions'),
+                    'targets': _gs('targets'),
+                    'receiving_yards': _gs('receiving_yards'),
+                    'receiving_tds': _gs('receiving_tds'),
+                    'games': games,
+                }
+            else:  # WR / TE
+                stats = {
+                    'receptions': _gs('receptions'),
+                    'targets': _gs('targets'),
+                    'receiving_yards': _gs('receiving_yards'),
+                    'receiving_tds': _gs('receiving_tds'),
+                    'games': games,
+                }
+
+    # Get ranking info from _model_table['ppr']
+    ranking = {}
+    for row in _model_table.get('ppr', []):
+        if row.get('Name') == name:
+            ranking = {
+                'predicted_ppg': row.get('Predicted PPG'),
+                'vbd': row.get('VBD'),
+                'adp': row.get('ADP'),
+            }
+            break
+
+    return jsonify({
+        'espn_id': espn_id,
+        'bio': bio,
+        'stats': stats,
+        'fantasy_points': fantasy_points,
+        'ranking': ranking,
+    })
+
+
+@main.route('/player/<path:name>')
+@login_required
+def player_profile(name):
+    pos     = request.args.get('pos', '').strip().upper()
+    team    = request.args.get('team', '').strip().upper()
+    compare = request.args.get('compare', 'false').lower() == 'true'
+    back_url = request.args.get('back', '/rankings/ppr')
+
+    # Look up player bio from teamsPastRoster.pkl
+    espn_id = None
+    player_bio = {}
+    try:
+        roster_path = Path(app.root_path) / 'data' / 'teamsPastRoster.pkl'
+        if roster_path.exists():
+            roster_df = pd.read_pickle(roster_path)
+            match = roster_df[roster_df['Player'] == name]
+            if not match.empty:
+                row = match.iloc[0]
+                raw_id = row.get('espn_id')
+                if raw_id is not None and str(raw_id) not in ('', 'nan', 'None'):
+                    espn_id = str(raw_id)
+                def _sv(v):
+                    return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
+                player_bio = {
+                    'Team':         _sv(row.get('Team')),
+                    'Position':     _sv(row.get('Pos')),
+                    'Height':       _sv(row.get('height')),
+                    'Weight':       _sv(row.get('weight')),
+                    'Birth Date':   _sv(row.get('BirthDate')),
+                    'College':      _sv(row.get('College')),
+                    'Rookie Season':_sv(row.get('RookieSeason')),
+                    'Experience (yrs)': _sv(row.get('ExperienceYears')),
+                    'Jersey #':     _sv(row.get('Jersey')),
+                    'Draft Year':   _sv(row.get('DraftYear')),
+                    'Round':        _sv(row.get('DraftRound')),
+                    'Pick':         _sv(row.get('DraftPick')),
+                    'Draft Team':   _sv(row.get('DraftTeam')),
+                }
+    except Exception as _e:
+        print(f'Warning: could not look up player bio: {_e}')
+
+    return render_template(
+        'player_profile.html',
+        player_name=name,
+        pos=pos,
+        team=team,
+        espn_id=espn_id or '',
+        player_bio=player_bio,
+        roster_stats_json=json.dumps(_roster_stats),
+        fp_thresholds_json=json.dumps(_fp_thresholds),
+        back_url=back_url,
+        compare=compare,
+    )
+
+
 @main.route('/mockdraft')
 @login_required
 def mock_draft():
@@ -961,19 +1136,17 @@ def mock_draft():
 def mockdraft_players():
     import math
     scoring = request.args.get('scoring', 'ppr')
-    table_map = {'ppr': 'Full_PPR', 'half_ppr': 'Half_PPR', 'standard': 'Non_PPR'}
-    table_name = table_map.get(scoring, 'Full_PPR')
-    with engine.connect() as connection:
-        df = pd.read_sql(text(f'SELECT * FROM {table_name}'), con=connection)
-    # Normalize position strings: 'WR1' -> 'WR', 'RB2' -> 'RB', etc.
-    df['Position'] = df['Position'].str.replace(r'\d+$', '', regex=True).str.strip()
-    # Exclude K and DEF
-    df = df[~df['Position'].isin(['K', 'DEF', 'DST'])]
-    # Replace NaN with None so jsonify produces valid JSON (not literal NaN)
-    players = [
-        {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
-        for row in df.to_dict(orient='records')
-    ]
+    records = _model_table.get(scoring) or _model_table.get('ppr') or []
+    if not records:
+        return jsonify([])
+    players = []
+    for row in records:
+        pos = (row.get('Position') or '').replace(r'\d+$', '').strip().upper()
+        import re
+        pos = re.sub(r'\d+$', '', pos).strip()
+        if pos in ('K', 'DEF', 'DST'):
+            continue
+        players.append({k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()})
     return jsonify(players)
 
 

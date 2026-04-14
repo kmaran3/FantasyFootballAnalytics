@@ -158,7 +158,7 @@ function startDraft() {
 
   $('#startDraftBtn').prop('disabled', true).text('Loading...');
 
-  $.get('/mockdraft/players', { scoring: S.scoring }, function (data) {
+  $.ajax({ url: '/mockdraft/players', data: { scoring: S.scoring }, cache: false, success: function (data) {
     // Normalize positions: strip trailing numbers ('WR5' → 'WR', 'RB12' → 'RB')
     data.forEach(p => { p['Position'] = (p['Position'] || '').replace(/\d+$/, '').trim().toUpperCase(); });
     S.players  = data;
@@ -185,7 +185,7 @@ function startDraft() {
       buildAuctionYourTeam();
       setTimeout(runNextNomination, 600);
     }
-  }).fail(function () {
+  }}).fail(function () {
     $('#startDraftBtn').prop('disabled', false).text('Start Draft');
     alert('Failed to load players. Please try again.');
   });

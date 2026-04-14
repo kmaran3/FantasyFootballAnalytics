@@ -143,14 +143,183 @@
 .col-info:hover .col-tooltip {
     display: block;
 }
+
+/* ── Deep dive panel styles ── */
+.dd-content {
+    padding: 12px 16px;
+    background: #162535;
+    border-radius: 6px;
+    display: flex;
+    align-items: stretch;
+    gap: 16px;
+}
+.dd-loading {
+    color: #a8dadc;
+    font-size: 0.9em;
+    padding: 10px 0;
+}
+.dd-col-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 110px;
+    flex-shrink: 0;
+}
+.dd-headshot {
+    width: 90px;
+    height: 90px;
+    object-fit: contain;
+    border-radius: 6px;
+    display: block;
+}
+.dd-player-name {
+    font-size: 0.95em;
+    font-weight: 700;
+    color: #f1faee;
+    text-align: center;
+}
+.dd-badges {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.dd-badge {
+    font-size: 0.72em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+.dd-badge-pos { background: #1e5555; color: #a8dadc; }
+.dd-badge-team { background: #223344; color: #f1faee; }
+/* divider between left and rest */
+.dd-divider {
+    width: 1px;
+    background: #1e3a4a;
+    flex-shrink: 0;
+    align-self: stretch;
+}
+/* stat cards grid fills remaining space */
+.dd-col-mid {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 6px;
+}
+.dd-section-title {
+    font-size: 0.78em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #a8dadc;
+    margin-bottom: 6px;
+}
+.dd-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    flex: 1;
+    align-content: stretch;
+}
+.dd-stat-card {
+    background: #1a2f3f;
+    border-radius: 5px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+.dd-stat-card-label {
+    font-size: 0.78em;
+    color: #6b8fa3;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+.dd-stat-card-val {
+    font-size: 1.35em;
+    font-weight: 700;
+    color: #f1faee;
+    margin-top: 3px;
+    line-height: 1;
+}
+.dd-fp-card {
+    background: #1e3a4a;
+    border-left: 3px solid #2d8b8b;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.82em;
+    color: #a8dadc;
+    margin-top: 4px;
+}
+.dd-fp-card b { color: #f1faee; }
+/* model metrics on the right */
+.dd-col-right {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 110px;
+}
+.dd-metric-card {
+    background: #1a2f3f;
+    border-radius: 5px;
+    padding: 6px 10px;
+    text-align: center;
+    flex: 1;
+}
+.dd-metric-label {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b8fa3;
+}
+.dd-metric-val {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #2d8b8b;
+    margin-top: 4px;
+    line-height: 1;
+}
+.dd-na {
+    color: #6b8fa3;
+    font-size: 0.85em;
+    font-style: italic;
+}
+.dd-action-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+.dd-action-btn {
+    display: block;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    text-align: center;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+}
+.dd-action-btn:hover { opacity: 0.85; }
+.dd-btn-primary { background: #2d8b8b; color: #f1faee; }
+.dd-btn-secondary { background: #1e5555; color: #a8dadc; border: 1px solid #2d8b8b; }
 </style>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 
 <script>
-var playerDetails = {{ player_details_json | safe }};
-var teamSchedule  = {{ team_schedule_json  | safe }};
+var playerDetails = {};
+var teamSchedule  = {};
 
 $(document).ready(function() {
     // ── Column info tooltips ───────────────────────────────────────────────
@@ -308,87 +477,134 @@ $(document).ready(function() {
     });
 
     // ── Deep dive helpers ──────────────────────────────────────────────────
-    function buildStatsRows(details) {
-        var s   = details.stats || {};
-        var pos = (details.position || '').toUpperCase();
-        var html = '';
+    function ddFmt(v) { return (v !== null && v !== undefined) ? v : '—'; }
+    function ddCalc(num, den, decimals) {
+        if (!num || !den || den === 0) return '—';
+        return (num / den).toFixed(decimals || 1);
+    }
 
-        html += '<div class="dd-stats-row">';
-        html += '<span class="dd-stat"><b>GP:</b> ' + (s.GP || 0) + '</span>';
-        html += '<span class="dd-stat"><b>Fantasy Pts:</b> ' + (s.fantasy_points || 0) + '</span>';
-        html += '</div>';
-
-        html += '<div class="dd-stats-row">';
+    function buildStatCards(stats, pos, fp) {
+        var cards = [];
         if (pos === 'QB') {
-            html += '<span class="dd-stat"><b>Comp/Att:</b> ' + (s.completions||0) + '/' + (s.attempts||0) + '</span>';
-            html += '<span class="dd-stat"><b>Pass Yds:</b> ' + (s.passing_yards||0) + '</span>';
-            html += '<span class="dd-stat"><b>Pass TDs:</b> ' + (s.passing_tds||0) + '</span>';
-            html += '<span class="dd-stat"><b>INTs:</b> ' + (s.interceptions||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rush Yds:</b> ' + (s.rushing_yards||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rush TDs:</b> ' + (s.rushing_tds||0) + '</span>';
+            var compPct = (stats.attempts > 0) ? ((stats.completions / stats.attempts) * 100).toFixed(1) + '%' : '—';
+            var ypa     = ddCalc(stats.passing_yards, stats.attempts, 1);
+            cards = [
+                ['GP',       ddFmt(stats.games)],
+                ['Comp%',    compPct],
+                ['Pass Yds', ddFmt(stats.passing_yards)],
+                ['Yds/Att',  ypa],
+                ['Pass TD',  ddFmt(stats.passing_tds)],
+                ['INT',      ddFmt(stats.passing_interceptions)],
+                ['Rush Yds', ddFmt(stats.rushing_yards)],
+                ['Rush TD',  ddFmt(stats.rushing_tds)],
+                ['Fant Pts', fp !== null && fp !== undefined ? fp.toFixed(1) : '—'],
+            ];
         } else if (pos === 'RB') {
-            html += '<span class="dd-stat"><b>Carries:</b> ' + (s.carries||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rush Yds:</b> ' + (s.rushing_yards||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rush TDs:</b> ' + (s.rushing_tds||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rec:</b> ' + (s.receptions||0) + '</span>';
-            html += '<span class="dd-stat"><b>Tgts:</b> ' + (s.targets||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rec Yds:</b> ' + (s.receiving_yards||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rec TDs:</b> ' + (s.receiving_tds||0) + '</span>';
-        } else if (pos === 'WR' || pos === 'TE') {
-            html += '<span class="dd-stat"><b>Tgts:</b> ' + (s.targets||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rec:</b> ' + (s.receptions||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rec Yds:</b> ' + (s.receiving_yards||0) + '</span>';
-            html += '<span class="dd-stat"><b>Rec TDs:</b> ' + (s.receiving_tds||0) + '</span>';
-            if (s.carries && s.carries > 0) {
-                html += '<span class="dd-stat"><b>Rush Yds:</b> ' + (s.rushing_yards||0) + '</span>';
-            }
+            var ypc = ddCalc(stats.rushing_yards, stats.carries, 1);
+            var ypt = ddCalc(stats.receiving_yards, stats.targets, 1);
+            cards = [
+                ['GP',       ddFmt(stats.games)],
+                ['Carries',  ddFmt(stats.carries)],
+                ['Rush Yds', ddFmt(stats.rushing_yards)],
+                ['Yds/Car',  ypc],
+                ['Rush TD',  ddFmt(stats.rushing_tds)],
+                ['Rec',      ddFmt(stats.receptions)],
+                ['Targets',  ddFmt(stats.targets)],
+                ['Rec Yds',  ddFmt(stats.receiving_yards)],
+                ['Fant Pts', fp !== null && fp !== undefined ? fp.toFixed(1) : '—'],
+            ];
         } else {
-            html = '<span class="dd-na">Detailed stats not available for this position.</span>';
+            var catchPct = (stats.targets > 0) ? ((stats.receptions / stats.targets) * 100).toFixed(1) + '%' : '—';
+            var ypr      = ddCalc(stats.receiving_yards, stats.receptions, 1);
+            var ypt2     = ddCalc(stats.receiving_yards, stats.targets, 1);
+            cards = [
+                ['GP',       ddFmt(stats.games)],
+                ['Targets',  ddFmt(stats.targets)],
+                ['Rec',      ddFmt(stats.receptions)],
+                ['Catch%',   catchPct],
+                ['Rec Yds',  ddFmt(stats.receiving_yards)],
+                ['Yds/Rec',  ypr],
+                ['Yds/Tgt',  ypt2],
+                ['Rec TD',   ddFmt(stats.receiving_tds)],
+                ['Fant Pts', fp !== null && fp !== undefined ? fp.toFixed(1) : '—'],
+            ];
         }
+        var html = '<div class="dd-stat-grid">';
+        cards.forEach(function(c) {
+            html += '<div class="dd-stat-card">'
+                  + '<div class="dd-stat-card-label">' + c[0] + '</div>'
+                  + '<div class="dd-stat-card-val">' + c[1] + '</div>'
+                  + '</div>';
+        });
         html += '</div>';
         return html;
     }
 
-    function buildDeepDiveHTML(name, team) {
-        var details  = playerDetails[name] || null;
-        var schedule = teamSchedule[team]  || [];
-        var html = '<div class="dd-content">';
+    function loadDeepDive(panel, playerName, playerPos, playerTeam) {
+        var currentUrl = window.location.href;
+        var encodedName = encodeURIComponent(playerName);
+        var encodedPos  = encodeURIComponent(playerPos);
+        var encodedTeam = encodeURIComponent(playerTeam);
+        var encodedBack = encodeURIComponent(currentUrl);
 
-        html += '<div class="dd-header">';
-        html += '<span class="dd-player-name">' + name + '</span>';
-        if (details) {
-            html += '<span class="dd-badge">Age: ' + (details.age !== null ? details.age : 'N/A') + '</span>';
-            html += '<span class="dd-badge">' + (details.position || '') + '</span>';
-        }
-        html += '</div>';
+        panel.html('<div class="dd-content"><div class="dd-loading">Loading...</div></div>');
 
-        html += '<div class="dd-section">';
-        if (details && details.stats_year && Object.keys(details.stats).length > 0) {
-            html += '<div class="dd-section-title">' + details.stats_year + ' Season Stats</div>';
-            html += buildStatsRows(details);
-        } else {
-            html += '<div class="dd-section-title">Last Season Stats</div>';
-            html += '<span class="dd-na">Stats not available for this player.</span>';
-        }
-        html += '</div>';
+        fetch('/player_quick_stats?name=' + encodedName + '&pos=' + encodedPos + '&team=' + encodedTeam)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var espnId   = data.espn_id || '';
+                var stats    = data.stats || {};
+                var fp       = data.fantasy_points;
+                var ranking  = data.ranking || {};
 
-        html += '<div class="dd-section">';
-        html += '<div class="dd-section-title">2024 Season — First 5 Games</div>';
-        if (schedule.length > 0) {
-            html += '<div class="dd-schedule">';
-            for (var i = 0; i < schedule.length; i++) {
-                var g = schedule[i];
-                var label = (g.home_away === 'home' ? 'vs ' : '@ ') + g.opponent;
-                html += '<span class="dd-game"><b>Wk ' + g.week + '</b> ' + label + '</span>';
-            }
-            html += '</div>';
-        } else {
-            html += '<span class="dd-na">Schedule not available.</span>';
-        }
-        html += '</div>';
+                var profileUrl = '/player/' + encodedName + '?pos=' + encodedPos + '&team=' + encodedTeam + '&back=' + encodedBack;
+                var compareUrl = '/player/' + encodedName + '?pos=' + encodedPos + '&team=' + encodedTeam + '&compare=true&back=' + encodedBack;
 
-        html += '</div>';
-        return html;
+                var html = '<div class="dd-content">';
+
+                // Left: headshot + name + badges + buttons
+                html += '<div class="dd-col-left">';
+                if (espnId) {
+                    html += '<img class="dd-headshot" src="https://a.espncdn.com/i/headshots/nfl/players/full/' + espnId + '.png"'
+                          + ' alt="" onerror="this.style.display=\'none\'">';
+                }
+                html += '<div class="dd-player-name">' + playerName + '</div>';
+                html += '<div class="dd-badges"><span class="dd-badge dd-badge-pos">' + playerPos + '</span>'
+                      + '<span class="dd-badge dd-badge-team">' + playerTeam + '</span></div>';
+                html += '<div class="dd-action-row">'
+                      + '<a class="dd-action-btn dd-btn-primary" href="' + profileUrl + '">Full Profile &rarr;</a>'
+                      + '<a class="dd-action-btn dd-btn-secondary" href="' + compareUrl + '">Compare &rarr;</a>'
+                      + '</div>';
+                html += '</div>';
+
+                html += '<div class="dd-divider"></div>';
+
+                // Middle: stat cards grid
+                html += '<div class="dd-col-mid">';
+                html += '<div class="dd-section-title">2025 Season Stats</div>';
+                if (Object.keys(stats).length > 0) {
+                    html += buildStatCards(stats, playerPos, fp);
+                } else {
+                    html += '<span class="dd-na">No 2025 stats available.</span>';
+                }
+                html += '</div>';
+
+                html += '<div class="dd-divider"></div>';
+
+                // Right: model metric cards
+                html += '<div class="dd-col-right">';
+                html += '<div class="dd-section-title">2026 Projection</div>';
+                html += '<div class="dd-metric-card"><div class="dd-metric-label">Pred PPG</div><div class="dd-metric-val">' + (ranking.predicted_ppg != null ? ranking.predicted_ppg : '—') + '</div></div>';
+                html += '<div class="dd-metric-card"><div class="dd-metric-label">VBD</div><div class="dd-metric-val">' + (ranking.vbd != null ? ranking.vbd : '—') + '</div></div>';
+                html += '<div class="dd-metric-card"><div class="dd-metric-label">ADP</div><div class="dd-metric-val">' + (ranking.adp != null ? ranking.adp : '—') + '</div></div>';
+                html += '</div>'; // end dd-col-right
+
+                html += '</div>'; // end dd-content
+                panel.html(html);
+            })
+            .catch(function() {
+                panel.html('<div class="dd-content"><span class="dd-na">Failed to load player data.</span></div>');
+            });
     }
 
     // ── Deep dive toggle (individual rows) ─────────────────────────────────
@@ -409,8 +625,9 @@ $(document).ready(function() {
         var panel = $deepDive.find('.deep-dive-panel');
         if (!panel.data('loaded')) {
             var playerName = $row.find('td').eq(nameColIndex).text().trim();
+            var playerPos  = $row.find('td').eq(posColIndex).text().trim().toUpperCase();
             var playerTeam = $row.find('td').eq(teamColIndex).text().trim();
-            panel.html(buildDeepDiveHTML(playerName, playerTeam));
+            loadDeepDive(panel, playerName, playerPos, playerTeam);
             panel.data('loaded', true);
         }
     });
@@ -424,10 +641,10 @@ $(document).ready(function() {
                 var $row  = $(this);
                 var panel = $row.next('.deep-dive-row').find('.deep-dive-panel');
                 if (!panel.data('loaded')) {
-                    panel.html(buildDeepDiveHTML(
-                        $row.find('td').eq(nameColIndex).text().trim(),
-                        $row.find('td').eq(teamColIndex).text().trim()
-                    ));
+                    var playerName = $row.find('td').eq(nameColIndex).text().trim();
+                    var playerPos  = $row.find('td').eq(posColIndex).text().trim().toUpperCase();
+                    var playerTeam = $row.find('td').eq(teamColIndex).text().trim();
+                    loadDeepDive(panel, playerName, playerPos, playerTeam);
                     panel.data('loaded', true);
                 }
             });

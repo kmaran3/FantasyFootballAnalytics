@@ -21,7 +21,7 @@
             <li><a href="{{ url_for('main.rankings') }}">Rankings</a></li>
             <li><a href="{{ url_for('main.mock_draft') }}">Mock Draft</a></li>
             <li><a href="{{ url_for('main.my_drafts') }}">My Drafts</a></li>
-            <li><a href="{{ url_for('main.rosters') }}">Rosters</a></li>
+            <li style="display:none"><a href="{{ url_for('main.rosters') }}">Rosters</a></li>
             <li><a href="{{ url_for('main.about') }}">About</a></li>
             <li><a href="{{ url_for('main.contact') }}">Contact</a></li>
             {% if current_user.is_authenticated %}
