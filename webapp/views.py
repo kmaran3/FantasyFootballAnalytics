@@ -363,6 +363,21 @@ _model_table = {k: v.to_dict(orient='records') if not v.empty else [] for k, v i
 for k, v in _model_table.items():
     print(f'Model table ({k}): {len(v)} rows')
 
+# ── Similarity model (Phase 4) ────────────────────────────────────
+import pickle as _pickle
+
+_similarity_comps = {}
+_umap_coords_json = '[]'
+try:
+    _sim_dir = _BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel'
+    with open(_sim_dir / 'similarity_comps.pkl', 'rb') as _f:
+        _similarity_comps = _pickle.load(_f)
+    _umap_df = pd.read_pickle(_sim_dir / 'umap_coords.pkl')
+    _umap_coords_json = _umap_df.to_json(orient='records')
+    print(f'Similarity model loaded: {len(_similarity_comps)} players, {len(_umap_df)} UMAP points')
+except Exception as _e:
+    print(f'Warning: could not load similarity model: {_e}')
+
 # ── Helpers shared by composite grades and roster stats ───────────
 import math as _math
 
@@ -771,6 +786,13 @@ def get_standard_rankings():
 @login_required
 def get_new_model_rankings():
     return redirect(url_for('main.get_ppr_rankings'))
+
+@main.route('/player-comps')
+@login_required
+def player_comps():
+    return render_template('player_comps.html',
+                           umap_coords_json=_umap_coords_json,
+                           similarity_comps_json=json.dumps(_similarity_comps))
 
 @main.route('/save_rankings', methods=['POST'])
 @login_required
