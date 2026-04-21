@@ -1,19 +1,177 @@
 {% extends 'base.html' %}
-
-{% block title %}Home{% endblock %}
+{% block title %}Darkhorse{% endblock %}
+{% block body_class %}home-body{% endblock %}
 
 {% block content %}
-    <h1>Darkhorse</h1>
-    <p><b><i>DOMINATE YOUR DRAFT AND RIDE TO THE CHAMPIONSHIP!</i></b></p>
-    <img class="logo" src="{{ url_for('static', filename='images/flask_logo.png') }}" alt="Flask Logo">
-    <p>Darkhorse is an organization dedicated to revolutionizing 
-        the way fantasy football enthusiasts engage with their leagues. Leveraging 
-        cutting-edge data analytics and machine learning technologies, we provide
-        the most accurate and insightful analysis to help users dominate their fantasy 
-        football drafts and seasons. Our platform offers a suite of powerful tools, including 
-        easily maneuverable player rankings, up-to-date player news, interactive mock drafts, 
-        and comprehensive betting odds. At Darkhorse Fantasy, our mission is to empower fantasy 
-        football managers with the best resources to achieve championship success. </p>
-    
+<style>
+.home-body { background: #080f18; }
+
+.home-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 72px 24px 40px;
+    text-align: center;
+}
+
+.hero-title {
+    font-size: 3em;
+    font-weight: 800;
+    color: #f1faee;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.hero-title span { color: #a8dadc; }
+
+.hero-sub {
+    font-size: 1em;
+    color: #7aafc0;
+    margin: 0;
+    font-family: monospace;
+}
+
+/* ── Stat bar ── */
+.stat-bar {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    border-top: 1px solid #1e3a4a;
+    border-bottom: 1px solid #1e3a4a;
+    background: rgba(14,28,44,0.7);
+    padding: 0;
+}
+.stat-item {
+    flex: 1;
+    max-width: 200px;
+    padding: 20px 24px;
+    text-align: center;
+    border-right: 1px solid #1e3a4a;
+}
+.stat-item:last-child { border-right: none; }
+.stat-val {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: #a8dadc;
+    font-family: monospace;
+    line-height: 1;
+}
+.stat-label {
+    font-size: 0.68em;
+    color: #7aafc0;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 4px;
+}
+
+/* ── Feature grid ── */
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: #1e3a4a;
+    margin: 48px 40px;
+    border: 1px solid #1e3a4a;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.feature-card {
+    background: #080f18;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.feature-icon {
+    font-size: 1.4em;
+    line-height: 1;
+}
+.feature-tag {
+    font-size: 0.65em;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: #7aafc0;
+    font-family: monospace;
+}
+.feature-name {
+    font-size: 1em;
+    font-weight: 700;
+    color: #f1faee;
+}
+.feature-desc {
+    font-size: 0.78em;
+    color: #8ab8c8;
+    line-height: 1.5;
+}
+.feature-arrow {
+    margin-top: auto;
+    font-size: 0.75em;
+    color: #5a9aaa;
+    font-family: monospace;
+}
+.feature-card:hover .feature-arrow { color: #a8dadc; }
+
+/* ── Bottom strip ── */
+.home-footer-strip {
+    text-align: center;
+    padding: 20px;
+    font-size: 0.72em;
+    color: #3a6a7a;
+    font-family: monospace;
+    letter-spacing: 0.06em;
+}
+</style>
+
+<div class="home-hero">
+    <img src="{{ url_for('static', filename='images/flask_logo.png') }}" alt="Darkhorse" style="width:140px;height:140px;border-radius:50%;object-fit:cover;margin-bottom:24px;">
+    <h1 class="hero-title">Draft Smarter.<br><span>Win More.</span></h1>
+    <p class="hero-sub">ML-powered rankings &nbsp;·&nbsp; situational comps &nbsp;·&nbsp; live mock drafts</p>
+</div>
+
+<div class="stat-bar">
+    <div class="stat-item">
+        <div class="stat-val">300+</div>
+        <div class="stat-label">Players Ranked</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-val">4</div>
+        <div class="stat-label">Positions Modeled</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-val">5yr</div>
+        <div class="stat-label">Historical Comps</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-val">KNN</div>
+        <div class="stat-label">Similarity Engine</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-val">XGB</div>
+        <div class="stat-label">Prediction Model</div>
+    </div>
+</div>
+
+<div class="feature-grid">
+    <div class="feature-card">
+        <div class="feature-tag">&#x25A0; Rankings</div>
+        <div class="feature-name">ML Rankings</div>
+        <div class="feature-desc">XGBoost + Ridge model projections for all skill positions in PPR, Half PPR, and Standard formats.</div>
+    </div>
+    <div class="feature-card">
+        <div class="feature-tag">&#x25A0; Similarity</div>
+        <div class="feature-name">Player Comps</div>
+        <div class="feature-desc">KNN engine maps each player's 2026 entering situation to the closest historical profiles and projects their trajectory.</div>
+    </div>
+    <div class="feature-card">
+        <div class="feature-tag">&#x25A0; Draft</div>
+        <div class="feature-name">Mock Draft</div>
+        <div class="feature-desc">Simulate your draft with real ADP data and model-backed rankings to sharpen your strategy.</div>
+    </div>
+</div>
+
+<div class="home-footer-strip">DARKHORSE &nbsp;|&nbsp; 2026 SEASON &nbsp;|&nbsp; DATA-DRIVEN FANTASY</div>
 {% endblock %}
-    
