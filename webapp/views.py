@@ -1193,6 +1193,7 @@ def player_quick_stats():
 def player_profile(name):
     pos     = request.args.get('pos', '').strip().upper()
     team    = request.args.get('team', '').strip().upper()
+    team    = _norm_team(team)  # Normalize LA -> LAR, etc.
     compare = request.args.get('compare', 'false').lower() == 'true'
     back_url = request.args.get('back', '/rankings/ppr')
 
