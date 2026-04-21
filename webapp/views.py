@@ -30,10 +30,6 @@ _player_details_cache = None
 _team_schedule_cache = None
 
 
-def _normalize_team(team):
-    return _TEAM_ABBR_MAP.get(str(team), str(team))
-
-
 def _get_player_details():
     global _player_details_cache
     if _player_details_cache is not None:
@@ -148,8 +144,8 @@ def _get_team_schedule():
         team_games = {}
         for _, row in reg_df.iterrows():
             week = int(row['week'])
-            home = _normalize_team(row['home_team'])
-            away = _normalize_team(row['away_team'])
+            home = _norm_team(row['home_team'])
+            away = _norm_team(row['away_team'])
 
             team_games.setdefault(home, [])
             if len(team_games[home]) < 5:
