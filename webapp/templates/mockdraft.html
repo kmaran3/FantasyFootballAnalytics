@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+{% block title %}Mock Draft{% endblock %}
+{% block main_class %}mockdraft-main{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/mockdraft.css') }}">
+
+<!-- ═══════════════════ LOBBY ═══════════════════ -->
+<div id="lobby">
+  <div class="lobby-card">
+    <h1 class="lobby-title">Mock Draft</h1>
+
+    <div class="lobby-grid">
+      <!-- Col 1: Format -->
+      <div class="lobby-section">
+        <h3>Scoring Format</h3>
+        <div class="toggle-group" id="scoringToggle">
+          <button class="toggle-btn active" data-val="ppr">PPR</button>
+          <button class="toggle-btn" data-val="half_ppr">Half PPR</button>
+          <button class="toggle-btn" data-val="standard">Standard</button>
+        </div>
+
+        <h3>Draft Type</h3>
+        <div class="toggle-group" id="draftTypeToggle">
+          <button class="toggle-btn active" data-val="snake">Snake</button>
+          <button class="toggle-btn" data-val="auction">Auction</button>
+        </div>
+
+        <h3>Number of Teams</h3>
+        <div class="toggle-group" id="numTeamsToggle">
+          <button class="toggle-btn" data-val="8">8</button>
+          <button class="toggle-btn active" data-val="10">10</button>
+          <button class="toggle-btn" data-val="12">12</button>
+          <button class="toggle-btn" data-val="14">14</button>
+        </div>
+
+        <h3>Your Draft Position</h3>
+        <div class="position-row">
+          <select id="draftPositionSelect" class="lobby-select">
+            <option value="random">Random</option>
+          </select>
+          <span class="hint">Updates with team count</span>
+        </div>
+      </div>
+
+      <!-- Col 2: Roster -->
+      <div class="lobby-section">
+        <h3>Roster Slots</h3>
+        <div class="roster-grid">
+          <label>QB</label><input class="roster-input" id="slotQB" type="number" min="1" max="3" value="1">
+          <label>RB</label><input class="roster-input" id="slotRB" type="number" min="1" max="7" value="2">
+          <label>WR</label><input class="roster-input" id="slotWR" type="number" min="1" max="7" value="2">
+          <label>TE</label><input class="roster-input" id="slotTE" type="number" min="1" max="2" value="1">
+          <label>FLEX</label><input class="roster-input" id="slotFLEX" type="number" min="0" max="3" value="1">
+          <label>Bench</label><input class="roster-input" id="slotBench" type="number" min="1" max="12" value="6">
+        </div>
+        <p class="rounds-preview">Total Rounds: <strong id="roundsPreview">13</strong></p>
+        <p id="rosterWarning" class="roster-warning" style="display:none;">⚠ Total rounds exceeds 20 — consider reducing bench spots.</p>
+      </div>
+
+      <!-- Col 3: Timer + Auction -->
+      <div class="lobby-section">
+        <h3>Time Per Pick</h3>
+        <div class="toggle-group" id="timerToggle">
+          <button class="toggle-btn active" data-val="0">None</button>
+          <button class="toggle-btn" data-val="15">15s</button>
+          <button class="toggle-btn" data-val="30">30s</button>
+          <button class="toggle-btn" data-val="60">60s</button>
+          <button class="toggle-btn" data-val="90">90s</button>
+        </div>
+
+        <div id="auctionSettings" style="display:none;">
+          <h3>Auction Budget</h3>
+          <div class="input-row">
+            <span class="dollar">$</span>
+            <input class="roster-input wide" id="auctionBudget" type="number" min="50" max="1000" value="200">
+          </div>
+
+          <h3>Bid Time Limit</h3>
+          <div class="toggle-group" id="bidTimerToggle">
+            <button class="toggle-btn" data-val="5">5s</button>
+            <button class="toggle-btn active" data-val="10">10s</button>
+            <button class="toggle-btn" data-val="15">15s</button>
+            <button class="toggle-btn" data-val="30">30s</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="startDraftBtn" class="start-btn">Start Draft</button>
+  </div>
+</div>
+
+<!-- ═══════════════════ SNAKE DRAFT BOARD ═══════════════════ -->
+<div id="snakeDraft" style="display:none;" class="draft-layout">
+
+  <!-- Left: Available Players -->
+  <div class="available-panel">
+    <div class="panel-header">
+      <h3>Available Players</h3>
+      <div class="pos-filter" id="posFilter">
+        <button class="pos-btn active" data-pos="ALL">All</button>
+        <button class="pos-btn" data-pos="QB">QB</button>
+        <button class="pos-btn" data-pos="RB">RB</button>
+        <button class="pos-btn" data-pos="WR">WR</button>
+        <button class="pos-btn" data-pos="TE">TE</button>
+      </div>
+      <input type="text" id="playerSearch" class="search-input" placeholder="Search player...">
+    </div>
+    <div class="player-list" id="playerList"></div>
+  </div>
+
+  <!-- Center: Draft Board -->
+  <div class="board-panel">
+    <div class="board-header">
+      <h3 id="pickStatus">Draft Starting...</h3>
+      <div id="pickTimer" class="pick-timer" style="display:none;"></div>
+      <button class="leave-btn" id="leaveDraftBtn">Leave Draft</button>
+    </div>
+    <div class="board-scroll">
+      <table class="draft-board" id="draftBoard">
+        <thead id="boardHead"></thead>
+        <tbody id="boardBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right: Your Team -->
+  <div class="team-panel">
+    <h3>Your Team</h3>
+    <div id="yourTeam" class="your-team-list"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ AUCTION DRAFT BOARD ═══════════════════ -->
+<div id="auctionDraft" style="display:none;" class="draft-layout auction-layout">
+
+  <!-- Left: Available Players -->
+  <div class="available-panel">
+    <div class="panel-header">
+      <h3>Available Players</h3>
+      <div class="pos-filter" id="auctionPosFilter">
+        <button class="pos-btn active" data-pos="ALL">All</button>
+        <button class="pos-btn" data-pos="QB">QB</button>
+        <button class="pos-btn" data-pos="RB">RB</button>
+        <button class="pos-btn" data-pos="WR">WR</button>
+        <button class="pos-btn" data-pos="TE">TE</button>
+      </div>
+      <input type="text" id="auctionPlayerSearch" class="search-input" placeholder="Search player...">
+    </div>
+    <div class="player-list" id="auctionPlayerList"></div>
+  </div>
+
+  <!-- Center: Bidding Panel -->
+  <div class="board-panel">
+    <div class="board-header" style="border-bottom:none;padding-bottom:0;">
+      <div style="flex:1;"></div>
+      <button class="leave-btn" id="leaveAuctionBtn">Leave Draft</button>
+    </div>
+    <div id="nominationInfo" class="nomination-info">
+      <span id="nominatingTeam"></span> is nominating...
+    </div>
+    <div id="biddingBlock" class="bidding-block" style="display:none;">
+      <div class="bid-player-card">
+        <div class="bid-player-name" id="bidPlayerName"></div>
+        <div class="bid-player-meta" id="bidPlayerMeta"></div>
+      </div>
+      <div class="bid-status">
+        <div class="current-bid-row">
+          <span class="bid-label">Current Bid:</span>
+          <span class="bid-amount" id="currentBidAmount">$1</span>
+          <span class="bid-leader" id="currentBidLeader"></span>
+        </div>
+        <div class="bid-timer-bar">
+          <div class="bid-timer-fill" id="bidTimerFill"></div>
+        </div>
+        <div class="bid-timer-text" id="bidTimerText"></div>
+      </div>
+      <div id="userBidControls" class="user-bid-controls" style="display:none;">
+        <button class="bid-btn" id="bid1">+$1</button>
+        <button class="bid-btn" id="bid5">+$5</button>
+        <button class="bid-btn" id="bid10">+$10</button>
+        <input type="number" id="customBidInput" class="custom-bid-input" placeholder="Custom">
+        <button class="bid-btn accent" id="customBidBtn">Bid</button>
+        <button class="bid-btn danger" id="passBidBtn">Pass</button>
+      </div>
+      <div id="userNominationControls" class="user-bid-controls" style="display:none;">
+        <span class="hint">Click a player from the list to nominate</span>
+      </div>
+    </div>
+    <div class="auction-board-scroll">
+      <table class="auction-team-table" id="auctionTeamTable">
+        <thead id="auctionTeamHead"></thead>
+        <tbody id="auctionTeamBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right: Your Team + Budget -->
+  <div class="team-panel">
+    <h3>Your Team</h3>
+    <div class="budget-bar">
+      Budget: <strong id="userBudgetDisplay">$200</strong>
+    </div>
+    <div id="auctionYourTeam" class="your-team-list"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ POST DRAFT ═══════════════════ -->
+<div id="postDraft" style="display:none;" class="post-draft-panel">
+  <h2>Draft Complete!</h2>
+  <div class="post-actions">
+    <div class="save-group">
+      <h3>Save Draft</h3>
+      <label><input type="radio" name="saveScope" value="full" checked> Full Board</label>
+      <label><input type="radio" name="saveScope" value="team"> My Team Only</label>
+      <button id="saveDraftBtn" class="action-btn">Save</button>
+    </div>
+    <div class="save-group">
+      <h3>Email Draft</h3>
+      <label><input type="radio" name="emailScope" value="full" checked> Full Board</label>
+      <label><input type="radio" name="emailScope" value="team"> My Team Only</label>
+      <button id="emailDraftBtn" class="action-btn">Send Email</button>
+    </div>
+    <div class="save-group">
+      <button id="newDraftBtn" class="action-btn secondary">New Draft</button>
+      <a href="{{ url_for('main.my_drafts') }}" class="action-btn secondary" style="display:inline-block;text-align:center;text-decoration:none;margin-top:8px;">My Drafts</a>
+    </div>
+  </div>
+  <div id="postMessage" class="post-message"></div>
+  <div id="finalBoardWrap"></div>
+</div>
+
+<script src="{{ url_for('static', filename='js/mockdraft.js') }}"></script>
+{% endblock %}

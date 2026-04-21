@@ -1,0 +1,643 @@
+{% extends "base.html" %}
+{% block title %}Rosters{% endblock %}
+
+{% block content %}
+
+<!-- Filter Bar -->
+<div class="position-filter-bar">
+    <div class="filter-bar-inner" style="width:90%;flex-wrap:wrap;gap:10px;">
+        <input type="text" id="playerSearch" class="player-search-input" placeholder="Search player...">
+        <div class="filter-buttons">
+            <button class="position-filter-btn active" data-pos="ALL">All</button>
+            <button class="position-filter-btn" data-pos="QB">QB</button>
+            <button class="position-filter-btn" data-pos="RB">RB</button>
+            <button class="position-filter-btn" data-pos="WR">WR</button>
+            <button class="position-filter-btn" data-pos="TE">TE</button>
+        </div>
+        <select id="teamFilter" style="padding:6px 12px;font-size:0.95em;border:1px solid #1e5555;border-radius:4px;background:#162535;color:#f1faee;cursor:pointer;">
+            <option value="ALL">All Teams</option>
+            {% for team in ['ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB','HOU','IND','JAX','KC','LA','LAC','LV','MIA','MIN','NE','NO','NYG','NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS'] %}
+            <option value="{{ team }}">{{ team }}</option>
+            {% endfor %}
+        </select>
+        <button id="groupToggleBtn" class="group-toggle-btn">By Position</button>
+    </div>
+</div>
+
+<!-- Roster Table View -->
+<div id="roster-table-view" style="padding:20px 5%;">
+    <div id="flat-view">
+        <div id="flat-table-wrap" style="overflow-x:auto;"></div>
+        <p id="no-results" style="display:none;text-align:center;color:#a8dadc;margin-top:40px;">No players match your filters.</p>
+    </div>
+    <div id="grouped-view" style="display:none;"></div>
+</div>
+
+<!-- Player Profile View -->
+<div id="player-profile" style="display:none;padding:20px 5%;">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+        <button id="backBtn" class="roster-back-btn">&larr; Back to Rosters</button>
+        <button id="compareBtn" class="compare-open-btn">Compare Player</button>
+        <button id="clearCompareBtn" class="compare-clear-btn" style="display:none;">Clear Compare</button>
+    </div>
+
+    <div id="profile-panels" class="profile-panels-single">
+        <!-- Primary player panel -->
+        <div id="primary-panel" class="profile-panel-wrap">
+            <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
+                <h2 id="profile-name" style="margin:0;color:#f1faee;"></h2>
+                <span id="profile-subtitle" style="color:#a8dadc;font-size:1em;"></span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
+                <div class="profile-card">
+                    <h4 class="card-heading">Player Info</h4>
+                    <table style="font-size:0.9em;border-collapse:collapse;"><tbody id="bio-fields"></tbody></table>
+                </div>
+                <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
+                    <img id="player-headshot" src="" alt=""
+                         style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
+                         onerror="this.style.display='none'">
+                    <div style="width:100%;margin-top:auto;padding-top:10px;">
+                        <h4 class="card-heading" style="margin-bottom:4px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                        <div id="team-grade-card"><p class="loading-text">Loading...</p></div>
+                    </div>
+                </div>
+            </div>
+            <div class="profile-card" style="margin-bottom:24px;">
+                <h4 class="card-heading">Fantasy Points by Season</h4>
+                <div id="chart-placeholder" class="loading-text">Loading...</div>
+                <canvas id="fantasy-chart" style="display:none;max-height:280px;"></canvas>
+            </div>
+            <div class="profile-card">
+                <h4 class="card-heading">Season History</h4>
+                <div id="history-table" style="overflow-x:auto;"><p class="loading-text">Loading...</p></div>
+            </div>
+        </div>
+
+        <!-- Comparison player panel (hidden until Compare activated) -->
+        <div id="compare-panel" class="profile-panel-wrap" style="display:none;">
+            <div id="compare-search-box" style="margin-bottom:16px;">
+                <h4 class="card-heading">Compare with...</h4>
+                <input id="compareSearch" type="text" placeholder="Type player name..." class="player-search-input" style="width:100%;max-width:320px;">
+            </div>
+            <div id="compare-content" style="display:none;">
+                <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
+                    <h2 id="cmp-name" style="margin:0;color:#f1faee;"></h2>
+                    <span id="cmp-subtitle" style="color:#a8dadc;font-size:1em;"></span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
+                    <div class="profile-card">
+                        <h4 class="card-heading">Player Info</h4>
+                        <table style="font-size:0.9em;border-collapse:collapse;"><tbody id="cmp-bio-fields"></tbody></table>
+                    </div>
+                    <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
+                        <img id="cmp-player-headshot" src="" alt=""
+                             style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
+                             onerror="this.style.display='none'">
+                        <div style="width:100%;margin-top:auto;padding-top:10px;">
+                            <h4 class="card-heading" style="margin-bottom:4px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                            <div id="cmp-grade-card"><p class="loading-text">Loading...</p></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="profile-card" style="margin-bottom:24px;">
+                    <h4 class="card-heading">Fantasy Points by Season</h4>
+                    <div id="cmp-chart-placeholder" class="loading-text">Loading...</div>
+                    <canvas id="cmp-fantasy-chart" style="display:none;max-height:280px;"></canvas>
+                </div>
+                <div class="profile-card">
+                    <h4 class="card-heading">Season History</h4>
+                    <div id="cmp-history-table" style="overflow-x:auto;"><p class="loading-text">Loading...</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ROSTER_STATS   = {{ roster_stats_json | safe }};
+const FP_THRESHOLDS  = {{ fp_thresholds_json | safe }};
+var   allPlayers     = {{ table_data | tojson }};
+
+// ── Position-specific stat column config ──────────────────────────
+const POS_COLS = {
+    QB: [
+        {key:'pass_yds', label:'Pass Yds'},
+        {key:'pass_td',  label:'TD'},
+        {key:'int',      label:'INT'},
+        {key:'rush_yds', label:'Rush Yds'},
+    ],
+    RB: [
+        {key:'rush_yds', label:'Rush Yds'},
+        {key:'ypc',      label:'Yds/Car'},
+        {key:'rec',      label:'Rec'},
+        {key:'rec_yds',  label:'Rec Yds'},
+    ],
+    WR: [
+        {key:'targets',    label:'Targets'},
+        {key:'receptions', label:'Rec'},
+        {key:'catch_pct',  label:'Catch%'},
+        {key:'rec_yds',    label:'Rec Yds'},
+    ],
+    TE: [
+        {key:'targets',    label:'Targets'},
+        {key:'receptions', label:'Rec'},
+        {key:'rec_yds',    label:'Rec Yds'},
+    ],
+};
+
+// ── Grade tooltips ────────────────────────────────────────────────
+const GRADE_TIPS = {
+    OLine: 'How well this team\'s offensive line protects the QB and opens running lanes. Higher = better pass and run blocking.',
+    QB:    'Starter QB\'s fantasy output per game vs. league average. Reflects overall passing efficiency and rushing upside.',
+    RB:    'Average fantasy production of the top 2 RBs per game. Reflects volume, efficiency, and receiving usage.',
+    WR:    'Average fantasy production of the top 3 WRs per game. Reflects target share, yards, and touchdown opportunity.',
+    TE:    'Average fantasy production of the top 2 TEs per game. High scores indicate a target-heavy, pass-catching TE.',
+    DST:   'Team defensive strength from existing model. Higher = better against opposing offenses.',
+};
+
+// ── Build enriched list combining roster data + stats ─────────────
+var enriched = allPlayers.map(function(p) {
+    var rawPos = (p['Pos'] || '').replace(/\d+$/, '').trim().toUpperCase();
+    var stats  = ROSTER_STATS[p['Player']] || {};
+    return Object.assign({}, p, {
+        _pos:  rawPos,
+        _team: (p['Team'] || '').toUpperCase(),
+        _fp:   (stats.fantasy_points !== undefined && stats.fantasy_points !== null) ? stats.fantasy_points : null,
+        _stats: stats,
+    });
+});
+
+// ── State ─────────────────────────────────────────────────────────
+var state = { pos:'ALL', team:'ALL', search:'', groupBy:false, sortCol:'_fp', sortDir:-1 };
+
+// ── Helpers ───────────────────────────────────────────────────────
+function fpColor(fp, pos) {
+    if (fp === null || fp === undefined) return '';
+    var t = FP_THRESHOLDS[pos];
+    if (!t) return '';
+    if (fp >= t.p75) return 'fp-green';
+    if (fp <= t.p25) return 'fp-red';
+    return 'fp-yellow';
+}
+
+function gradeBar(val) {
+    if (val === null || val === undefined) return '—';
+    var pct = Math.min(Math.max(val * 100, 0), 100).toFixed(0);
+    var color = val >= 0.7 ? '#2ecc71' : val >= 0.4 ? '#f39c12' : '#e74c3c';
+    return '<div class="grade-bar-wrap">'
+         + '<div class="grade-bar-track"><div class="grade-bar-fill" style="width:' + pct + '%;background:' + color + ';"></div></div>'
+         + '<span>' + pct + '</span></div>';
+}
+
+function fmt(v) { return (v !== null && v !== undefined) ? v : '—'; }
+
+function getFiltered() {
+    var s = state.search.toLowerCase();
+    return enriched.filter(function(p) {
+        return (state.pos === 'ALL' || p._pos === state.pos)
+            && (state.team === 'ALL' || p._team === state.team)
+            && (p['Player'] || '').toLowerCase().includes(s);
+    });
+}
+
+function getSorted(rows) {
+    var col = state.sortCol, dir = state.sortDir;
+    return rows.slice().sort(function(a, b) {
+        var av = col === '_fp' ? (a._fp !== null ? a._fp : -Infinity) : (a._stats[col] !== null && a._stats[col] !== undefined ? a._stats[col] : -Infinity);
+        var bv = col === '_fp' ? (b._fp !== null ? b._fp : -Infinity) : (b._stats[col] !== null && b._stats[col] !== undefined ? b._stats[col] : -Infinity);
+        if (col === '_name') { av = (a['Player'] || '').toLowerCase(); bv = (b['Player'] || '').toLowerCase(); }
+        if (col === '_pos')  { av = a._pos; bv = b._pos; }
+        if (col === '_team') { av = a._team; bv = b._team; }
+        if (av < bv) return -dir;
+        if (av > bv) return dir;
+        return 0;
+    });
+}
+
+// ── Render flat table ─────────────────────────────────────────────
+function buildTableHtml(rows, posCtx) {
+    var statCols = (posCtx && POS_COLS[posCtx]) ? POS_COLS[posCtx] : [];
+    var sortArrow = function(key) {
+        if (state.sortCol !== key) return '<span class="sort-arrow-inactive">⇅</span>';
+        return state.sortDir === -1 ? '<span class="sort-arrow">↓</span>' : '<span class="sort-arrow">↑</span>';
+    };
+
+    var html = '<table class="roster-table"><thead><tr>';
+    html += '<th class="sortable" data-col="_idx">#</th>';
+    html += '<th class="sortable" data-col="_name">Player ' + sortArrow('_name') + '</th>';
+    if (!posCtx) {
+        html += '<th class="sortable" data-col="_pos">Pos ' + sortArrow('_pos') + '</th>';
+    }
+    html += '<th class="sortable" data-col="_team">Team ' + sortArrow('_team') + '</th>';
+    statCols.forEach(function(c) {
+        html += '<th class="sortable" data-col="' + c.key + '">' + c.label + ' ' + sortArrow(c.key) + '</th>';
+    });
+    html += '<th class="sortable" data-col="_fp">Fant Pts ' + sortArrow('_fp') + '</th>';
+    html += '</tr></thead><tbody>';
+
+    rows.forEach(function(p, i) {
+        var fpClass = fpColor(p._fp, p._pos);
+        html += '<tr class="roster-row" data-name="' + escAttr(p['Player']) + '" data-pos="' + p._pos + '" data-team="' + p._team + '">';
+        html += '<td>' + (i + 1) + '</td>';
+        html += '<td><span class="player-name-link">' + escHtml(p['Player']) + '</span></td>';
+        if (!posCtx) {
+            html += '<td><span class="pos-pill pos-' + p._pos + '">' + p._pos + '</span></td>';
+        }
+        html += '<td>' + p._team + '</td>';
+        statCols.forEach(function(c) {
+            var v = p._stats[c.key];
+            html += '<td>' + fmt(v) + '</td>';
+        });
+        html += '<td class="fp-cell ' + fpClass + '">' + (p._fp !== null ? p._fp.toFixed(1) : '—') + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+function renderFlat() {
+    var rows = getSorted(getFiltered());
+    var posCtx = (state.pos !== 'ALL') ? state.pos : null;
+    var wrap = document.getElementById('flat-table-wrap');
+    if (rows.length === 0) {
+        wrap.innerHTML = '';
+        document.getElementById('no-results').style.display = 'block';
+    } else {
+        document.getElementById('no-results').style.display = 'none';
+        wrap.innerHTML = buildTableHtml(rows, posCtx);
+        bindTableClicks(wrap);
+    }
+}
+
+function renderGrouped() {
+    var gv = document.getElementById('grouped-view');
+    gv.innerHTML = '';
+    var filtered = getFiltered();
+    ['QB','RB','WR','TE'].forEach(function(pos) {
+        var rows = getSorted(filtered.filter(function(p) { return p._pos === pos; }));
+        if (rows.length === 0) return;
+        var section = document.createElement('div');
+        section.className = 'roster-section';
+        section.innerHTML = '<div class="roster-section-header" data-pos="' + pos + '">'
+            + '<span>' + pos + '</span><span class="section-toggle">▼</span></div>'
+            + '<div class="roster-section-body">' + buildTableHtml(rows, pos) + '</div>';
+        gv.appendChild(section);
+        bindTableClicks(section);
+        section.querySelector('.roster-section-header').addEventListener('click', function() {
+            var body = this.nextElementSibling;
+            var isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? '' : 'none';
+            this.querySelector('.section-toggle').textContent = isHidden ? '▼' : '▶';
+        });
+    });
+}
+
+function render() {
+    if (state.groupBy) {
+        document.getElementById('flat-view').style.display = 'none';
+        document.getElementById('grouped-view').style.display = 'block';
+        renderGrouped();
+    } else {
+        document.getElementById('flat-view').style.display = 'block';
+        document.getElementById('grouped-view').style.display = 'none';
+        renderFlat();
+    }
+}
+
+function bindTableClicks(container) {
+    // Sort headers
+    container.querySelectorAll('th.sortable').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var col = this.getAttribute('data-col');
+            if (col === '_idx') return;
+            if (state.sortCol === col) {
+                state.sortDir *= -1;
+            } else {
+                state.sortCol = col;
+                state.sortDir = -1;
+            }
+            render();
+        });
+    });
+    // Row clicks → profile
+    container.querySelectorAll('tr.roster-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var name = this.getAttribute('data-name');
+            var player = enriched.find(function(p) { return p['Player'] === name; });
+            if (player) openProfile(player);
+        });
+    });
+}
+
+// ── Filter controls ───────────────────────────────────────────────
+document.querySelectorAll('.position-filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.position-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        state.pos = this.getAttribute('data-pos');
+        render();
+    });
+});
+document.getElementById('teamFilter').addEventListener('change', function() {
+    state.team = this.value; render();
+});
+document.getElementById('playerSearch').addEventListener('input', function() {
+    state.search = this.value; render();
+});
+document.getElementById('groupToggleBtn').addEventListener('click', function() {
+    state.groupBy = !state.groupBy;
+    this.textContent = state.groupBy ? 'Flat List' : 'By Position';
+    this.classList.toggle('active', state.groupBy);
+    render();
+});
+
+// ── Profile view ──────────────────────────────────────────────────
+var _charts = {};
+var bioFields = [
+    ['Team','Team'],['Pos','Position'],['height','Height'],['weight','Weight'],
+    ['BirthDate','Birth Date'],['College','College'],['RookieSeason','Rookie Season'],
+    ['ExperienceYears','Experience (yrs)'],['Jersey','Jersey #'],
+    ['DraftYear','Draft Year'],['DraftRound','Round'],['DraftPick','Pick'],['DraftTeam','Draft Team']
+];
+
+function openProfile(player) {
+    // Reset compare mode
+    exitCompareMode();
+
+    document.getElementById('profile-name').textContent = player['Player'];
+    document.getElementById('profile-subtitle').textContent = player._pos + ' · ' + player._team;
+
+    var headshot = document.getElementById('player-headshot');
+    var espnId = player['espn_id'];
+    if (espnId) {
+        headshot.src = 'https://a.espncdn.com/i/headshots/nfl/players/full/' + espnId + '.png';
+        headshot.style.display = 'block';
+    } else {
+        headshot.style.display = 'none';
+    }
+
+    // Bio
+    var bioHtml = '';
+    bioFields.forEach(function(pair) {
+        var val = player[pair[0]];
+        if (val === null || val === undefined || val === '') val = '—';
+        bioHtml += '<tr><td class="bio-label">' + pair[1] + '</td><td class="bio-val">' + val + '</td></tr>';
+    });
+    document.getElementById('bio-fields').innerHTML = bioHtml;
+
+    // Reset loading state
+    document.getElementById('team-grade-card').innerHTML = '<p class="loading-text">Loading...</p>';
+    document.getElementById('history-table').innerHTML = '<p class="loading-text">Loading...</p>';
+    document.getElementById('chart-placeholder').style.display = 'block';
+    document.getElementById('chart-placeholder').textContent = 'Loading...';
+    document.getElementById('fantasy-chart').style.display = 'none';
+
+    document.getElementById('roster-table-view').style.display = 'none';
+    document.getElementById('player-profile').style.display = 'block';
+
+    loadPlayerStats(player['Player'], player._pos, player._team, 'primary');
+}
+
+function loadPlayerStats(name, pos, team, panelId) {
+    fetch('/player_stats?name=' + encodeURIComponent(name) + '&pos=' + encodeURIComponent(pos) + '&team=' + encodeURIComponent(team))
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderStatsIntoPanel(data, panelId, pos); });
+}
+
+function renderStatsIntoPanel(data, panelId, pos) {
+    var isPrimary = (panelId === 'primary');
+    var gradeElId  = isPrimary ? 'team-grade-card'    : 'cmp-grade-card';
+    var chartElId  = isPrimary ? 'fantasy-chart'       : 'cmp-fantasy-chart';
+    var chartPhId  = isPrimary ? 'chart-placeholder'   : 'cmp-chart-placeholder';
+    var histElId   = isPrimary ? 'history-table'       : 'cmp-history-table';
+
+    // Team grades
+    var tg = data.team_grade || {};
+    var gradeEl = document.getElementById(gradeElId);
+    if (Object.keys(tg).length) {
+        var tgHtml = '<table style="border-collapse:collapse;font-size:0.82em;">';
+        ['OLine','QB','RB','WR','TE','DST'].forEach(function(key) {
+            if (tg[key] === undefined || tg[key] === null) return;
+            var tip = GRADE_TIPS[key] || '';
+            tgHtml += '<tr style="line-height:1.4;"><td class="bio-label" style="padding:1px 6px 1px 0;">' + key
+                    + ' <span class="grade-info" data-tip="' + escAttr(tip) + '">ⓘ</span></td>'
+                    + '<td class="bio-val" style="padding:1px 0;">' + gradeBar(tg[key]) + '</td></tr>';
+        });
+        tgHtml += '</table>';
+        gradeEl.innerHTML = tgHtml;
+    } else {
+        gradeEl.innerHTML = '<p class="loading-text">Not available.</p>';
+    }
+
+    // Chart
+    var history = data.history || [];
+    var chartEl = document.getElementById(chartElId);
+    var chartPh = document.getElementById(chartPhId);
+
+    if (_charts[panelId]) { _charts[panelId].destroy(); delete _charts[panelId]; }
+
+    if (history.length) {
+        var seasons = history.map(function(r) { return r.season; });
+        var pts     = history.map(function(r) { return r.fantasy_points !== null ? r.fantasy_points : 0; });
+        chartPh.style.display = 'none';
+        chartEl.style.display = 'block';
+        _charts[panelId] = new Chart(chartEl, {
+            type: 'line',
+            data: {
+                labels: seasons,
+                datasets: [{
+                    label: 'Fantasy Points',
+                    data: pts,
+                    borderColor: '#2d8b8b',
+                    backgroundColor: 'rgba(45,139,139,0.2)',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#a8dadc',
+                    pointRadius: 5,
+                    tension: 0.3,
+                    fill: true,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(items) { return 'Season ' + items[0].label; },
+                            label: function(item)  { return 'Fantasy Pts: ' + item.parsed.y.toFixed(1); }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title:{display:true,text:'Season',color:'#a8dadc'}, ticks:{color:'#f1faee'}, grid:{color:'#1e5555'} },
+                    y: { title:{display:true,text:'Fantasy Points',color:'#a8dadc'}, beginAtZero:true, ticks:{color:'#f1faee'}, grid:{color:'#1e5555'} }
+                }
+            }
+        });
+    } else {
+        chartPh.style.display = 'block';
+        chartPh.textContent = 'No historical data available.';
+        chartEl.style.display = 'none';
+    }
+
+    // History table + best-season highlighting
+    var histEl = document.getElementById(histElId);
+    if (history.length) {
+        histEl.innerHTML = renderHistoryTable(history, pos);
+        highlightBestSeason(histEl);
+    } else {
+        histEl.innerHTML = '<p class="loading-text">No data available.</p>';
+    }
+}
+
+function renderHistoryTable(data, pos) {
+    if (!data || data.length === 0) return '<p class="loading-text">No data available.</p>';
+
+    // Column label overrides
+    var labelMap = {
+        season:'Season', GP:'GP', completions:'Comp', attempts:'Att',
+        passing_yards:'Pass Yds', passing_tds:'Pass TD', interceptions:'INT',
+        rushing_yards:'Rush Yds', rushing_tds:'Rush TD',
+        carries:'Car', receptions:'Rec', targets:'Tgt',
+        receiving_yards:'Rec Yds', receiving_tds:'Rec TD',
+        target_share:'Tgt Share', air_yards_share:'Air Yds%',
+        fantasy_points:'Fant Pts',
+    };
+    var headers = Object.keys(data[0]);
+    var html = '<table class="history-table"><thead><tr>';
+    headers.forEach(function(h) { html += '<th>' + (labelMap[h] || h) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    data.forEach(function(row, i) {
+        var bg = i % 2 === 0 ? '#162535' : '#1a2332';
+        html += '<tr style="background:' + bg + ';">';
+        headers.forEach(function(h) {
+            var val = row[h] !== null && row[h] !== undefined ? row[h] : '—';
+            html += '<td data-col="' + h + '">' + val + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+function highlightBestSeason(container) {
+    var table = container.querySelector('table');
+    if (!table) return;
+    var rows = Array.from(table.querySelectorAll('tbody tr'));
+    if (rows.length < 2) return;
+
+    // Get all column names from data-col on first row
+    var cells0 = rows[0].querySelectorAll('td');
+    var numCols = cells0.length;
+
+    for (var ci = 0; ci < numCols; ci++) {
+        var col = cells0[ci] ? cells0[ci].getAttribute('data-col') : null;
+        if (!col || col === 'season') continue;
+
+        var maxVal = -Infinity, maxRow = -1;
+        rows.forEach(function(row, ri) {
+            var cell = row.querySelectorAll('td')[ci];
+            if (!cell) return;
+            var v = parseFloat(cell.textContent);
+            if (!isNaN(v) && v > maxVal) { maxVal = v; maxRow = ri; }
+        });
+        if (maxRow >= 0) {
+            var targetCell = rows[maxRow].querySelectorAll('td')[ci];
+            if (targetCell) targetCell.classList.add('best-season');
+        }
+    }
+}
+
+// ── Compare mode ──────────────────────────────────────────────────
+document.getElementById('compareBtn').addEventListener('click', function() {
+    document.getElementById('compare-panel').style.display = 'block';
+    document.getElementById('profile-panels').className = 'profile-panels-split';
+    document.getElementById('compareBtn').style.display = 'none';
+    document.getElementById('clearCompareBtn').style.display = '';
+    document.getElementById('compareSearch').focus();
+});
+
+document.getElementById('clearCompareBtn').addEventListener('click', exitCompareMode);
+
+function exitCompareMode() {
+    document.getElementById('compare-panel').style.display = 'none';
+    document.getElementById('compare-content').style.display = 'none';
+    document.getElementById('compare-search-box').style.display = 'block';
+    document.getElementById('compareSearch').value = '';
+    document.getElementById('profile-panels').className = 'profile-panels-single';
+    document.getElementById('compareBtn').style.display = '';
+    document.getElementById('clearCompareBtn').style.display = 'none';
+    if (_charts['compare']) { _charts['compare'].destroy(); delete _charts['compare']; }
+}
+
+// jQuery UI autocomplete for compare search
+$(function() {
+    var nameList = Object.keys(ROSTER_STATS);
+    $('#compareSearch').autocomplete({
+        source: nameList,
+        minLength: 2,
+        select: function(event, ui) {
+            var cmpName = ui.item.value;
+            var cmpStats = ROSTER_STATS[cmpName] || {};
+            var cmpPos  = cmpStats.pos || '';
+            var cmpTeam = cmpStats.team || '';
+
+            // Fill compare header
+            document.getElementById('cmp-name').textContent = cmpName;
+            document.getElementById('cmp-subtitle').textContent = cmpPos + ' · ' + cmpTeam;
+
+            // Fill compare headshot
+            var cmpPlayer = enriched.find(function(p) { return p['Player'] === cmpName; });
+            var cmpHeadshot = document.getElementById('cmp-player-headshot');
+            if (cmpPlayer && cmpPlayer['espn_id']) {
+                cmpHeadshot.src = 'https://a.espncdn.com/i/headshots/nfl/players/full/' + cmpPlayer['espn_id'] + '.png';
+                cmpHeadshot.style.display = 'block';
+            } else {
+                cmpHeadshot.style.display = 'none';
+            }
+
+            // Fill compare bio from allPlayers
+            var cmpBioHtml = '';
+            if (cmpPlayer) {
+                bioFields.forEach(function(pair) {
+                    var val = cmpPlayer[pair[0]];
+                    if (val === null || val === undefined || val === '') val = '—';
+                    cmpBioHtml += '<tr><td class="bio-label">' + pair[1] + '</td><td class="bio-val">' + val + '</td></tr>';
+                });
+            }
+            document.getElementById('cmp-bio-fields').innerHTML = cmpBioHtml;
+
+            // Reset loading state
+            document.getElementById('cmp-grade-card').innerHTML = '<p class="loading-text">Loading...</p>';
+            document.getElementById('cmp-history-table').innerHTML = '<p class="loading-text">Loading...</p>';
+            document.getElementById('cmp-chart-placeholder').style.display = 'block';
+            document.getElementById('cmp-chart-placeholder').textContent = 'Loading...';
+            document.getElementById('cmp-fantasy-chart').style.display = 'none';
+
+            document.getElementById('compare-search-box').style.display = 'none';
+            document.getElementById('compare-content').style.display = 'block';
+
+            loadPlayerStats(cmpName, cmpPos, cmpTeam, 'compare');
+        }
+    });
+});
+
+document.getElementById('backBtn').addEventListener('click', function() {
+    exitCompareMode();
+    document.getElementById('player-profile').style.display = 'none';
+    document.getElementById('roster-table-view').style.display = 'block';
+});
+
+// ── Escape helpers ────────────────────────────────────────────────
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+    return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Initial render ────────────────────────────────────────────────
+render();
+</script>
+{% endblock %}

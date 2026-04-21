@@ -1,0 +1,1054 @@
+/* ═══════════════════════════════════════════════════════════════
+   OCEAN DEPTHS THEME
+   Deep Navy #1a2332 | Teal #2d8b8b | Seafoam #a8dadc | Cream #f1faee
+═══════════════════════════════════════════════════════════════ */
+
+body {
+    font-family: 'DejaVu Sans', Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #1a2332;
+    color: #f1faee;
+}
+
+
+header.banner {
+    width: 100%;
+    background-color: #0d1b2a;
+    color: #f1faee;
+    text-align: center;
+    padding: 10px 20px;
+    box-sizing: border-box;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid #2d8b8b;
+}
+
+.nav-logo {
+    flex-shrink: 0;
+    margin-right: 16px;
+}
+
+.nav-logo-img {
+    height: 44px;
+    width: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+nav {
+    flex: 1;
+}
+
+nav ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+nav ul li {
+    margin: 0 1em;
+}
+
+.btn-group-vertical {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.btn-group-vertical .btn {
+    margin-bottom: 10px;
+}
+
+.btn-bold {
+    font-weight: bold;
+}
+
+.ranking-type-btn {
+    display: block;
+    padding: 8px 16px;
+    margin-bottom: 6px;
+    background-color: #162535;
+    color: #a8dadc;
+    text-decoration: none;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 1.3em;
+    cursor: pointer;
+    border: 1px solid #1e5555;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.ranking-type-btn:hover {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #3a9b9b;
+}
+
+.ranking-type-btn.active {
+    background-color: #f1faee;
+    color: #1a2332;
+    font-weight: bold;
+    border-color: #f1faee;
+}
+
+
+nav ul li a {
+    color: #f1faee;
+    text-decoration: none;
+}
+
+nav ul li a:hover {
+    color: #a8dadc;
+}
+
+nav ul li.login {
+    margin-left: auto;
+}
+
+main {
+    flex: 1;
+    padding: 2em;
+    padding-top: 80px;
+    text-align: center;
+    background-color: #1a2332;
+    color: #f1faee;
+}
+
+footer {
+    background-color: #0d1b2a;
+    color: #a8dadc;
+    text-align: center;
+    padding: 1em 0;
+    position: relative;
+    bottom: 0;
+    border-top: 2px solid #2d8b8b;
+}
+
+.profile-container {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    padding: 2em 0;
+}
+
+.profile {
+    display: flex;
+    align-items: flex-start;
+    margin: 1em;
+    max-width: 500px;
+}
+
+.profile img {
+    max-width: 150px;
+    height: auto;
+    border-radius: 50%;
+    margin-right: 1em;
+}
+
+.profile-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.profile-info h2 {
+    margin-top: 0;
+    font-size: 1.5em;
+    color: #a8dadc;
+}
+
+.profile-info p {
+    font-size: 1em;
+    color: #a8dadc;
+    margin: 0.5em 0;
+    max-width: 300px;
+}
+
+.logo {
+    border-radius: 50%;
+    max-width: 200px;
+    height: auto;
+}
+
+table {
+    width: 78%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+th, td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #1e5555;
+    color: #f1faee;
+}
+
+/* ── Global select ───────────────────────────────────────────── */
+
+select {
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 1em;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+select:focus {
+    border-color: #2d8b8b;
+}
+
+select option {
+    background-color: #162535;
+    color: #f1faee;
+}
+
+/* ── Global button (non-class) ───────────────────────────────── */
+
+button:not([class]) {
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+button:not([class]):hover {
+    background-color: #2d8b8b;
+    border-color: #3a9b9b;
+}
+
+button:not([class]):disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Form styles (login / register) ─────────────────────────── */
+
+form input[type="text"],
+form input[type="password"],
+form input[type="email"] {
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #2d8b8b;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 1em;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+form input[type="text"]:focus,
+form input[type="password"]:focus,
+form input[type="email"]:focus {
+    border-color: #a8dadc;
+}
+
+form input[type="submit"],
+form button[type="submit"] {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 20px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-top: 8px;
+}
+
+form input[type="submit"]:hover,
+form button[type="submit"]:hover {
+    background-color: #3a9b9b;
+}
+
+form label {
+    color: #a8dadc;
+    font-weight: bold;
+}
+
+/* Flash messages */
+.alert, .flash {
+    background-color: #162535;
+    color: #a8dadc;
+    border: 1px solid #2d8b8b;
+    border-radius: 4px;
+    padding: 8px 16px;
+    margin-bottom: 12px;
+}
+
+/* ── Panels ──────────────────────────────────────────────────── */
+
+.left-panel {
+    position: fixed;
+    top: 130px;
+    left: 20px;
+    width: 105px;
+    padding: 8px;
+    z-index: 1000;
+    background-color: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 6px;
+    font-size: 0.65em;
+    color: #f1faee;
+    flex-direction: column;
+}
+
+.left-panel h2 {
+    color: #a8dadc;
+    font-size: 1.4em;
+    margin: 0 0 8px 0;
+}
+
+.btn-group-vertical {
+    flex-grow: 1;
+}
+
+.saved-lists {
+    left: 40px;
+    position: fixed;
+    top: 280px;
+    background-color: #0d1b2a;
+    color: #f1faee;
+    width: 130px;
+    font-size: 1.2em;
+    border: 1px solid #1e5555;
+}
+
+.right-panel {
+    position: fixed;
+    top: 130px;
+    right: 20px;
+    width: 130px;
+    padding: 8px;
+    z-index: 1000;
+    background-color: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 6px;
+    font-size: 0.65em;
+    color: #f1faee;
+    display: flex;
+    flex-direction: column;
+}
+
+.right-panel h2 {
+    margin: 0 0 8px 0;
+    font-size: 1.4em;
+    color: #a8dadc;
+}
+
+.saved-ranking-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.saved-ranking-link {
+    flex: 1;
+    text-align: left;
+    font-size: 1.1em;
+    padding: 6px 10px;
+    background-color: #162535;
+    color: #a8dadc;
+    text-decoration: none;
+    border-radius: 4px;
+    border: 1px solid #1e5555;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.saved-ranking-link:hover {
+    background-color: #2d8b8b;
+    color: #f1faee;
+}
+
+.saved-ranking-link.active {
+    background-color: #f1faee;
+    color: #1a2332;
+    font-weight: bold;
+    border-color: #f1faee;
+}
+
+.saved-ranking-item .btn-danger {
+    margin-left: 4px;
+    padding: 4px 8px;
+    font-size: 1em;
+    background-color: #c0392b;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.saved-ranking-item .btn-danger:hover {
+    background-color: #e74c3c;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────── */
+
+.position-filter-bar {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    position: sticky;
+    top: 64px;
+    z-index: 999;
+    background-color: #1a2332;
+    padding: 10px 0;
+    border-bottom: 1px solid #1e5555;
+}
+
+.filter-bar-inner {
+    width: 78%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.filter-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ── Custom multi-select dropdown ─────────────────────────────── */
+
+.custom-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.custom-dropdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    font-size: 0.95em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+    user-select: none;
+}
+
+.custom-dropdown-btn:hover {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #3a9b9b;
+}
+
+.custom-dropdown-btn.open {
+    background-color: #f1faee;
+    color: #1a2332;
+    font-weight: bold;
+    border-color: #f1faee;
+}
+
+.dd-arrow {
+    font-size: 0.65em;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.custom-dropdown-btn.open .dd-arrow {
+    transform: rotate(180deg);
+}
+
+.custom-dropdown-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 130px;
+    background-color: #162535;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    z-index: 1100;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.dd-opt {
+    padding: 7px 14px;
+    cursor: pointer;
+    font-size: 0.9em;
+    color: #f1faee;
+    white-space: nowrap;
+    transition: background-color 0.15s;
+}
+
+.dd-opt:hover {
+    background-color: #1e5555;
+}
+
+.dd-opt.selected {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    font-weight: 600;
+}
+
+.dd-opt.selected::before {
+    content: '✓  ';
+    color: #f1faee;
+}
+
+.dd-opt-clear {
+    border-bottom: 1px solid #1e5555;
+    color: #a8dadc;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.dd-opt-clear:hover {
+    background-color: #0d1b2a;
+    color: #f1faee;
+}
+
+/* ── Position filter buttons ─────────────────────────────────── */
+
+.position-filter-btn {
+    padding: 6px 16px;
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.position-filter-btn:hover {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #3a9b9b;
+}
+
+.position-filter-btn.active {
+    background-color: #f1faee;
+    color: #1a2332;
+    font-weight: bold;
+    border-color: #f1faee;
+}
+
+/* ── Search input ────────────────────────────────────────────── */
+
+.player-search-input {
+    padding: 6px 12px;
+    font-size: 0.95em;
+    border: 2px solid #1e5555;
+    border-radius: 4px;
+    width: 180px;
+    outline: none;
+    background-color: #162535;
+    color: #f1faee;
+    transition: border-color 0.2s;
+}
+
+.player-search-input::placeholder {
+    color: #6a9a9a;
+}
+
+.player-search-input:focus {
+    border-color: #2d8b8b;
+}
+
+/* ── Table rows ──────────────────────────────────────────────── */
+
+.player-row:hover {
+    background-color: #1e5555;
+}
+
+.player-row.active-player {
+    background-color: #1a5555;
+}
+
+/* ── Deep dive ───────────────────────────────────────────────── */
+
+.deep-dive-row td {
+    padding: 0 !important;
+    border-bottom: none !important;
+}
+
+.deep-dive-panel {
+    width: 100%;
+    min-height: 200px;
+    background-color: #0d1b2a;
+    border: 2px solid #1e5555;
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+/* ── Save ranking button ─────────────────────────────────────── */
+
+.save-ranking-btn {
+    padding: 8px 12px;
+    background-color: #162535;
+    color: #f1faee;
+    border: 1px solid #f1faee;
+    border-radius: 6px;
+    font-size: 1.2em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s, transform 0.1s;
+}
+
+.save-ranking-btn:hover {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-color: #a8dadc;
+    transform: scale(1.03);
+}
+
+.save-ranking-btn:active {
+    transform: scale(0.97);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RANKINGS PAGE — OCEAN DEPTHS DARK
+═══════════════════════════════════════════════════════════════ */
+
+body.rankings-body {
+    background-color: #1a2332;
+}
+
+.rankings-main {
+    background-color: #1a2332;
+    color: #f1faee;
+    padding-top: 2em;
+}
+
+.rankings-main .filter-bar-inner {
+    width: 100%;
+}
+
+.rankings-main #ranking_table {
+    margin-left: 145px;
+    margin-right: 170px;
+}
+
+.rankings-main table {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.rankings-main .position-filter-bar {
+    background-color: #1a2332;
+    border-bottom: 1px solid #1e5555;
+    padding-left: 145px;
+    padding-right: 170px;
+    box-sizing: border-box;
+}
+
+.rankings-main .custom-dropdown-panel {
+    background-color: #0d1b2a;
+    border-color: #1e5555;
+}
+
+.rankings-main .ranking-table {
+    padding-top: 8px;
+}
+
+.rankings-main #sortable-table {
+    color: #f1faee;
+    border-collapse: collapse;
+}
+
+.rankings-main #sortable-table th,
+.rankings-main #sortable-table td {
+    border-bottom: 1px solid #1e5555;
+    color: #f1faee;
+}
+
+.rankings-main #sortable-table thead th {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    font-weight: bold;
+}
+
+/* Override Bootstrap table-striped */
+.rankings-main .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: #162535;
+    color: #f1faee;
+    --bs-table-striped-color: #f1faee;
+    --bs-table-striped-bg: #162535;
+}
+
+.rankings-main .table-striped > tbody > tr:nth-of-type(even) > * {
+    background-color: #1a2332;
+    color: #f1faee;
+}
+
+.rankings-main .player-row:hover {
+    background-color: #1e5555 !important;
+    cursor: pointer;
+}
+
+.rankings-main .player-row.active-player td {
+    background-color: #1a5555 !important;
+    color: #f1faee !important;
+}
+
+.rankings-main .deep-dive-row td {
+    background-color: #1a2332 !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+}
+
+.rankings-main .deep-dive-panel {
+    background-color: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 6px;
+    margin: 6px 0;
+    min-height: 0;
+}
+
+.rankings-main .player-search-input {
+    background-color: #162535;
+    color: #f1faee;
+    border-color: #1e5555;
+}
+
+.rankings-main .player-search-input::placeholder {
+    color: #6a9a9a;
+}
+
+.rankings-main .player-search-input:focus {
+    border-color: #2d8b8b;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DEEP DIVE PANEL CONTENT
+═══════════════════════════════════════════════════════════════ */
+
+.dd-content {
+    padding: 14px 18px;
+    font-size: 0.88em;
+    color: #f1faee;
+}
+
+.dd-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.dd-player-name {
+    font-size: 1.15em;
+    font-weight: bold;
+    color: #f1faee;
+}
+
+.dd-badge {
+    background-color: #2d8b8b;
+    color: #f1faee;
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.dd-section {
+    margin-bottom: 12px;
+}
+
+.dd-section-title {
+    font-weight: bold;
+    font-size: 0.95em;
+    color: #a8dadc;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.dd-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.dd-stat {
+    background-color: #162535;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.88em;
+    white-space: nowrap;
+}
+
+.dd-stat b {
+    color: #a8dadc;
+    margin-right: 3px;
+}
+
+.dd-schedule {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.dd-game {
+    background-color: #2d8b8b;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.88em;
+    white-space: nowrap;
+    color: #f1faee;
+}
+
+.dd-game b {
+    color: #f1faee;
+    margin-right: 4px;
+}
+
+.dd-na {
+    color: #6a9a9a;
+    font-style: italic;
+    font-size: 0.85em;
+}
+
+/* ── Rosters page ─────────────────────────────────────────────── */
+
+.group-toggle-btn {
+    padding: 6px 14px;
+    background: #162535;
+    color: #a8dadc;
+    border: 1px solid #1e5555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background 0.2s;
+}
+.group-toggle-btn:hover,
+.group-toggle-btn.active {
+    background: #2d8b8b;
+    color: #f1faee;
+}
+
+/* Roster sortable table */
+.roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+.roster-table thead th {
+    background: #0d1b2a;
+    color: #a8dadc;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 2px solid #1e5555;
+    user-select: none;
+}
+.roster-table thead th.sortable {
+    cursor: pointer;
+}
+.roster-table thead th.sortable:hover {
+    color: #2d8b8b;
+}
+.roster-table tbody tr {
+    border-bottom: 1px solid #1e3040;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.roster-table tbody tr:hover {
+    background: #1e3d4d !important;
+}
+.roster-table tbody td {
+    padding: 7px 12px;
+    color: #f1faee;
+    white-space: nowrap;
+}
+.sort-arrow { color: #2d8b8b; margin-left: 4px; }
+.sort-arrow-inactive { color: #2d3d4d; margin-left: 4px; font-size: 0.8em; }
+
+/* Fantasy points color tiers */
+.fp-cell { font-weight: 600; }
+.fp-green  { background: rgba(45,139,139,0.25); color: #2d8b8b; }
+.fp-yellow { background: rgba(139,139,45,0.25); color: #c8c870; }
+.fp-red    { background: rgba(139,45,45,0.25);  color: #c87070; }
+
+/* Position pills */
+.pos-pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: 700;
+}
+.pos-QB  { background: #1a3d5c; color: #a8dadc; }
+.pos-RB  { background: #1a3d2a; color: #88dca8; }
+.pos-WR  { background: #3d2a1a; color: #dca888; }
+.pos-TE  { background: #3d1a3d; color: #dca8dc; }
+
+/* Player name link style in table */
+.player-name-link {
+    font-weight: 600;
+    color: #f1faee;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    transition: color 0.15s, text-decoration-color 0.15s;
+}
+.roster-table tbody tr:hover .player-name-link {
+    color: #2d8b8b;
+    text-decoration-color: #2d8b8b;
+}
+
+/* Grouped sections */
+.roster-section { margin-bottom: 28px; }
+.roster-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 6px 6px 0 0;
+    padding: 10px 16px;
+    cursor: pointer;
+    color: #a8dadc;
+    font-weight: 700;
+    font-size: 1em;
+}
+.roster-section-header:hover { background: #162535; }
+.section-toggle { color: #2d8b8b; font-size: 0.85em; }
+.roster-section-body { border: 1px solid #1e5555; border-top: none; border-radius: 0 0 6px 6px; overflow: hidden; }
+
+/* Profile panel */
+.roster-back-btn,
+.compare-open-btn,
+.compare-clear-btn {
+    padding: 8px 18px;
+    background: #162535;
+    color: #f1faee;
+    border: 1px solid #1e5555;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background 0.2s;
+}
+.roster-back-btn:hover  { background: #1e3d4d; }
+.compare-open-btn       { border-color: #2d8b8b; color: #2d8b8b; }
+.compare-open-btn:hover { background: #2d8b8b; color: #f1faee; }
+.compare-clear-btn      { border-color: #8b2d2d; color: #c87070; }
+.compare-clear-btn:hover { background: #8b2d2d; color: #f1faee; }
+
+.profile-card {
+    background: #0d1b2a;
+    border: 1px solid #1e5555;
+    border-radius: 8px;
+    padding: 16px;
+    min-width: 200px;
+    flex: 1;
+}
+.card-heading { margin: 0 0 10px 0; color: #a8dadc; font-size: 0.95em; }
+.loading-text { color: #6a9a9a; margin: 0; }
+
+/* Bio / grade kv rows */
+.bio-label { font-weight: bold; padding: 4px 16px 4px 0; color: #a8dadc; }
+.bio-val   { padding: 4px 0; color: #f1faee; }
+
+/* Grade bar */
+.grade-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.grade-bar-track { width: 80px; background: #1e5555; border-radius: 4px; height: 10px; }
+.grade-bar-fill  { height: 10px; border-radius: 4px; }
+
+/* Grade info tooltip (ⓘ) */
+.grade-info {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    color: #6b8fa3;
+    font-size: 0.8em;
+    vertical-align: middle;
+}
+.grade-info::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0d1b2a;
+    color: #f1faee;
+    border: 1px solid #2d8b8b;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    width: 240px;
+    white-space: normal;
+    z-index: 999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    text-align: left;
+}
+.grade-info:hover::after { opacity: 1; }
+
+/* History table */
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88em;
+}
+.history-table thead th {
+    background: #162535;
+    color: #a8dadc;
+    padding: 6px 10px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid #1e5555;
+}
+.history-table tbody td {
+    padding: 6px 10px;
+    color: #f1faee;
+    white-space: nowrap;
+}
+
+/* Best-season highlight */
+td.best-season {
+    background: #1a3d3d !important;
+    color: #2d8b8b !important;
+    font-weight: 700;
+}
+
+/* Compare side-by-side layout */
+.profile-panels-single {
+    display: block;
+}
+.profile-panels-split {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+.profile-panel-wrap {
+    flex: 1;
+    min-width: 0;
+}
