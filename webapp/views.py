@@ -17,7 +17,14 @@ engine = create_engine(f'sqlite:///{_DB_PATH}', echo=True)
 _BASE_DIR = Path(__file__).parent.parent
 _PICKLE_DIR = _BASE_DIR / 'Models' / 'PickleFiles'
 
-_TEAM_ABBR_MAP = {}
+_TEAM_ABBR_MAP = {
+    'LA': 'LAR',  # Los Angeles Rams
+    'LV': 'LV',   # Las Vegas Raiders (already correct)
+    'ARZ': 'ARI', # Arizona Cardinals
+    'BLT': 'BAL', # Baltimore Ravens
+    'CLV': 'CLE', # Cleveland Browns
+    'HST': 'HOU', # Houston Texans
+}
 
 _player_details_cache = None
 _team_schedule_cache = None
