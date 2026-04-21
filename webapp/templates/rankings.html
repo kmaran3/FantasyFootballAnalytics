@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}Rankings{% endblock %}
+
+{% block content %}
+<h1>Player Rankings</h1>
+<div class="left-panel">
+    <h2>Ranking Type</h2>
+    <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
+        <a href="{{ url_for('main.get_ppr_rankings') }}" class="btn btn-primary btn-bold" id="ppr_btn">PPR</a>
+        <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="btn btn-primary" id="half_ppr_btn">Half PPR</a>
+        <a href="{{ url_for('main.get_standard_rankings') }}" class="btn btn-primary" id="standard_btn">Standard</a>
+    </div>
+    
+    <!-- User-Specific Saved Rankings -->
+    <h3>Your Saved Rankings</h3>
+    <div class="btn-group-vertical mb-3" role="group" aria-label="User Saved Rankings">
+        {% for ranking in user_rankings %}
+            <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="btn btn-secondary">
+                {{ ranking.ranking_type }} (Saved: {{ ranking.timestamp.strftime('%Y-%m-%d %H:%M') }})
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
+<div id="ranking_table" class="ranking-table">
+    {% if table_data %}
+        <table class="table table-striped" id="sortable-table">
+            <thead>
+                <tr>
+                    {% for header in table_data[0].keys() %}
+                        <th>{{ header }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in table_data %}
+                    <tr>
+                        {% for cell in row.values() %}
+                            <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No data available for {{ table_type }} rankings.</p>
+    {% endif %}
+</div>
+
+<!-- Save Button -->
+<button id="saveRanking" class="btn btn-success">Save Rankings</button>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    // Make the table rows sortable
+    $("#sortable-table tbody").sortable({
+        helper: function(e, tr) {
+            var $originals = tr.children();
+            var $helper = tr.clone();
+            $helper.children().each(function(index) {
+                $(this).width($originals.eq(index).width());
+            });
+            return $helper;
+        }
+    }).disableSelection();
+
+    // Save the reordered list
+    $('#saveRanking').click(function() {
+        var rows = [];
+        $('#sortable-table tbody tr').each(function() {
+            var row = [];
+            $(this).find('td').each(function() {
+                row.push($(this).text());
+            });
+            rows.push(row);
+        });
+
+        // Send reordered list to the server
+        $.ajax({
+            type: 'POST',
+            url: '{{ url_for("main.save_rankings") }}',
+            contentType: 'application/json;charset=UTF-8',
+            data: JSON.stringify({ranking: rows, ranking_type: "{{ table_type }}"}),
+            success: function(response) {
+                alert('Rankings saved successfully!');
+            },
+            error: function(error) {
+                alert('Failed to save rankings. Please try again.');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

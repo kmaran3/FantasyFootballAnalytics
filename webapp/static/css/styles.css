@@ -1,0 +1,160 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+
+header.banner {
+    width: 100%;
+    background-color: #333; /* Change this to the color you want */
+    color: #f8f39fee; /* Text color */
+    text-align: center; /* Center the text */
+    padding: 20px 0; /* Top and bottom padding */
+    box-sizing: border-box; /* Ensure padding is included in width calculation */
+    position: fixed; /* Make the banner stay at the top */
+    top: 0;
+    left: 0;
+    z-index: 1000; /* Ensure the banner stays on top of other content */
+}
+
+nav ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+nav ul li {
+    margin: 0 1em;
+}
+
+.btn-group-vertical {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    position: fixed;
+    top: 170px;
+}
+
+.btn-group-vertical .btn {
+    margin-bottom: 10px;
+}
+
+.btn-bold {
+    font-weight: bold;
+}
+
+
+nav ul li a {
+    color: #f8f39fee;
+    text-decoration: none;
+    
+}
+
+nav ul li.login {
+    margin-left: auto;  /* This will push the login/logout item to the right */
+}
+
+main {
+    flex: 1;
+    padding: 2em;
+    text-align: center;
+}
+
+footer {
+    background-color: #333;
+    color: #f8f39fee;
+    text-align: center;
+    padding: 1em 0;
+    position: relative;
+    bottom: 0;
+}
+
+.profile-container {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    padding: 2em 0;
+}
+
+.profile {
+    display: flex;
+    align-items: flex-start;
+    margin: 1em;
+    max-width: 500px;
+}
+
+.profile img {
+    max-width: 150px;
+    height: auto;
+    border-radius: 50%;
+    margin-right: 1em;
+}
+
+.profile-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.profile-info h2 {
+    margin-top: 0;
+    font-size: 1.5em;
+}
+
+.profile-info p {
+    font-size: 1em;
+    color: #555;
+    margin: 0.5em 0;
+    max-width: 300px; /* Adjust the width as needed */
+}
+
+.logo {
+    border-radius: 50%;
+    max-width: 200px;
+    height: auto;
+}
+
+table {
+    width: 65%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+th, td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.left-panel {
+    position: fixed; /* Keeps the panel fixed on the page */
+    top: 100px; /* Adjust this value to position the panel higher or lower */
+    left: 40px; /* Adjust this value to position the panel left or right */
+    width: 130px; /* Adjust the width as needed */
+    padding: 5px; /* Optional: Add some padding */
+    background-color: #555; /* Optional: Add a background color */ /* Optional: Add a border */
+    /* box-shadow: 0 0 10px rgba(117, 108, 108, 0.1); */
+    font-size: 0.65em; /* Optional: Add a shadow */
+    color: #f8f39fee;
+    flex-direction: column;
+}
+.btn-group-vertical {
+    flex-grow: 1;
+}
+.saved-lists {
+    left: 40px;
+    position: fixed;
+    top: 280px;
+    background-color: #555;
+    color: #f8f39fee;
+    width: 130px;
+    font-size: 1.2em;
+}

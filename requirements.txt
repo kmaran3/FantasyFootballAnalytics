@@ -1,0 +1,7 @@
+Flask==2.1.1
+Flask-Login==0.6.0
+Flask-WTF==1.0.0
+WTForms==3.0.1
+pandas==1.4.1
+requests==2.27.1
+beautifulsoup4==4.10.0

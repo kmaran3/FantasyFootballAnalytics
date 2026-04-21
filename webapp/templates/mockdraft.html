@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+
+{% block title %}Mock Draft{% endblock %}
+
+{% block content %}
+
+<h1>Mock Draft</h1>
+<form action="{{ url_for('main.mock_draft') }}" method="post">
+    <label for="position">Select your draft position:</label>
+    <select name="position" id="position">
+        {% for pos in range(1, 13) %}
+        <option value="{{ pos }}">{{ pos }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Start Draft</button>
+</form>
+<div id="draftContainer">
+    <div id="userPicks">
+        <h2>Your Picks:</h2>
+        <ul id="pickedPlayers"></ul>
+    </div>
+    <div id="draftTable">
+        {% if player_data %}
+        <h2>Player Rankings:</h2>
+        <table id="playerTable">
+        <thead>
+        <tr>
+        <th>Player Name</th>
+        <th>ESPN Value</th>
+        <th>Action</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for player, value in player_data %}
+        <tr>
+        <td>{{ player }}</td>
+        <td>{{ value }}</td>
+        <td><button onclick="draftPlayer(this, '{{ player }}')" disabled>Draft</button></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+        </table>
+        {% endif %}
+    </div>
+    <div id="removedPlayers">
+        <h2>Removed Players:</h2>
+        <ul id="removedPlayersList"></ul>
+    </div>
+</div>
+
+<style>
+#draftContainer {
+    display: flex;
+    justify-content: space-between;
+}
+
+#draftTable {
+    flex: 1;
+}
+
+#removedPlayers {
+    width: 20%;
+    max-height: 300px; /* Set the height limit for the removed players list */
+    overflow-y: auto; /* Add a scrollbar if the list exceeds the height limit */
+}
+
+#removedPlayers ul {
+    list-style-type: none;
+    padding: 0;
+}
+</style>
+
+<script>
+let userPosition = parseInt('{{ draft_position }}') - 1;
+let currentRound = 1; // Start with the first round
+let totalPositions = 12; // Total number of draft positions
+let draftDirection = 1; // 1 for forward, -1 for reverse
+let draftIndex = 0; // Current index in the draft order
+let removedPlayers = []; // To store the removed players
+
+function draftPlayer(button, playerName) {
+    // Add player to the user's picks
+    document.getElementById('pickedPlayers').innerHTML += `<li>${playerName}</li>`;
+    // Add player to the removed players
+    updateRemovedPlayers(playerName);
+    // Remove the player's row from the table
+    button.parentElement.parentElement.remove();
+    // Continue drafting
+    startDraft();
+}
+
+function updateRemovedPlayers(playerName) {
+    removedPlayers.unshift(playerName); // Add the new player to the start of the array
+    const removedPlayersList = document.getElementById('removedPlayersList');
+    removedPlayersList.innerHTML = '';
+    removedPlayers.forEach(player => {
+        removedPlayersList.innerHTML += `<li>${player}</li>`;
+    });
+}
+
+function startDraft() {
+    const table = document.getElementById('playerTable');
+    let rowsRemoved = 0;
+
+    let intervalId = setInterval(() => {
+        if (draftIndex !== userPosition) {
+            if (table.rows.length > 1) {
+                const removedPlayer = table.rows[1].cells[0].textContent;
+                updateRemovedPlayers(removedPlayer);
+                table.deleteRow(1); // Always remove the first row (index 1)
+                rowsRemoved++;
+                draftIndex += draftDirection;
+                if (draftIndex >= totalPositions) {
+                    draftDirection = -1; // Reverse direction
+                    draftIndex = totalPositions - 1;
+                } else if (draftIndex < 0) {
+                    draftDirection = 1; // Forward direction
+                    draftIndex = 0;
+                }
+            } else {
+                clearInterval(intervalId);
+            }
+        } else {
+            clearInterval(intervalId); // Stop when it reaches the user's turn
+            // Enable draft buttons only for visible players
+            Array.from(table.querySelectorAll('button')).forEach(button => {
+                button.disabled = false;
+            });
+            draftIndex += draftDirection;
+            if (draftIndex >= totalPositions) {
+                draftDirection = -1; // Reverse direction
+                draftIndex = totalPositions - 1;
+            } else if (draftIndex < 0) {
+                draftDirection = 1; // Forward direction
+                draftIndex = 0;
+            }
+        }
+    }, 1000); // Delay of 1 second between each row removal
+}
+
+document.addEventListener('DOMContentLoaded', startDraft); // Start when the page is ready
+</script>
+{% endblock %}
