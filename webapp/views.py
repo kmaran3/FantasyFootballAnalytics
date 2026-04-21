@@ -954,7 +954,16 @@ def player_stats():
     name = request.args.get('name', '').strip()
     pos  = request.args.get('pos', '').strip().upper()
     team = request.args.get('team', '').strip().upper()
+    
+    # DEBUG LOGGING
+    print(f"\n=== PLAYER_STATS REQUEST ===")
+    print(f"Name: {name}")
+    print(f"Pos: {pos}")
+    print(f"Team (raw): {team}")
+    
     team = _norm_team(team)  # Normalize LA -> LAR, etc.
+    print(f"Team (normalized): {team}")
+    print(f"Team in _composite_grades? {team in _composite_grades}")
 
     if not name:
         return jsonify({})
@@ -1060,6 +1069,11 @@ def player_stats():
             oline_rank = all_oline_grades.index(oline_grade) + 1 if oline_grade in all_oline_grades else None
             team_grade_ranks['OLine'] = oline_rank
 
+    # DEBUG LOGGING
+    print(f"Returning team_grade: {team_grade}")
+    print(f"Returning team_grade_ranks: {team_grade_ranks}")
+    print(f"===========================\n")
+
     return jsonify({
         'history': history,
         'ranking': ranking,
@@ -1093,8 +1107,16 @@ def player_quick_stats():
                     espn_id = str(raw_id)
                 def _sv(v):
                     return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
+                
+                # Normalize team abbreviation in bio
+                bio_team = _r.get('Team')
+                if pd.notna(bio_team) and str(bio_team) not in ('nan', 'None', ''):
+                    bio_team = _norm_team(str(bio_team))
+                else:
+                    bio_team = '—'
+                
                 bio = {
-                    'Team':             _sv(_r.get('Team')),
+                    'Team':             bio_team,
                     'Position':         _sv(_r.get('Pos')),
                     'Height':           _sv(_r.get('height')),
                     'Weight':           _sv(_r.get('weight')),
@@ -1212,8 +1234,16 @@ def player_profile(name):
                     espn_id = str(raw_id)
                 def _sv(v):
                     return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
+                
+                # Normalize team abbreviation in bio
+                bio_team = row.get('Team')
+                if pd.notna(bio_team) and str(bio_team) not in ('nan', 'None', ''):
+                    bio_team = _norm_team(str(bio_team))
+                else:
+                    bio_team = '—'
+                
                 player_bio = {
-                    'Team':         _sv(row.get('Team')),
+                    'Team':         bio_team,
                     'Position':     _sv(row.get('Pos')),
                     'Height':       _sv(row.get('height')),
                     'Weight':       _sv(row.get('weight')),
