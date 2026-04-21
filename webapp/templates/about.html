@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}About{% endblock %}
+
+{% block content %}
+    <h1>The Creators</h1>
+    <div class="profile-container">
+        <div class="profile">
+            <img src="{{ url_for('static', filename='images/deven.jpg') }}" alt="Deven">
+            <div class="profile-info">
+                <h2>Deven Chatterjea</h2>
+                <p>Deven is a data analyst with a passion for football analytics. His ability to break down complex data into actionable advice makes him a valuable asset to any fantasy football team.</p>
+            </div>
+        </div>
+        <div class="profile">
+            <img src="{{ url_for('static', filename='images/krishna.jpg') }}" alt="Krishna">
+            <div class="profile-info">
+                <h2>Krishna Maran</h2>
+                <p>Krishna is an expert in fantasy football strategy with over a decade of experience. He has helped countless fantasy managers dominate their leagues with his in-depth analysis and insights.</p>
+            </div>
+        </div>
+    </div>
+{% endblock %}
