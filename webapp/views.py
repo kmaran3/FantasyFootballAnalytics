@@ -416,122 +416,179 @@ def _compute_composite_grades():
             for t, v in vals_dict.items()
         }
 
-    use_live = (not _nfl_latest.empty
-                and '_pos' in _nfl_latest.columns
-                and '_team' in _nfl_latest.columns)
+    # ALWAYS use PFF grades from currAVs.pkl first (except TE which uses fantasy points)
+    pff_loaded = False
+    try:
+        curr_avs = _load('currAVs.pkl')
+        if not curr_avs.empty and 'team' in curr_avs.columns:
+            for _, row in curr_avs.iterrows():
+                team = _norm_team(row['team'])
+                # Normalize PFF grades from 0-100 scale to 0-1 scale
+                # Store both pass blocking (OLine) and run blocking (RB_OLine) separately
+                # Note: TE will be calculated from fantasy points below
+                per_team[team] = {
+                    'QB': round(float(row.get('qb', 50)) / 100.0, 2),
+                    'RB': round(float(row.get('rb', 50)) / 100.0, 2),
+                    'WR': round(float(row.get('wrte', 50)) / 100.0, 2),
+                    'OLine': round(float(row.get('oline', 50)) / 100.0, 2),  # Pass blocking for non-RB
+                    'RB_OLine': round(float(row.get('rb', 50)) / 100.0, 2),  # Run blocking for RB
+                    'DST': round(float(row.get('dst', 50)) / 100.0, 2),
+                }
+            pff_loaded = True
+            print(f'Loaded PFF grades for {len(per_team)} teams from currAVs.pkl')
+            
+            # Calculate TE grades from fantasy points (original method)
+            wrte = _load('final_wrte_data.pkl')
+            if not wrte.empty:
+                latest = wrte['season'].max()
+                st_col = 'season_type' if 'season_type' in wrte.columns else None
+                mask = wrte['season'] == latest
+                if st_col:
+                    mask = mask & (wrte[st_col] == 'REG')
+                df = wrte[mask].copy()
+                tc = _find_team_col(df)
+                if tc and 'fantasy_points' in df.columns and 'GP' in df.columns:
+                    pc = next((c for c in ['position', 'Position'] if c in df.columns), None)
+                    if pc:
+                        df[tc] = df[tc].apply(_norm_team)
+                        df['fpg'] = df['fantasy_points'] / df['GP'].clip(lower=1)
+                        te_df = df[df[pc].str.upper() == 'TE'].copy()
+                        te_df = te_df.sort_values('fantasy_points', ascending=False)
+                        top_te = te_df.groupby(tc).head(2)
+                        raw = {}
+                        for team, val in top_te.groupby(tc)['fpg'].mean().items():
+                            sf = _safe_f(val, 3)
+                            if sf is not None:
+                                raw[team] = sf
+                        # Normalize TE grades
+                        if raw:
+                            mn, mx = min(raw.values()), max(raw.values())
+                            rng = mx - mn if mx > mn else 1.0
+                            for team, v in raw.items():
+                                normalized = round((v - mn) / rng, 2)
+                                if team in per_team:
+                                    per_team[team]['TE'] = normalized
+                        print(f'Calculated TE grades from fantasy points for {len(raw)} teams')
+    except Exception as e:
+        print(f'Warning: could not load currAVs.pkl: {e}')
 
-    if use_live:
-        fpc = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_latest.columns), None)
-        gpc = next((c for c in ['games', 'GP'] if c in _nfl_latest.columns), None)
+    # Only calculate from player stats if PFF grades failed to load
+    if not pff_loaded:
+        use_live = (not _nfl_latest.empty
+                    and '_pos' in _nfl_latest.columns
+                    and '_team' in _nfl_latest.columns)
 
-        if fpc and gpc:
-            df = _nfl_latest.dropna(subset=['_pos', '_team']).copy()
-            df['_team'] = df['_team'].apply(_norm_team)
-            df['fpg']   = df[fpc] / df[gpc].clip(lower=1)
+        if use_live:
+            fpc = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_latest.columns), None)
+            gpc = next((c for c in ['games', 'GP'] if c in _nfl_latest.columns), None)
 
-            def _process_live(pos_filter, pos_label, n_starters):
-                pos_df = df[df['_pos'].str.upper() == pos_filter].copy()
-                pos_df = pos_df.sort_values(fpc, ascending=False)
-                top = pos_df.groupby('_team').head(n_starters)
+            if fpc and gpc:
+                df = _nfl_latest.dropna(subset=['_pos', '_team']).copy()
+                df['_team'] = df['_team'].apply(_norm_team)
+                df['fpg']   = df[fpc] / df[gpc].clip(lower=1)
+
+                def _process_live(pos_filter, pos_label, n_starters):
+                    pos_df = df[df['_pos'].str.upper() == pos_filter].copy()
+                    pos_df = pos_df.sort_values(fpc, ascending=False)
+                    top = pos_df.groupby('_team').head(n_starters)
+                    raw = {}
+                    for team, val in top.groupby('_team')['fpg'].mean().items():
+                        sf = _safe_f(val, 3)
+                        if sf is not None:
+                            raw[team] = sf
+                    for team, v in _minmax_normalize(raw).items():
+                        per_team.setdefault(team, {})[pos_label] = v
+
+                _process_live('QB', 'QB', 1)
+                _process_live('RB', 'RB', 2)
+                _process_live('WR', 'WR', 3)
+                _process_live('TE', 'TE', 2)
+
+                # OLine proxy: team rushing YPC (top 2 RBs) + inverse sacks-per-game (QB)
+                rb_df = df[df['_pos'] == 'RB'].copy()
+                if 'rushing_yards' in rb_df.columns and 'carries' in rb_df.columns:
+                    rb_df = rb_df[rb_df['carries'].fillna(0) > 0]
+                    rb_df['ypc'] = rb_df['rushing_yards'] / rb_df['carries'].clip(lower=1)
+                    top_rb = rb_df.sort_values('rushing_yards', ascending=False).groupby('_team').head(2)
+                    ypc_by_team = top_rb.groupby('_team')['ypc'].mean()
+                else:
+                    ypc_by_team = pd.Series(dtype=float)
+
+                qb_df = df[df['_pos'] == 'QB'].copy()
+                sack_col = next((c for c in ['sacks_suffered', 'sacks'] if c in qb_df.columns), None)
+                if sack_col and gpc in qb_df.columns:
+                    qb_df['spg'] = qb_df[sack_col] / qb_df[gpc].clip(lower=1)
+                    top_qb = qb_df.sort_values(fpc, ascending=False).groupby('_team').head(1)
+                    spg_by_team = top_qb.groupby('_team')['spg'].mean()
+                else:
+                    spg_by_team = pd.Series(dtype=float)
+
+                all_teams = set(ypc_by_team.index) | set(spg_by_team.index)
+                oline_raw = {}
+                for team in all_teams:
+                    ypc_norm = _minmax_normalize(ypc_by_team.to_dict()).get(team, 0.5)
+                    spg_norm = _minmax_normalize(spg_by_team.to_dict(), invert=True).get(team, 0.5)
+                    oline_raw[team] = (ypc_norm + spg_norm) / 2.0
+                for team, v in oline_raw.items():
+                    per_team.setdefault(team, {})['OLine'] = round(v, 2)
+
+                # DST proxy: points allowed per game from 2025 schedule
+                try:
+                    sched = nflreadpy.load_schedules([2025]).to_pandas()
+                    sched = sched.dropna(subset=['home_score', 'away_score', 'home_team', 'away_team'])
+                    pts_allowed = {}
+                    games_played = {}
+                    for _, row in sched.iterrows():
+                        ht, at = _norm_team(row['home_team']), _norm_team(row['away_team'])
+                        hs, as_ = float(row['home_score']), float(row['away_score'])
+                        pts_allowed[ht] = pts_allowed.get(ht, 0) + as_
+                        pts_allowed[at] = pts_allowed.get(at, 0) + hs
+                        games_played[ht] = games_played.get(ht, 0) + 1
+                        games_played[at] = games_played.get(at, 0) + 1
+                    dst_raw = {t: pts_allowed[t] / max(games_played[t], 1) for t in pts_allowed}
+                    for team, v in _minmax_normalize(dst_raw, invert=True).items():
+                        per_team.setdefault(team, {})['DST'] = v
+                except Exception as _de:
+                    print(f'Warning: could not compute DST grades: {_de}')
+        else:
+            # Last resort: calculate from player stats
+            def _process_pkl(df_raw, pos_label, n_starters, pos_filter=None):
+                if df_raw.empty:
+                    return
+                latest = df_raw['season'].max()
+                st_col = 'season_type' if 'season_type' in df_raw.columns else None
+                mask = df_raw['season'] == latest
+                if st_col:
+                    mask = mask & (df_raw[st_col] == 'REG')
+                df = df_raw[mask].copy()
+                tc = _find_team_col(df)
+                if tc is None or 'fantasy_points' not in df.columns or 'GP' not in df.columns:
+                    return
+                df[tc] = df[tc].apply(_norm_team)
+                df['fpg'] = df['fantasy_points'] / df['GP'].clip(lower=1)
+                df_sorted = df.sort_values('fantasy_points', ascending=False)
+                if pos_filter:
+                    pc = next((c for c in ['position', 'Position'] if c in df.columns), None)
+                    if pc:
+                        df_sorted = df_sorted[df_sorted[pc].str.upper() == pos_filter]
+                top = df_sorted.groupby(tc).head(n_starters)
                 raw = {}
-                for team, val in top.groupby('_team')['fpg'].mean().items():
+                for team, val in top.groupby(tc)['fpg'].mean().items():
                     sf = _safe_f(val, 3)
                     if sf is not None:
                         raw[team] = sf
                 for team, v in _minmax_normalize(raw).items():
                     per_team.setdefault(team, {})[pos_label] = v
 
-            _process_live('QB', 'QB', 1)
-            _process_live('RB', 'RB', 2)
-            _process_live('WR', 'WR', 3)
-            _process_live('TE', 'TE', 2)
+            _process_pkl(_load('final_qb_data.pkl'), 'QB', 1)
+            _process_pkl(_load('final_rb_data.pkl'), 'RB', 2)
+            wrte = _load('final_wrte_data.pkl')
+            _process_pkl(wrte, 'WR', 3, 'WR')
+            _process_pkl(wrte, 'TE', 2, 'TE')
 
-            # OLine proxy: team rushing YPC (top 2 RBs) + inverse sacks-per-game (QB)
-            rb_df = df[df['_pos'] == 'RB'].copy()
-            if 'rushing_yards' in rb_df.columns and 'carries' in rb_df.columns:
-                rb_df = rb_df[rb_df['carries'].fillna(0) > 0]
-                rb_df['ypc'] = rb_df['rushing_yards'] / rb_df['carries'].clip(lower=1)
-                top_rb = rb_df.sort_values('rushing_yards', ascending=False).groupby('_team').head(2)
-                ypc_by_team = top_rb.groupby('_team')['ypc'].mean()
-            else:
-                ypc_by_team = pd.Series(dtype=float)
-
-            qb_df = df[df['_pos'] == 'QB'].copy()
-            sack_col = next((c for c in ['sacks_suffered', 'sacks'] if c in qb_df.columns), None)
-            if sack_col and gpc in qb_df.columns:
-                qb_df['spg'] = qb_df[sack_col] / qb_df[gpc].clip(lower=1)
-                top_qb = qb_df.sort_values(fpc, ascending=False).groupby('_team').head(1)
-                spg_by_team = top_qb.groupby('_team')['spg'].mean()
-            else:
-                spg_by_team = pd.Series(dtype=float)
-
-            all_teams = set(ypc_by_team.index) | set(spg_by_team.index)
-            oline_raw = {}
-            for team in all_teams:
-                ypc_norm = _minmax_normalize(ypc_by_team.to_dict()).get(team, 0.5)
-                spg_norm = _minmax_normalize(spg_by_team.to_dict(), invert=True).get(team, 0.5)
-                oline_raw[team] = (ypc_norm + spg_norm) / 2.0
-            for team, v in oline_raw.items():
-                per_team.setdefault(team, {})['OLine'] = round(v, 2)
-
-            # DST proxy: points allowed per game from 2025 schedule
-            try:
-                sched = nflreadpy.load_schedules([2025]).to_pandas()
-                sched = sched.dropna(subset=['home_score', 'away_score', 'home_team', 'away_team'])
-                pts_allowed = {}
-                games_played = {}
-                for _, row in sched.iterrows():
-                    ht, at = _norm_team(row['home_team']), _norm_team(row['away_team'])
-                    hs, as_ = float(row['home_score']), float(row['away_score'])
-                    pts_allowed[ht] = pts_allowed.get(ht, 0) + as_
-                    pts_allowed[at] = pts_allowed.get(at, 0) + hs
-                    games_played[ht] = games_played.get(ht, 0) + 1
-                    games_played[at] = games_played.get(at, 0) + 1
-                dst_raw = {t: pts_allowed[t] / max(games_played[t], 1) for t in pts_allowed}
-                for team, v in _minmax_normalize(dst_raw, invert=True).items():
-                    per_team.setdefault(team, {})['DST'] = v
-            except Exception as _de:
-                print(f'Warning: could not compute DST grades: {_de}')
-
-    else:
-        # Fallback: pickle files
-        def _process_pkl(df_raw, pos_label, n_starters, pos_filter=None):
-            if df_raw.empty:
-                return
-            latest = df_raw['season'].max()
-            st_col = 'season_type' if 'season_type' in df_raw.columns else None
-            mask = df_raw['season'] == latest
-            if st_col:
-                mask = mask & (df_raw[st_col] == 'REG')
-            df = df_raw[mask].copy()
-            tc = _find_team_col(df)
-            if tc is None or 'fantasy_points' not in df.columns or 'GP' not in df.columns:
-                return
-            df[tc] = df[tc].apply(_norm_team)
-            df['fpg'] = df['fantasy_points'] / df['GP'].clip(lower=1)
-            df_sorted = df.sort_values('fantasy_points', ascending=False)
-            if pos_filter:
-                pc = next((c for c in ['position', 'Position'] if c in df.columns), None)
-                if pc:
-                    df_sorted = df_sorted[df_sorted[pc].str.upper() == pos_filter]
-            top = df_sorted.groupby(tc).head(n_starters)
-            raw = {}
-            for team, val in top.groupby(tc)['fpg'].mean().items():
-                sf = _safe_f(val, 3)
-                if sf is not None:
-                    raw[team] = sf
-            for team, v in _minmax_normalize(raw).items():
-                per_team.setdefault(team, {})[pos_label] = v
-
-        _process_pkl(_load('final_qb_data.pkl'), 'QB', 1)
-        _process_pkl(_load('final_rb_data.pkl'), 'RB', 2)
-        wrte = _load('final_wrte_data.pkl')
-        _process_pkl(wrte, 'WR', 3, 'WR')
-        _process_pkl(wrte, 'TE', 2, 'TE')
-
-    # Ensure every team that appears in any grade has all 6 keys (fill missing with median)
+    # Ensure every team that appears in any grade has all keys (fill missing with median)
     all_teams = set(per_team.keys())
-    for grade_key in ['QB', 'RB', 'WR', 'TE', 'OLine', 'DST']:
+    for grade_key in ['QB', 'RB', 'WR', 'TE', 'OLine', 'RB_OLine', 'DST']:
         present = [per_team[t][grade_key] for t in all_teams if grade_key in per_team.get(t, {})]
         median = sorted(present)[len(present) // 2] if present else 0.5
         for team in all_teams:
@@ -954,21 +1011,47 @@ def player_stats():
 
     # --- Team grade (composite from starter fantasy performance) ---
     team_grade = {}
+    team_grade_ranks = {}
     if team and team in _composite_grades:
         cg = _composite_grades[team]
+        
+        # Conditionally use pass blocking or run blocking for OLine based on position
+        oline_grade = cg.get('RB_OLine') if pos == 'RB' else cg.get('OLine')
+        
         team_grade = {
-            'OLine': cg.get('OLine'),
+            'OLine': oline_grade,
             'QB':    cg.get('QB'),
             'RB':    cg.get('RB'),
             'WR':    cg.get('WR'),
             'TE':    cg.get('TE'),
             'DST':   cg.get('DST'),
         }
+        
+        # Calculate rankings (1-32) for each grade
+        for grade_key in ['QB', 'RB', 'WR', 'TE', 'DST']:
+            if grade_key in team_grade and team_grade[grade_key] is not None:
+                all_grades = sorted(
+                    [g.get(grade_key, 0) for g in _composite_grades.values() if g.get(grade_key) is not None],
+                    reverse=True
+                )
+                rank = all_grades.index(team_grade[grade_key]) + 1 if team_grade[grade_key] in all_grades else None
+                team_grade_ranks[grade_key] = rank
+        
+        # Handle OLine rank separately (different source for RB vs others)
+        if oline_grade is not None:
+            oline_key = 'RB_OLine' if pos == 'RB' else 'OLine'
+            all_oline_grades = sorted(
+                [g.get(oline_key, 0) for g in _composite_grades.values() if g.get(oline_key) is not None],
+                reverse=True
+            )
+            oline_rank = all_oline_grades.index(oline_grade) + 1 if oline_grade in all_oline_grades else None
+            team_grade_ranks['OLine'] = oline_rank
 
     return jsonify({
         'history': history,
         'ranking': ranking,
         'team_grade': team_grade,
+        'team_grade_ranks': team_grade_ranks,
     })
 
 

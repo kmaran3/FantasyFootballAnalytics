@@ -87,6 +87,47 @@
     color: #6b8fa3;
     font-size: 0.8em;
     position: relative;
+    display: inline-block;
+}
+.grade-info:hover {
+    color: #8fb3c5;
+}
+.grade-info[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 12px;
+    background: #1a1a2e;
+    color: #f1faee;
+    border: 1px solid #457b9d;
+    border-radius: 6px;
+    white-space: normal;
+    width: 250px;
+    font-size: 0.85rem;
+    z-index: 1000;
+    margin-bottom: 5px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    line-height: 1.4;
+    text-align: left;
+}
+.grade-info[data-tooltip]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #457b9d;
+    z-index: 1001;
+}
+
+.grade-rank {
+    color: #8fa3b0;
+    font-size: 0.82em;
+    font-weight: 600;
+    margin-left: 4px;
 }
 
 /* History table */
@@ -154,8 +195,13 @@
                          style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
                          onerror="this.style.display='none'">
                     <div style="width:100%;margin-top:auto;padding-top:10px;">
-                        <h4 class="card-heading" style="margin-bottom:4px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
-                        <div id="team-grade-card"><p class="loading-text">Loading...</p></div>
+                        <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                        <div id="team-grade-container">
+                            <div style="position:relative;height:220px;width:100%;">
+                                <canvas id="team-grade-radar"></canvas>
+                            </div>
+                            <div id="team-grade-table" style="display:none;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -191,8 +237,13 @@
                              style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
                              onerror="this.style.display='none'">
                         <div style="width:100%;margin-top:auto;padding-top:10px;">
-                            <h4 class="card-heading" style="margin-bottom:4px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
-                            <div id="cmp-grade-card"><p class="loading-text">Loading...</p></div>
+                            <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                            <div id="cmp-grade-container">
+                                <div style="position:relative;height:220px;width:100%;">
+                                    <canvas id="cmp-grade-radar"></canvas>
+                                </div>
+                                <div id="cmp-grade-table" style="display:none;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -222,12 +273,13 @@ var _autoCompare = {{ 'true' if compare else 'false' }};
 
 // ── Grade tooltips ────────────────────────────────────────────────
 var GRADE_TIPS = {
-    OLine: "How well this team's offensive line protects the QB and opens running lanes. Higher = better pass and run blocking.",
-    QB:    "Starter QB's fantasy output per game vs. league average. Reflects overall passing efficiency and rushing upside.",
-    RB:    "Average fantasy production of the top 2 RBs per game. Reflects volume, efficiency, and receiving usage.",
-    WR:    "Average fantasy production of the top 3 WRs per game. Reflects target share, yards, and touchdown opportunity.",
+    OLine_RB: "PFF run blocking grade: How well this team's O-line opens running lanes. Higher = better run blocking.",
+    OLine_Other: "PFF pass blocking grade: How well this team's O-line protects the QB. Higher = better pass protection.",
+    QB:    "PFF QB overall grade: Combines passing accuracy, decision-making, and rushing ability.",
+    RB:    "PFF run blocking grade: Team's ability to create rushing lanes and yards after contact.",
+    WR:    "PFF receiving grade: Team's WR/TE ability in route running, catching, and yards after catch.",
     TE:    "Average fantasy production of the top 2 TEs per game. High scores indicate a target-heavy, pass-catching TE.",
-    DST:   "Team defensive strength from existing model. Higher = better against opposing offenses.",
+    DST:   "PFF defense grade: Overall defensive performance against the run and pass.",
 };
 
 // ── Bio fields (from roster data) ─────────────────────────────────
@@ -239,7 +291,7 @@ var _bioFieldData = {
 
 // ── Charts state ──────────────────────────────────────────────────
 var _charts = {};
-
+var _radarCharts = {};
 // ── Escape helpers ────────────────────────────────────────────────
 function equalizeCardRows() {
     var pr = document.getElementById('primary-card-row');
@@ -272,31 +324,187 @@ function gradeBar(val) {
 
 // ── Render stats into a panel ─────────────────────────────────────
 function renderStatsIntoPanel(data, panelId, pos) {
+    console.log('=== renderStatsIntoPanel START ===');
+    console.log('panelId:', panelId, 'pos:', pos);
+    console.log('data:', data);
+    
     var isPrimary  = (panelId === 'primary');
-    var gradeElId  = isPrimary ? 'team-grade-card'    : 'cmp-grade-card';
+    var radarCanvasId = isPrimary ? 'team-grade-radar' : 'cmp-grade-radar';
+    var tableId = isPrimary ? 'team-grade-table' : 'cmp-grade-table';
     var chartElId  = isPrimary ? 'fantasy-chart'       : 'cmp-fantasy-chart';
     var chartPhId  = isPrimary ? 'chart-placeholder'   : 'cmp-chart-placeholder';
     var histElId   = isPrimary ? 'history-table'       : 'cmp-history-table';
 
-    // Team grades
+    // Team grades - Radar Chart with table fallback
     var tg = data.team_grade || {};
-    var gradeEl = document.getElementById(gradeElId);
+    var tgRanks = data.team_grade_ranks || {};
+    var radarCanvas = document.getElementById(radarCanvasId);
+    var tableDiv = document.getElementById(tableId);
+    
+    console.log('Team grades for', panelId, '- Data:', tg, 'Ranks:', tgRanks);
+    console.log('Canvas element:', radarCanvas, 'Table element:', tableDiv);
+    console.log('Object.keys(tg).length:', Object.keys(tg).length);
+    
     if (Object.keys(tg).length) {
-        var tgHtml = '<table style="border-collapse:collapse;font-size:0.82em;">';
-        ['OLine','QB','RB','WR','TE','DST'].forEach(function(key) {
-            if (tg[key] === undefined || tg[key] === null) return;
-            var tip = GRADE_TIPS[key] || '';
-            tgHtml += '<tr style="line-height:1.4;"><td class="bio-label" style="padding:1px 6px 1px 0;">' + key
-                    + ' <span class="grade-info" title="' + escAttr(tip) + '">ⓘ</span></td>'
-                    + '<td class="bio-val" style="padding:1px 0;">' + gradeBar(tg[key]) + '</td></tr>';
-        });
-        tgHtml += '</table>';
-        gradeEl.innerHTML = tgHtml;
+        // Try to render radar chart
+        var chartRendered = false;
+        
+        if (radarCanvas && typeof Chart !== 'undefined') {
+            try {
+                // Destroy existing radar chart if present
+                if (_radarCharts[panelId]) {
+                    _radarCharts[panelId].destroy();
+                    delete _radarCharts[panelId];
+                }
+                
+                // Prepare data for radar chart
+                var labels = [];
+                var values = [];
+                var tooltips = [];
+                
+                ['OLine','QB','RB','WR','TE','DST'].forEach(function(key) {
+                    if (tg[key] !== undefined && tg[key] !== null) {
+                        var score = Math.round(tg[key] * 100);
+                        var rank = tgRanks[key] ? '#' + tgRanks[key] : '';
+                        labels.push(key + ': ' + score + ' (' + rank + ')');
+                        values.push(score);
+                        
+                        // Get appropriate tooltip
+                        var tip = key === 'OLine' ? 
+                            (panelId === 'primary' && _playerPos === 'RB' ? GRADE_TIPS.OLine_RB : GRADE_TIPS.OLine_Other) :
+                            (GRADE_TIPS[key] || '');
+                        tooltips.push(tip);
+                    }
+                });
+                
+                console.log('Creating radar chart with labels:', labels, 'values:', values);
+                
+                // Create radar chart
+                var ctx = radarCanvas.getContext('2d');
+                _radarCharts[panelId] = new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Team Grade',
+                            data: values,
+                            backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                            borderColor: 'rgba(46, 204, 113, 1)',
+                            borderWidth: 2,
+                            pointBackgroundColor: 'rgba(46, 204, 113, 1)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgba(46, 204, 113, 1)',
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                beginAtZero: true,
+                                min: 0,
+                                max: 100,
+                                ticks: {
+                                    stepSize: 25,
+                                    color: '#6b8fa3',
+                                    backdropColor: 'transparent',
+                                    font: { size: 10 }
+                                },
+                                grid: {
+                                    color: 'rgba(107, 143, 163, 0.2)'
+                                },
+                                pointLabels: {
+                                    color: '#a8dadc',
+                                    font: {
+                                        size: 10,
+                                        weight: 'bold'
+                                    },
+                                    padding: 5
+                                },
+                                angleLines: {
+                                    color: 'rgba(107, 143, 163, 0.2)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                backgroundColor: '#1a1a2e',
+                                titleColor: '#f1faee',
+                                bodyColor: '#a8dadc',
+                                borderColor: '#457b9d',
+                                borderWidth: 1,
+                                padding: 12,
+                                displayColors: false,
+                                titleFont: { size: 13, weight: 'bold' },
+                                bodyFont: { size: 11 },
+                                callbacks: {
+                                    title: function(context) {
+                                        return context[0].label;
+                                    },
+                                    label: function(context) {
+                                        return 'Grade: ' + context.parsed.r;
+                                    },
+                                    afterLabel: function(context) {
+                                        return tooltips[context.dataIndex] || '';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                chartRendered = true;
+                console.log('Radar chart created successfully');
+                radarCanvas.parentElement.style.display = 'block';
+                if (tableDiv) tableDiv.style.display = 'none';
+                
+            } catch (err) {
+                console.error('Error creating radar chart:', err);
+                chartRendered = false;
+            }
+        } else {
+            console.warn('Chart.js not available or canvas not found');
+        }
+        
+        // Fallback to table if chart failed
+        if (!chartRendered && tableDiv) {
+            console.log('Falling back to table display');
+            var tgHtml = '<table style="border-collapse:collapse;font-size:0.82em;width:100%;">';
+            ['OLine','QB','RB','WR','TE','DST'].forEach(function(key) {
+                if (tg[key] !== undefined && tg[key] !== null) {
+                    var score = Math.round(tg[key] * 100);
+                    var rank = tgRanks[key] ? '#' + tgRanks[key] : '';
+                    var pct = score;
+                    var color = tg[key] >= 0.7 ? '#2ecc71' : tg[key] >= 0.4 ? '#f39c12' : '#e74c3c';
+                    tgHtml += '<tr style="line-height:1.8;"><td style="padding:4px 8px 4px 0;color:#a8dadc;font-weight:600;">' + key + '</td>'
+                            + '<td style="padding:4px 0;"><div style="display:flex;align-items:center;gap:8px;">'
+                            + '<div style="width:60px;background:#1e5555;border-radius:3px;height:8px;">'
+                            + '<div style="width:' + pct + '%;background:' + color + ';height:8px;border-radius:3px;"></div></div>'
+                            + '<span style="color:#f1faee;font-weight:600;min-width:30px;">' + score + '</span>'
+                            + '<span style="color:#8fa3b0;font-size:0.9em;">(' + rank + ')</span></div></td></tr>';
+                }
+            });
+            tgHtml += '</table>';
+            tableDiv.innerHTML = tgHtml;
+            tableDiv.style.display = 'block';
+            if (radarCanvas) radarCanvas.parentElement.style.display = 'none';
+        }
     } else {
-        gradeEl.innerHTML = '<p class="loading-text">Not available.</p>';
+        console.warn('No team grade data available');
+        if (tableDiv) {
+            tableDiv.innerHTML = '<p class="loading-text">No team grades available</p>';
+            tableDiv.style.display = 'block';
+        }
+        if (radarCanvas) radarCanvas.parentElement.style.display = 'none';
     }
 
-    // Re-equalize card rows after grades render (grades change the right card height)
+    // Re-equalize card rows after grades render
     equalizeCardRows();
 
     // Chart
@@ -414,12 +622,17 @@ function highlightBestSeason(container) {
 
 // ── Load player stats via API ─────────────────────────────────────
 function loadPlayerStats(name, pos, team, panelId) {
+    console.log('Loading stats for:', name, pos, team, panelId);
     fetch('/player_stats?name=' + encodeURIComponent(name) + '&pos=' + encodeURIComponent(pos) + '&team=' + encodeURIComponent(team))
         .then(function(r) { return r.json(); })
-        .then(function(data) { renderStatsIntoPanel(data, panelId, pos); })
-        .catch(function() {
-            document.getElementById(panelId === 'primary' ? 'team-grade-card' : 'cmp-grade-card').innerHTML =
-                '<p class="loading-text">Failed to load.</p>';
+        .then(function(data) {
+            console.log('Received data for', panelId, ':', data);
+            console.log('team_grade:', data.team_grade);
+            console.log('team_grade_ranks:', data.team_grade_ranks);
+            renderStatsIntoPanel(data, panelId, pos);
+        })
+        .catch(function(err) {
+            console.error('Failed to load player stats:', err);
         });
 }
 
@@ -449,7 +662,15 @@ function initPrimaryPanel() {
     document.getElementById('bio-fields').innerHTML = bioHtml;
 
     // Reset loading state
-    document.getElementById('team-grade-card').innerHTML = '<p class="loading-text">Loading...</p>';
+    var gradeTable = document.getElementById('team-grade-table');
+    if (gradeTable) {
+        gradeTable.innerHTML = '<p class="loading-text">Loading...</p>';
+        gradeTable.style.display = 'block';
+    }
+    var gradeCanvas = document.getElementById('team-grade-radar');
+    if (gradeCanvas && gradeCanvas.parentElement) {
+        gradeCanvas.parentElement.style.display = 'none';
+    }
     document.getElementById('history-table').innerHTML = '<p class="loading-text">Loading...</p>';
     document.getElementById('chart-placeholder').style.display = 'block';
     document.getElementById('chart-placeholder').textContent = 'Loading...';
@@ -529,8 +750,7 @@ $(function() {
                     equalizeCardRows();
                 });
 
-            // Reset loading state
-            document.getElementById('cmp-grade-card').innerHTML = '<p class="loading-text">Loading...</p>';
+            // Reset loading state - radar chart will be cleared when new data loads
             document.getElementById('cmp-history-table').innerHTML = '<p class="loading-text">Loading...</p>';
             document.getElementById('cmp-chart-placeholder').style.display = 'block';
             document.getElementById('cmp-chart-placeholder').textContent = 'Loading...';
