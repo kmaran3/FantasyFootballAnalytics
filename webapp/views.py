@@ -268,6 +268,12 @@ def _fetch_sleeper_adp():
 
 _sleeper_adp = _fetch_sleeper_adp()
 
+# ── Team abbreviation normalization ──────────────────────────────────
+def _norm_team(t):
+    """Normalize team abbreviations (LA -> LAR, ARZ -> ARI, etc.)"""
+    t = str(t).strip().upper()
+    return _TEAM_ABBR_MAP.get(t, t)
+
 # ── New model predictions (Phase 3) ──────────────────────────────────
 _BASELINES = {'QB': 13, 'RB': 37, 'WR': 37, 'TE': 13}
 
@@ -325,6 +331,9 @@ def _load_model_rankings(scoring='ppr'):
         else:
             combined['adp_rank'] = None
 
+        # Normalize team abbreviations (LA -> LAR, etc.)
+        combined['team'] = combined['team'].apply(_norm_team)
+        
         combined = combined.rename(columns={
             'player_name':        'Name',
             'position':           'Position',
@@ -404,10 +413,6 @@ def _find_team_col(df):
         if c in df.columns:
             return c
     return None
-
-def _norm_team(t):
-    t = str(t).strip().upper()
-    return _TEAM_ABBR_MAP.get(t, t)
 
 # ── Composite team grades from starter fantasy performance ─────────
 def _compute_composite_grades():
