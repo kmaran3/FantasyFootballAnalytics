@@ -954,6 +954,7 @@ def player_stats():
     name = request.args.get('name', '').strip()
     pos  = request.args.get('pos', '').strip().upper()
     team = request.args.get('team', '').strip().upper()
+    team = _norm_team(team)  # Normalize LA -> LAR, etc.
 
     if not name:
         return jsonify({})
