@@ -44,14 +44,39 @@ Set these in your Railway dashboard (Settings > Variables):
 
 ## 🗄️ Database Setup
 
-### Using SQLite (Default):
-- Database persists in the `/app/instance` volume
-- Configured in railway.toml
+### Using SQLite (Default - With Persistence):
+- Database is stored in `/app/instance/yourdatabase.db`
+- Railway volume mount at `/app/instance` ensures persistence
+- **✅ User data (passwords, rankings, drafts) persists across deploys**
+- Limitation: Single-server only (won't work with multiple instances)
 
-### Using PostgreSQL (Recommended):
-1. Add PostgreSQL addon in Railway
-2. Railway automatically sets `DATABASE_URL`
-3. No code changes needed!
+### Using PostgreSQL (Recommended for Production):
+1. Add PostgreSQL addon in Railway dashboard
+2. Railway automatically sets `DATABASE_URL` environment variable
+3. No code changes needed - app detects and uses PostgreSQL automatically
+4. **Benefits:**
+   - Better performance
+   - Supports multiple app instances
+   - Better backup/recovery options
+   - Proper concurrent access handling
+
+## ⚠️ Important: Data Persistence
+
+**With current setup:**
+- ✅ Passwords persist across deploys (stored in persisted volume)
+- ✅ User accounts persist
+- ✅ Saved rankings persist
+- ✅ Mock drafts persist
+
+**The `/app/instance` volume mount ensures SQLite database survives:**
+- Code deployments
+- App restarts
+- Container rebuilds
+
+**Data will be lost if:**
+- You delete the volume from Railway dashboard
+- You delete and recreate the project
+- You migrate to a different Railway project
 
 ## ✅ Verify Deployment
 

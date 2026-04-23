@@ -45,7 +45,16 @@ def create_app():
     
     # Use environment variable for secret key, or generate a secure random one
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlite:///yourdatabase.db'
+    
+    # Database configuration - explicitly use instance folder for SQLite
+    if os.environ.get('DATABASE_URL'):
+        # Use PostgreSQL or other database from environment (Railway)
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+    else:
+        # Use SQLite in instance folder (persists with Railway volume mount)
+        instance_path = os.path.join(app.instance_path, 'yourdatabase.db')
+        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{instance_path}'
+    
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Security headers
