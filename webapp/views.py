@@ -772,13 +772,17 @@ def login():
         return redirect(url_for('main.home'))
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(id=form.username.data).first()
-        if user and user.check_password(form.password.data):
-            login_user(user)
-            next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('main.home'))
-        else:
-            flash('Invalid username or password', 'danger')
+        try:
+            user = User.query.filter_by(id=form.username.data).first()
+            if user and user.check_password(form.password.data):
+                login_user(user)
+                next_page = request.args.get('next')
+                return redirect(next_page) if next_page else redirect(url_for('main.home'))
+            else:
+                flash('Invalid username or password', 'danger')
+        except Exception as e:
+            print(f"Login error: {e}")
+            flash('An error occurred. Please try again.', 'danger')
     return render_template('login.html', form=form)
 
 @main.route('/logout')
@@ -793,18 +797,23 @@ def register():
         return redirect(url_for('main.home'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        if User.query.filter_by(email=form.email.data).first():
-            flash('An account with that email already exists.', 'warning')
-            return render_template('register.html', form=form)
-        if User.query.filter_by(id=form.username.data).first():
-            flash('That username is already taken.', 'warning')
-            return render_template('register.html', form=form)
-        user = User(id=form.username.data, email=form.email.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for('main.login'))
+        try:
+            if User.query.filter_by(email=form.email.data).first():
+                flash('An account with that email already exists.', 'warning')
+                return render_template('register.html', form=form)
+            if User.query.filter_by(id=form.username.data).first():
+                flash('That username is already taken.', 'warning')
+                return render_template('register.html', form=form)
+            user = User(id=form.username.data, email=form.email.data)
+            user.set_password(form.password.data)
+            db.session.add(user)
+            db.session.commit()
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('main.login'))
+        except Exception as e:
+            print(f"Registration error: {e}")
+            db.session.rollback()
+            flash('An error occurred during registration. Please try again.', 'danger')
     return render_template('register.html', form=form)
 
 @main.route('/home')

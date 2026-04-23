@@ -43,6 +43,9 @@ class MockDraft(db.Model):
 def create_app():
     app = Flask(__name__)
     
+    # Ensure instance folder exists
+    os.makedirs(app.instance_path, exist_ok=True)
+    
     # Use environment variable for secret key, or generate a secure random one
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
     
@@ -79,6 +82,11 @@ def create_app():
     app.register_blueprint(main_blueprint)
 
     with app.app_context():
-        db.create_all()  # Ensure tables are created
+        try:
+            db.create_all()  # Ensure tables are created
+            print(f"Database initialized at: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        except Exception as e:
+            print(f"Error creating database tables: {e}")
+            raise
 
     return app
