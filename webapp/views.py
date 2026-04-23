@@ -773,11 +773,12 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(id=form.username.data).first()
-        if user and user.password == form.password.data:
+        if user and user.check_password(form.password.data):
             login_user(user)
-            return redirect(url_for('main.home'))
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('main.home'))
         else:
-            flash('Invalid username or password')
+            flash('Invalid username or password', 'danger')
     return render_template('login.html', form=form)
 
 @main.route('/logout')
@@ -793,15 +794,16 @@ def register():
     form = RegistrationForm()
     if form.validate_on_submit():
         if User.query.filter_by(email=form.email.data).first():
-            flash('An account with that email already exists.')
+            flash('An account with that email already exists.', 'warning')
             return render_template('register.html', form=form)
         if User.query.filter_by(id=form.username.data).first():
-            flash('That username is already taken.')
+            flash('That username is already taken.', 'warning')
             return render_template('register.html', form=form)
-        user = User(id=form.username.data, email=form.email.data, password=form.password.data)
+        user = User(id=form.username.data, email=form.email.data)
+        user.set_password(form.password.data)
         db.session.add(user)
         db.session.commit()
-        flash('Thanks for registering! Please log in.')
+        flash('Registration successful! Please log in.', 'success')
         return redirect(url_for('main.login'))
     return render_template('register.html', form=form)
 

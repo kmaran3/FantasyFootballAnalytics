@@ -1,39 +1,136 @@
 {% extends 'base.html' %}
 
+{% block title %}Register - Darkhorse{% endblock %}
+
+{% block body_class %}auth-page{% endblock %}
+
 {% block content %}
-<h1>Register</h1>
-<form action="{{ url_for('main.register') }}" method="post">
-    {{ form.hidden_tag() }}
-    <div>
-        {{ form.email.label }}<br>
-        {{ form.email(size=32) }}<br>
-        {% if form.email.errors %}
-        <span style="color: red;">{{ form.email.errors[0] }}</span><br>
-        {% endif %}
+<div class="auth-container">
+    <div class="auth-card register-card animate-slide-up">
+        <div class="auth-header">
+            <div class="auth-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7" r="4"></circle>
+                    <line x1="20" y1="8" x2="20" y2="14"></line>
+                    <line x1="23" y1="11" x2="17" y2="11"></line>
+                </svg>
+            </div>
+            <h1 class="auth-title">Create Account</h1>
+            <p class="auth-subtitle">Join the Darkhorse fantasy community</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash-message flash-{{ category }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        {% if category == 'danger' or category == 'error' or category == 'warning' %}
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        {% else %}
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        {% endif %}
+                    </svg>
+                    <span>{{ message }}</span>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('main.register') }}" method="post" class="auth-form">
+            {{ form.hidden_tag() }}
+            
+            <div class="form-group">
+                {{ form.email.label(class="form-label") }}
+                <div class="input-wrapper">
+                    <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                        <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                    {{ form.email(class="form-input" + (" input-error" if form.email.errors else ""), placeholder="you@example.com", autocomplete="email") }}
+                </div>
+                {% if form.email.errors %}
+                    {% for error in form.email.errors %}
+                    <span class="form-error">{{ error }}</span>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.username.label(class="form-label") }}
+                <div class="input-wrapper">
+                    <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    {{ form.username(class="form-input" + (" input-error" if form.username.errors else ""), placeholder="Choose a username", autocomplete="username") }}
+                </div>
+                {% if form.username.errors %}
+                    {% for error in form.username.errors %}
+                    <span class="form-error">{{ error }}</span>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.password.label(class="form-label") }}
+                <div class="input-wrapper">
+                    <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    {{ form.password(class="form-input" + (" input-error" if form.password.errors else ""), placeholder="Create a strong password", autocomplete="new-password") }}
+                </div>
+                {% if form.password.errors %}
+                    {% for error in form.password.errors %}
+                    <span class="form-error">{{ error }}</span>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.confirm_password.label(class="form-label") }}
+                <div class="input-wrapper">
+                    <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    {{ form.confirm_password(class="form-input" + (" input-error" if form.confirm_password.errors else ""), placeholder="Confirm your password", autocomplete="new-password") }}
+                </div>
+                {% if form.confirm_password.errors %}
+                    {% for error in form.confirm_password.errors %}
+                    <span class="form-error">{{ error }}</span>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div class="password-requirements">
+                <p class="requirements-title">Password must contain:</p>
+                <ul class="requirements-list">
+                    <li>At least 8 characters</li>
+                    <li>One uppercase letter (A-Z)</li>
+                    <li>One lowercase letter (a-z)</li>
+                    <li>One number (0-9)</li>
+                </ul>
+            </div>
+
+            <div class="form-group">
+                {{ form.submit(class="btn-primary btn-large") }}
+            </div>
+        </form>
+
+        <div class="auth-footer">
+            <p>Already have an account? <a href="{{ url_for('main.login') }}" class="auth-link">Sign in</a></p>
+        </div>
     </div>
-    <div>
-        {{ form.username.label }}<br>
-        {{ form.username(size=32) }}<br>
-        {% if form.username.errors %}
-        <span style="color: red;">{{ form.username.errors[0] }}</span><br>
-        {% endif %}
+    
+    <div class="auth-bg-decoration">
+        <div class="floating-circle circle-1"></div>
+        <div class="floating-circle circle-2"></div>
+        <div class="floating-circle circle-3"></div>
     </div>
-    <div>
-        {{ form.password.label }}<br>
-        {{ form.password(size=32) }}<br>
-        {% if form.password.errors %}
-        <span style="color: red;">{{ form.password.errors[0] }}</span><br>
-        {% endif %}
-    </div>
-    <div>
-        {{ form.confirm_password.label }}<br>
-        {{ form.confirm_password(size=32) }}<br>
-        {% if form.confirm_password.errors %}
-        <span style="color: red;">{{ form.confirm_password.errors[0] }}</span><br>
-        {% endif %}
-    </div>
-    <div>
-        {{ form.submit() }}
-    </div>
-</form>
+</div>
 {% endblock %}

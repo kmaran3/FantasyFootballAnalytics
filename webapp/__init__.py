@@ -2,6 +2,8 @@ from flask import Flask
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+import os
 
 # Initialize the database globally
 db = SQLAlchemy()
@@ -9,8 +11,16 @@ db = SQLAlchemy()
 class User(UserMixin, db.Model):
     id = db.Column(db.String(100), primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(100))
+    password_hash = db.Column(db.String(256))
     rankings = db.relationship('UserRanking', backref='user', lazy=True)
+    
+    def set_password(self, password):
+        """Hash and set the user's password."""
+        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+    
+    def check_password(self, password):
+        """Check if the provided password matches the hash."""
+        return check_password_hash(self.password_hash, password)
 
 class UserRanking(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -32,9 +42,16 @@ class MockDraft(db.Model):
 
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = 'your-very-secret-key'
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///yourdatabase.db'
+    
+    # Use environment variable for secret key, or generate a secure random one
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlite:///yourdatabase.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Security headers
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
     # Initialize the database with the app
     db.init_app(app)

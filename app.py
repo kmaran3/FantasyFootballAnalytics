@@ -1,5 +1,9 @@
 from webapp import create_app, db
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = create_app()
 
