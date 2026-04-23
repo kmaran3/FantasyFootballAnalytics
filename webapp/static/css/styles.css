@@ -1241,22 +1241,21 @@ body.auth-page footer {
 }
 
 .input-wrapper {
-    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .input-icon {
-    position: absolute;
-    left: 0.5rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-secondary);
-    pointer-events: none;
-    z-index: 1;
+    flex-shrink: 0;
+    color: var(--gold);
+    width: 20px;
+    height: 20px;
 }
 
 .form-input {
-    width: 100%;
-    padding: 0.875rem 1rem 0.875rem 3rem;
+    flex: 1;
+    padding: 0.875rem 1rem;
     font-size: 1rem;
     background: var(--dark-gray);
     border: 1px solid var(--medium-gray);
@@ -1277,8 +1276,8 @@ body.auth-page footer {
     box-shadow: 0 0 0 3px var(--gold-glow);
 }
 
-.form-input:focus + .input-icon {
-    color: var(--gold);
+.input-wrapper:has(.form-input:focus) .input-icon {
+    color: var(--gold-dim);
 }
 
 .form-input.input-error {
