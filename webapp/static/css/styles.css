@@ -1170,7 +1170,7 @@ body.auth-page footer {
 
 .form-input {
     width: 100%;
-    padding: 0.875rem 1rem 0.875rem 3rem;
+    padding: 0.875rem 1rem 0.875rem 3.5rem;
     font-size: 1rem;
     background: rgba(22, 37, 53, 0.6);
     border: 2px solid rgba(45, 139, 139, 0.3);
