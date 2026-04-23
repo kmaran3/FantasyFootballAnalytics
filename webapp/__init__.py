@@ -64,6 +64,8 @@ def create_app():
     app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
+    app.config['SESSION_COOKIE_NAME'] = '__Host-session' if os.environ.get('FLASK_ENV') == 'production' else 'session'
 
     # Initialize the database with the app
     db.init_app(app)
@@ -71,6 +73,7 @@ def create_app():
     login_manager = LoginManager()
     login_manager.init_app(app)
     login_manager.login_view = 'main.login'
+    login_manager.session_protection = 'strong'  # Protects against session hijacking
 
     # User loader function for Flask-Login
     @login_manager.user_loader
@@ -80,6 +83,28 @@ def create_app():
     # Import and register blueprints
     from .views import main as main_blueprint
     app.register_blueprint(main_blueprint)
+    
+    # Add security headers to all responses
+    @app.after_request
+    def set_security_headers(response):
+        # Prevent clickjacking
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        # Prevent MIME sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        # Enable browser XSS protection
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # Content Security Policy
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:;"
+        )
+        # Force HTTPS in production
+        if os.environ.get('FLASK_ENV') == 'production':
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        return response
 
     with app.app_context():
         try:

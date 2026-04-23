@@ -8,8 +8,15 @@ from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
 from webapp import db, User, UserRanking, MockDraft
 import json
+from datetime import datetime, timedelta
+from collections import defaultdict
 
 main = Blueprint('main', __name__)
+
+# Simple rate limiter for login attempts (in-memory, resets on restart)
+_login_attempts = defaultdict(list)
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_TIMEOUT_MINUTES = 15
 
 _DB_PATH = Path(__file__).resolve().parent.parent / 'webapp' / 'my_database.db'
 engine = create_engine(f'sqlite:///{_DB_PATH}', echo=True)
@@ -770,15 +777,35 @@ _rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('main.home'))
+    
+    # Rate limiting: check login attempts from this IP
+    client_ip = request.remote_addr
+    now = datetime.utcnow()
+    
+    # Clean up old attempts
+    _login_attempts[client_ip] = [
+        attempt_time for attempt_time in _login_attempts[client_ip]
+        if now - attempt_time < timedelta(minutes=_LOGIN_TIMEOUT_MINUTES)
+    ]
+    
+    # Check if too many attempts
+    if len(_login_attempts[client_ip]) >= _MAX_LOGIN_ATTEMPTS:
+        flash(f'Too many login attempts. Please try again in {_LOGIN_TIMEOUT_MINUTES} minutes.', 'danger')
+        return render_template('login.html', form=LoginForm())
+    
     form = LoginForm()
     if form.validate_on_submit():
         try:
             user = User.query.filter_by(id=form.username.data).first()
             if user and user.check_password(form.password.data):
+                # Successful login - clear attempts
+                _login_attempts[client_ip].clear()
                 login_user(user)
                 next_page = request.args.get('next')
                 return redirect(next_page) if next_page else redirect(url_for('main.home'))
             else:
+                # Failed login - record attempt
+                _login_attempts[client_ip].append(now)
                 flash('Invalid username or password', 'danger')
         except Exception as e:
             print(f"Login error: {e}")
