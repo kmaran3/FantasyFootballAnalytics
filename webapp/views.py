@@ -825,22 +825,37 @@ def register():
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
+            # Check for duplicate email
             if User.query.filter_by(email=form.email.data).first():
                 flash('An account with that email already exists.', 'warning')
                 return render_template('register.html', form=form)
+            # Check for duplicate username
             if User.query.filter_by(id=form.username.data).first():
                 flash('That username is already taken.', 'warning')
                 return render_template('register.html', form=form)
+            
+            # Create new user
             user = User(id=form.username.data, email=form.email.data)
             user.set_password(form.password.data)
             db.session.add(user)
             db.session.commit()
+            
             flash('Registration successful! Please log in.', 'success')
             return redirect(url_for('main.login'))
+            
         except Exception as e:
-            print(f"Registration error: {e}")
             db.session.rollback()
-            flash('An error occurred during registration. Please try again.', 'danger')
+            error_msg = str(e)
+            print(f"Registration error: {error_msg}")
+            
+            # Provide more specific error messages
+            if 'UNIQUE constraint failed' in error_msg:
+                flash('Username or email already exists.', 'danger')
+            elif 'no such table' in error_msg.lower():
+                flash('Database not initialized. Please contact support.', 'danger')
+            else:
+                flash('An error occurred during registration. Please try again.', 'danger')
+                
     return render_template('register.html', form=form)
 
 @main.route('/home')

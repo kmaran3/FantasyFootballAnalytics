@@ -65,7 +65,6 @@ def create_app():
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
-    app.config['SESSION_COOKIE_NAME'] = '__Host-session' if os.environ.get('FLASK_ENV') == 'production' else 'session'
 
     # Initialize the database with the app
     db.init_app(app)
