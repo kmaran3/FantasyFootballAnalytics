@@ -1,25 +1,21 @@
-from webapp import create_app, db
-from webapp import User  # Ensure this import points correctly to where the User class is defined
-import pandas as pd
+"""Safely list users from the application database.
 
-def export_users_to_excel():
+This script intentionally never exports or prints password material.
+"""
+
+from webapp import User, create_app
+
+
+def list_users():
     app = create_app()
-    with app.app_context():  # Access the Flask application context
-        # Fetch all user entries from the database
-        users = User.query.all()
-        # Create a list of dictionaries, each containing the user's email, username (id), and password
-        data = [{'Email': user.email, 'Username': user.id, 'Password': user.password} for user in users]
+    with app.app_context():
+        users = User.query.order_by(User.id.asc()).all()
+        print(f"Total users: {len(users)}")
+        for user in users:
+            print(
+                f"- username={user.id}, email={user.email}, has_password_hash={bool(user.password_hash)}"
+            )
 
-        # Convert the data into a DataFrame
-        df = pd.DataFrame(data)
-        
-        # Specify the filename
-        filename = 'users.xlsx'
-        
-        # Export the DataFrame to an Excel file using the openpyxl engine
-        df.to_excel(filename, index=False, engine='openpyxl')
-
-        print(f"Data exported successfully to {filename}")
 
 if __name__ == "__main__":
-    export_users_to_excel()
+    list_users()

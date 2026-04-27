@@ -8,9 +8,26 @@ from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
 from webapp import db, User, UserRanking, MockDraft
 import json
-import traceback
+import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
+
+
+def _enable_numpy_pickle_compat():
+    """Allow loading pickles created with numpy 2.x on numpy 1.x runtimes."""
+    try:
+        import numpy.core as _np_core  # type: ignore
+        import numpy.core.numeric as _np_core_numeric  # type: ignore
+
+        # Older pickles can reference numpy._core.* modules.
+        sys.modules.setdefault('numpy._core', _np_core)
+        sys.modules.setdefault('numpy._core.numeric', _np_core_numeric)
+    except Exception:
+        # Best effort only; failures should not block app startup.
+        pass
+
+
+_enable_numpy_pickle_compat()
 
 main = Blueprint('main', __name__)
 
@@ -848,15 +865,14 @@ def register():
             db.session.rollback()
             error_msg = str(e)
             print(f"Registration error: {error_msg}")
-            print(traceback.format_exc())
             
             # Provide more specific error messages
-            if 'UNIQUE constraint failed' in error_msg or 'duplicate key' in error_msg.lower():
+            if 'UNIQUE constraint failed' in error_msg:
                 flash('Username or email already exists.', 'danger')
             elif 'no such table' in error_msg.lower():
                 flash('Database not initialized. Please contact support.', 'danger')
             else:
-                flash(f'An error occurred during registration. Please try again.', 'danger')
+                flash('An error occurred during registration. Please try again.', 'danger')
                 
     return render_template('register.html', form=form)
 

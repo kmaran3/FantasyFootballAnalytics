@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+from dotenv import load_dotenv
 
 # Initialize the database globally
 db = SQLAlchemy()
@@ -40,32 +41,65 @@ class MockDraft(db.Model):
     board = db.Column(db.Text, nullable=False)               # JSON: full draft board
     user_team = db.Column(db.Text, nullable=False)           # JSON: just user's picks
 
+
+def _get_secret_key(app):
+    env_name = (os.environ.get('FLASK_ENV') or 'development').lower()
+    env_secret = os.environ.get('SECRET_KEY')
+
+    if env_name == 'production' and not env_secret:
+        raise RuntimeError('SECRET_KEY must be set in production environment')
+
+    if env_secret:
+        return env_secret
+
+    # Keep a stable local secret in instance folder so sessions and CSRF work across restarts.
+    key_file = os.path.join(app.instance_path, '.secret_key')
+    if os.path.exists(key_file):
+        with open(key_file, 'r', encoding='utf-8') as f:
+            file_secret = f.read().strip()
+            if file_secret:
+                return file_secret
+
+    generated = os.urandom(32).hex()
+    with open(key_file, 'w', encoding='utf-8') as f:
+        f.write(generated)
+    return generated
+
+
+def _is_production():
+    return (os.environ.get('FLASK_ENV') or '').lower() == 'production'
+
+
+def _get_database_uri(app):
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url:
+        # Some providers still provide postgres:// URLs, but SQLAlchemy expects postgresql://
+        if db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        return db_url
+
+    # Local fallback: SQLite in instance folder
+    instance_path = os.path.join(app.instance_path, 'yourdatabase.db')
+    return f'sqlite:///{instance_path}'
+
 def create_app():
+    load_dotenv()
     app = Flask(__name__)
     
     # Ensure instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)
     
-    # Use environment variable for secret key, or generate a secure random one
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
+    # Load a stable secret key from environment (preferred) or instance file (local dev fallback).
+    app.config['SECRET_KEY'] = _get_secret_key(app)
     
-    # Database configuration - explicitly use instance folder for SQLite
-    if os.environ.get('DATABASE_URL'):
-        # Use PostgreSQL or other database from environment (Railway)
-        # Railway (and Heroku) may provide postgres:// but SQLAlchemy requires postgresql://
-        db_url = os.environ.get('DATABASE_URL')
-        if db_url and db_url.startswith('postgres://'):
-            db_url = db_url.replace('postgres://', 'postgresql://', 1)
-        app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-    else:
-        # Use SQLite in instance folder (persists with Railway volume mount)
-        instance_path = os.path.join(app.instance_path, 'yourdatabase.db')
-        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{instance_path}'
+    # Database configuration - Railway/Postgres in production, SQLite fallback for local dev.
+    app.config['SQLALCHEMY_DATABASE_URI'] = _get_database_uri(app)
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Security headers
-    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+    app.config['SESSION_COOKIE_SECURE'] = _is_production()
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
@@ -105,7 +139,7 @@ def create_app():
             "font-src 'self' data:;"
         )
         # Force HTTPS in production
-        if os.environ.get('FLASK_ENV') == 'production':
+        if _is_production():
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         return response
 
