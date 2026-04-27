@@ -52,7 +52,11 @@ def create_app():
     # Database configuration - explicitly use instance folder for SQLite
     if os.environ.get('DATABASE_URL'):
         # Use PostgreSQL or other database from environment (Railway)
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+        # Railway (and Heroku) may provide postgres:// but SQLAlchemy requires postgresql://
+        db_url = os.environ.get('DATABASE_URL')
+        if db_url and db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql://', 1)
+        app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     else:
         # Use SQLite in instance folder (persists with Railway volume mount)
         instance_path = os.path.join(app.instance_path, 'yourdatabase.db')
