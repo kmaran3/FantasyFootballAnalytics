@@ -8,6 +8,7 @@ from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
 from webapp import db, User, UserRanking, MockDraft
 import json
+import traceback
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -847,14 +848,15 @@ def register():
             db.session.rollback()
             error_msg = str(e)
             print(f"Registration error: {error_msg}")
+            print(traceback.format_exc())
             
             # Provide more specific error messages
-            if 'UNIQUE constraint failed' in error_msg:
+            if 'UNIQUE constraint failed' in error_msg or 'duplicate key' in error_msg.lower():
                 flash('Username or email already exists.', 'danger')
             elif 'no such table' in error_msg.lower():
                 flash('Database not initialized. Please contact support.', 'danger')
             else:
-                flash('An error occurred during registration. Please try again.', 'danger')
+                flash(f'An error occurred during registration. Please try again.', 'danger')
                 
     return render_template('register.html', form=form)
 
