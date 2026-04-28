@@ -4,52 +4,54 @@
 
 {% block content %}
 <style>
-.comps-body { background: #0d1b2a; }
+.comps-body { background: #0B0B0B; }
 
 .comps-filter-bar {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 12px 20px;
-    background: #11202f;
-    border-bottom: 1px solid #1e3a4a;
+    background: #1A1A1A;
+    border-bottom: 1px solid #2A2A2A;
     position: relative;
 }
 .pos-btn {
     padding: 5px 14px;
     border-radius: 20px;
-    border: 1px solid #2a4a5e;
+    border: 1.5px solid #2A2A2A;
     background: transparent;
-    color: #a8dadc;
+    color: #B0B0B0;
     font-size: 0.82em;
     cursor: pointer;
     transition: all 0.15s;
 }
-.pos-btn.active, .pos-btn:hover { background: #1e5555; color: #fff; border-color: #a8dadc; }
-.pos-btn[data-pos="QB"].active  { background: #1a3a6e; border-color: #4e79a7; }
-.pos-btn[data-pos="RB"].active  { background: #1a4a2e; border-color: #59a14f; }
-.pos-btn[data-pos="WR"].active  { background: #5a1e1f; border-color: #e15759; }
-.pos-btn[data-pos="TE"].active  { background: #5a3a1a; border-color: #f28e2b; }
+.pos-btn:hover                  { background: rgba(212,175,55,0.08); color: #D4AF37; border-color: #D4AF37; }
+.pos-btn.active                 { background: rgba(212,175,55,0.08); color: #D4AF37; border-color: #D4AF37; }
+#resetBtn:hover, #resetBtn:active { background: rgba(212,175,55,0.08); }
+.pos-btn[data-pos="QB"].active  { color: #4e79a7; border-color: #4e79a7; background: rgba(78,121,167,0.1); }
+.pos-btn[data-pos="RB"].active  { color: #59a14f; border-color: #59a14f; background: rgba(89,161,79,0.1); }
+.pos-btn[data-pos="WR"].active  { color: #e15759; border-color: #e15759; background: rgba(225,87,89,0.1); }
+.pos-btn[data-pos="TE"].active  { color: #f28e2b; border-color: #f28e2b; background: rgba(242,142,43,0.1); }
 
 #playerSearchInput {
     margin-left: auto;
     padding: 6px 12px;
     border-radius: 20px;
-    border: 1px solid #2a4a5e;
-    background: #0d1b2a;
-    color: #f1faee;
+    border: 1px solid #2A2A2A;
+    background: #121212;
+    color: #F5F5F5;
     font-size: 0.85em;
     width: 200px;
     outline: none;
 }
-#playerSearchInput:focus { border-color: #a8dadc; }
+#playerSearchInput:focus { border-color: #D4AF37; }
 #searchDropdown {
     position: absolute;
     top: 48px;
     right: 20px;
     width: 220px;
-    background: #11202f;
-    border: 1px solid #2a4a5e;
+    background: #1A1A1A;
+    border: 1px solid #2A2A2A;
     border-radius: 6px;
     z-index: 999;
     max-height: 200px;
@@ -59,10 +61,10 @@
 .search-opt {
     padding: 7px 14px;
     font-size: 0.85em;
-    color: #f1faee;
+    color: #F5F5F5;
     cursor: pointer;
 }
-.search-opt:hover { background: #1e3a4a; }
+.search-opt:hover { background: #2A2A2A; }
 
 .comps-main {
     position: relative;
@@ -78,8 +80,8 @@
     right: 0;
     width: 400px;
     height: 100%;
-    background: rgba(8, 15, 24, 0.97);
-    border-left: 1px solid #1e3a4a;
+    background: rgba(11, 11, 11, 0.97);
+    border-left: 1px solid #2A2A2A;
     border-radius: 0;
     display: flex;
     flex-direction: column;
@@ -95,30 +97,30 @@
     align-items: flex-start;
     justify-content: space-between;
     padding: 18px 18px 12px;
-    border-bottom: 1px solid #1e3a4a;
-    background: rgba(14,28,44,0.8);
+    border-bottom: 1px solid #2A2A2A;
+    background: rgba(26,26,26,0.9);
     flex-shrink: 0;
 }
-.comp-panel-header h3 { margin: 0; font-size: 1.15em; color: #f1faee; font-weight: 700; }
-.comp-panel-meta { font-size: 0.78em; color: #7aafc0; margin-top: 3px; letter-spacing: 0.04em; }
+.comp-panel-header h3 { margin: 0; font-size: 1.15em; color: #F5F5F5; font-weight: 700; }
+.comp-panel-meta { font-size: 0.78em; color: #D4AF37; margin-top: 3px; letter-spacing: 0.04em; }
 #close-panel {
-    background: none; border: none; color: #5a7a8a;
+    background: none; border: none; color: #B0B0B0;
     font-size: 1.2em; cursor: pointer; padding: 0 4px; line-height: 1;
 }
-#close-panel:hover { color: #f1faee; }
+#close-panel:hover { color: #F5F5F5; }
 
 /* ── Projection banner ── */
 .projection-wrap {
     padding: 14px 18px;
-    background: linear-gradient(135deg, rgba(14,34,54,0.9) 0%, rgba(8,20,36,0.9) 100%);
-    border-bottom: 1px solid #1e3a4a;
+    background: rgba(26,26,26,0.9);
+    border-bottom: 1px solid #2A2A2A;
     flex-shrink: 0;
 }
 .proj-label {
     font-size: 0.68em;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: #5a8a9a;
+    color: #D4AF37;
     font-family: monospace;
     margin-bottom: 10px;
 }
@@ -133,9 +135,9 @@
     font-weight: 700;
     line-height: 1;
     font-family: monospace;
-    color: #f1faee;
+    color: #F5F5F5;
 }
-.proj-ppg-label { font-size: 0.72em; color: #5a8a9a; margin-bottom: 4px; letter-spacing: 0.06em; }
+.proj-ppg-label { font-size: 0.72em; color: #B0B0B0; margin-bottom: 4px; letter-spacing: 0.06em; }
 .proj-delta {
     display: flex;
     align-items: center;
@@ -148,7 +150,7 @@
 }
 .proj-delta.up   { background: rgba(89,161,79,0.15); color: #59a14f; border: 1px solid rgba(89,161,79,0.3); }
 .proj-delta.down { background: rgba(225,87,89,0.15); color: #e15759; border: 1px solid rgba(225,87,89,0.3); }
-.proj-delta.flat { background: rgba(168,218,220,0.1); color: #a8dadc; border: 1px solid rgba(168,218,220,0.2); }
+.proj-delta.flat { background: rgba(212,175,55,0.1); color: #D4AF37; border: 1px solid rgba(212,175,55,0.2); }
 .proj-range {
     display: flex;
     gap: 6px;
@@ -158,7 +160,7 @@
 .proj-range-bar {
     flex: 1;
     height: 4px;
-    background: #1e3a4a;
+    background: #2A2A2A;
     border-radius: 2px;
     position: relative;
     overflow: visible;
@@ -166,7 +168,7 @@
 .proj-range-fill {
     position: absolute;
     top: 0; bottom: 0;
-    background: linear-gradient(90deg, #2a6a7a, #a8dadc);
+    background: linear-gradient(90deg, #B8962E, #D4AF37);
     border-radius: 2px;
 }
 .proj-range-dot {
@@ -174,14 +176,14 @@
     top: 50%;
     transform: translate(-50%, -50%);
     width: 8px; height: 8px;
-    background: #fff;
+    background: #D4AF37;
     border-radius: 50%;
-    box-shadow: 0 0 6px rgba(168,218,220,0.8);
+    box-shadow: 0 0 6px rgba(212,175,55,0.8);
 }
 .proj-range-labels { display: flex; justify-content: space-between; margin-top: 4px; }
-.proj-range-val { font-size: 0.7em; color: #5a8a9a; font-family: monospace; }
-.proj-floor-ceil { font-size: 0.68em; color: #3a5a6a; }
-.proj-comps-note { font-size: 0.7em; color: #3a6a7a; margin-top: 8px; font-style: italic; }
+.proj-range-val { font-size: 0.7em; color: #B0B0B0; font-family: monospace; }
+.proj-floor-ceil { font-size: 0.68em; color: #555555; }
+.proj-comps-note { font-size: 0.7em; color: #555555; margin-top: 8px; font-style: italic; }
 
 .radar-wrap {
     padding: 14px 18px 0;
@@ -191,7 +193,7 @@
     font-size: 0.68em;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: #5a8a9a;
+    color: #D4AF37;
     font-family: monospace;
     margin-bottom: 8px;
 }
@@ -199,24 +201,24 @@
 
 .comp-list { padding: 12px 18px 18px; }
 .comp-card {
-    background: rgba(22,37,53,0.7);
-    border: 1px solid #1a3040;
+    background: #1A1A1A;
+    border: 1px solid #2A2A2A;
     border-radius: 6px;
     padding: 10px 12px;
     margin-bottom: 8px;
 }
-.comp-card:hover { border-color: #2a5060; background: rgba(26,48,64,0.8); }
+.comp-card:hover { border-color: #D4AF37; background: #2A2A2A; }
 .comp-card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 4px;
 }
-.comp-card-name { font-size: 0.9em; font-weight: 700; color: #f1faee; }
-.comp-card-season { font-size: 0.72em; color: #5a7a8a; }
+.comp-card-name { font-size: 0.9em; font-weight: 700; color: #F5F5F5; }
+.comp-card-season { font-size: 0.72em; color: #B0B0B0; }
 .comp-card-outcome {
     font-size: 0.8em;
-    color: #a8dadc;
+    color: #B0B0B0;
     display: flex;
     gap: 14px;
     align-items: center;
@@ -227,19 +229,19 @@
 .comp-sim-bar {
     margin-top: 6px;
     height: 2px;
-    background: #1a3040;
+    background: #2A2A2A;
     border-radius: 1px;
     overflow: hidden;
 }
 .comp-sim-fill {
     height: 100%;
     border-radius: 1px;
-    background: linear-gradient(90deg, #2a5a6a, #a8dadc);
+    background: linear-gradient(90deg, #B8962E, #D4AF37);
 }
-.comp-sim-label { font-size: 0.68em; color: #3a6a7a; margin-top: 3px; font-family: monospace; }
+.comp-sim-label { font-size: 0.68em; color: #555555; margin-top: 3px; font-family: monospace; }
 
 .hint-text {
-    color: #3a5a6a;
+    color: #555555;
     font-size: 0.82em;
     text-align: center;
     margin-top: 80px;
@@ -262,9 +264,9 @@
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    border: 1px solid #2a4a5e;
-    background: rgba(13,27,42,0.85);
-    color: #a8dadc;
+    border: 1px solid #2A2A2A;
+    background: rgba(11,11,11,0.85);
+    color: #D4AF37;
     font-size: 1.1em;
     font-weight: 700;
     cursor: pointer;
@@ -274,7 +276,7 @@
     backdrop-filter: blur(4px);
     transition: all 0.15s;
 }
-.zoom-btn:hover { background: #1e3a4a; color: #fff; border-color: #a8dadc; }
+.zoom-btn:hover { background: #2A2A2A; color: #F5F5F5; border-color: #D4AF37; }
 </style>
 
 <div class="comps-filter-bar">
@@ -283,9 +285,9 @@
     <button class="pos-btn" data-pos="RB">RB</button>
     <button class="pos-btn" data-pos="WR">WR</button>
     <button class="pos-btn" data-pos="TE">TE</button>
-    <button id="resetBtn" class="pos-btn" style="margin-left:4px;border-color:#5a8a9a;color:#8cb8cc;">&#x21BA; Reset</button>
-    <span style="font-size:0.78em;color:#8cb8cc;margin-left:10px;">
-        Nodes placed by similarity across age, experience, usage &amp; production &mdash; click a <strong style="color:#ffffff">bright</strong> node to see comps
+    <button id="resetBtn" class="pos-btn" style="margin-left:4px;border:1.5px solid #D4AF37;color:#D4AF37;border-radius:20px;">&#x21BA; Reset</button>
+    <span style="font-size:0.78em;color:#B0B0B0;margin-left:10px;">
+        Nodes placed by similarity across age, experience, usage &amp; production &mdash; click a <strong style="color:#D4AF37">bright</strong> node to see comps
     </span>
     <input type="text" id="playerSearchInput" placeholder="Find player...">
     <div id="searchDropdown"></div>
@@ -406,8 +408,8 @@ function buildTraces(filterPos) {
 }
 
 var layout = {
-    paper_bgcolor: '#080f18',
-    plot_bgcolor:  '#080f18',
+    paper_bgcolor: '#0B0B0B',
+    plot_bgcolor:  '#0B0B0B',
     margin: { l: 20, r: 20, t: 40, b: 32 },
     xaxis: {
         showgrid: true, gridcolor: 'rgba(40,80,100,0.12)', gridwidth: 1,
@@ -419,13 +421,13 @@ var layout = {
     },
     legend: {
         x: 0.01, y: 0.99,
-        bgcolor: 'rgba(8,15,24,0.85)',
-        font: { color: '#7aafc0', size: 11, family: 'monospace' },
-        bordercolor: '#1e3a4a', borderwidth: 1,
+        bgcolor: 'rgba(11,11,11,0.85)',
+        font: { color: '#D4AF37', size: 11, family: 'monospace' },
+        bordercolor: '#2A2A2A', borderwidth: 1,
     },
     title: {
-        text: 'PLAYER SITUATIONAL SIMILARITY MAP  <span style="font-size:0.7em;color:#3a6a7a">| 2026 DRAFT TOOL</span>',
-        font: { color: '#a8dadc', size: 13, family: 'monospace' }, x: 0.5,
+        text: 'PLAYER SITUATIONAL SIMILARITY MAP  <span style="font-size:0.7em;color:#555555">| 2026 DRAFT TOOL</span>',
+        font: { color: '#D4AF37', size: 13, family: 'monospace' }, x: 0.5,
     },
     shapes: [],
     annotations: [],
@@ -437,7 +439,7 @@ var SUBTITLE = {
     text: 'Bright nodes = players entering 2026 &nbsp;|&nbsp; Faded = historical entering-season profiles (2021–2025) &nbsp;|&nbsp; Proximity = situational similarity (age, role, team, prior production) &nbsp;|&nbsp; Axes have no standalone meaning',
     x: 0.5, y: -0.01, xref: 'paper', yref: 'paper',
     xanchor: 'center', yanchor: 'top', showarrow: false,
-    font: { color: '#7aafc0', size: 10 },
+    font: { color: '#B0B0B0', size: 10 },
 };
 layout.annotations = [SUBTITLE];
 
@@ -677,15 +679,15 @@ function buildRadar(playerName, pos, comps) {
                 r: {
                     min: 0, max: 1,
                     ticks: { display: false },
-                    grid:  { color: '#1e3a4a' },
-                    pointLabels: { color: '#a8dadc', font: { size: 10 } },
-                    angleLines: { color: '#1e3a4a' },
+                    grid:  { color: 'rgba(212,175,55,0.15)' },
+                    pointLabels: { color: '#D4AF37', font: { size: 10 } },
+                    angleLines: { color: 'rgba(212,175,55,0.15)' },
                 }
             },
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { color: '#a8dadc', font: { size: 9 }, boxWidth: 12, padding: 6 },
+                    labels: { color: '#D4AF37', font: { size: 9 }, boxWidth: 12, padding: 6 },
                 }
             }
         }
@@ -753,7 +755,7 @@ function buildCompCards(playerName, comps) {
             '  </div>',
             '  <div class="comp-card-outcome">',
             '    <span>That season: <span class="outcome-val ' + cls + '">' + arrow + ' ' + c.outcome_ppg + ' PPG</span></span>',
-            '    <span style="margin-left:auto;color:#3a6a7a;font-family:monospace;font-size:0.85em;">' + simPct + '%</span>',
+            '    <span style="margin-left:auto;color:#B0B0B0;font-family:monospace;font-size:0.85em;">' + simPct + '%</span>',
             '  </div>',
             '  <div class="comp-sim-bar"><div class="comp-sim-fill" style="width:' + simW + '%"></div></div>',
             '  <div class="comp-sim-label">Similarity match</div>',
@@ -778,7 +780,7 @@ document.getElementById('playerSearchInput').addEventListener('input', function(
 
     dd.innerHTML = matches.map(function(d) {
         return '<div class="search-opt" data-name="' + d.player_name + '" data-pos="' + d.position + '">'
-            + d.player_name + ' <span style="color:#5a7a8a">(' + d.position + ' · ' + d.team + ')</span></div>';
+            + d.player_name + ' <span style="color:#B0B0B0">(' + d.position + ' · ' + d.team + ')</span></div>';
     }).join('');
     dd.style.display = 'block';
 });

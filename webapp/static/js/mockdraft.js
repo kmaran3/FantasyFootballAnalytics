@@ -13,6 +13,7 @@ const S = {
   pickTimer: 0,        // seconds, 0 = none
   auctionBudget: 200,
   bidTimeLimit: 10,
+  rankingSource: 'darkhorse',
 
   // derived
   totalRounds: 13,
@@ -27,6 +28,9 @@ const S = {
   currentPickIdx: 0,   // index into draftOrder
   round: 1,
   isUserTurn: false,
+  pickBusy: false,     // prevents runNextPick re-entry
+  cpuPickTimeout: null,
+  advancePickTimeout: null,
   timerInterval: null,
   timerRemaining: 0,
   drafted: new Set(),  // player indices drafted
@@ -84,7 +88,7 @@ $(function () {
   // Leave draft buttons
   $(document).on('click', '#leaveDraftBtn, #leaveAuctionBtn', function () {
     if (confirm('Leave the draft? Your progress will not be saved.')) {
-      clearInterval(S.timerInterval);
+      cancelAllPickTimeouts();
       clearInterval(S.bidTimerInterval);
       $('#snakeDraft').hide();
       $('#auctionDraft').hide();
@@ -115,8 +119,22 @@ function onSettingChange(groupId, val) {
     S.numTeams = parseInt(val);
     updatePositionDropdown();
   }
-  if (groupId === 'timerToggle')     S.pickTimer  = parseInt(val);
-  if (groupId === 'bidTimerToggle')  S.bidTimeLimit = parseInt(val);
+  if (groupId === 'timerToggle')       S.pickTimer  = parseInt(val);
+  if (groupId === 'bidTimerToggle')    S.bidTimeLimit = parseInt(val);
+  if (groupId === 'rankingSourceToggle') {
+    S.rankingSource = val;
+    const hints = { darkhorse: 'Darkhorse model — custom rankings based on 2025 season', sleeper: 'Community ADP — reflects Sleeper 2025 fantasy points by format', espn: 'ESPN only publicly exposes PPR rankings — Half PPR and Standard are unavailable' };
+    // Lock scoring to PPR when ESPN is selected
+    if (val === 'espn') {
+      $('#scoringToggle .toggle-btn').not('[data-val="ppr"]').prop('disabled', true).css('opacity', '0.35');
+      $('#scoringToggle .toggle-btn[data-val="ppr"]').addClass('active');
+      $('#scoringToggle .toggle-btn').not('[data-val="ppr"]').removeClass('active');
+      S.scoring = 'ppr';
+    } else {
+      $('#scoringToggle .toggle-btn').prop('disabled', false).css('opacity', '');
+    }
+    $('#rankingSourceHint').text(hints[val] || '');
+  }
 }
 
 function updateRoundsPreview() {
@@ -158,9 +176,11 @@ function startDraft() {
 
   $('#startDraftBtn').prop('disabled', true).text('Loading...');
 
-  $.ajax({ url: '/mockdraft/players', data: { scoring: S.scoring }, cache: false, success: function (data) {
+  S.rankingSource = $('#rankingSourceToggle .toggle-btn.active').data('val') || 'darkhorse';
+  $.ajax({ url: '/mockdraft/players', data: { scoring: S.scoring, source: S.rankingSource }, cache: false, success: function (data) {
     // Normalize positions: strip trailing numbers ('WR5' → 'WR', 'RB12' → 'RB')
     data.forEach(p => { p['Position'] = (p['Position'] || '').replace(/\d+$/, '').trim().toUpperCase(); });
+    cancelAllPickTimeouts();  // kill any stale timeouts from a previous draft
     S.players  = data;
     S.available = data.map((_, i) => i);
     S.drafted  = new Set();
@@ -245,6 +265,7 @@ function buildSlotDefs() {
 }
 
 function runNextPick() {
+  if (S.pickBusy) return;  // prevent re-entry
   if (S.currentPickIdx >= S.draftOrder.length) {
     endSnakeDraft();
     return;
@@ -260,6 +281,7 @@ function runNextPick() {
   $cell.addClass('active-cell');
 
   if (teamIdx === S.userTeamIdx) {
+    S.pickBusy = false;  // user's turn — not busy, awaiting input
     S.isUserTurn = true;
     const label = `Round ${S.round}, Pick ${pickNum} — YOUR TURN`;
     $('#pickStatus').text(label);
@@ -267,12 +289,13 @@ function runNextPick() {
     renderPlayerList(); // re-render now that isUserTurn=true so pos-full classes apply
     if (S.pickTimer > 0) startPickTimer();
   } else {
+    S.pickBusy = true;  // CPU pick in flight
     S.isUserTurn = false;
     $('#pickStatus').text(`Round ${S.round}, Pick ${pickNum} — Team ${teamIdx + 1} picking...`);
     disableUserPicks();
     // CPU pick after short random delay
     const delay = 600 + Math.random() * 900;
-    setTimeout(() => { cpuPick(teamIdx); }, delay);
+    S.cpuPickTimeout = setTimeout(() => { cpuPick(teamIdx); }, delay);
   }
 }
 
@@ -305,6 +328,15 @@ function startPickTimer() {
 function stopPickTimer() {
   clearInterval(S.timerInterval);
   $('#pickTimer').hide().removeClass('urgent');
+}
+
+function cancelAllPickTimeouts() {
+  clearTimeout(S.cpuPickTimeout);
+  clearTimeout(S.advancePickTimeout);
+  stopPickTimer();
+  S.pickBusy = false;
+  S.cpuPickTimeout = null;
+  S.advancePickTimeout = null;
 }
 
 function cpuPick(teamIdx) {
@@ -384,6 +416,7 @@ function computePosNeeds(teamPicks, roundsLeft) {
 
 function advancePick(teamIdx, playerIdx) {
   stopPickTimer();
+  S.pickBusy = false;  // will be re-set by runNextPick if next pick is CPU
   const round = Math.floor(S.currentPickIdx / S.numTeams);
 
   if (playerIdx !== null) {
@@ -412,7 +445,7 @@ function advancePick(teamIdx, playerIdx) {
   }
 
   S.currentPickIdx++;
-  setTimeout(runNextPick, 200);
+  S.advancePickTimeout = setTimeout(runNextPick, 200);
 }
 
 // Called when user clicks a player row

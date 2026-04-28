@@ -16,9 +16,9 @@
     margin-bottom: 24px;
 }
 .profile-back-btn {
-    background: #1e5555;
-    color: #a8dadc;
-    border: 1px solid #2d8b8b;
+    background: #1A1A1A;
+    color: #D4AF37;
+    border: 1px solid #D4AF37;
     padding: 7px 16px;
     border-radius: 4px;
     cursor: pointer;
@@ -29,8 +29,8 @@
 }
 .profile-back-btn:hover { opacity: 0.8; }
 .compare-open-btn {
-    background: #2d8b8b;
-    color: #f1faee;
+    background: #D4AF37;
+    color: #0B0B0B;
     border: none;
     padding: 7px 16px;
     border-radius: 4px;
@@ -41,7 +41,7 @@
 }
 .compare-open-btn:hover { opacity: 0.8; }
 .compare-clear-btn {
-    background: #162535;
+    background: #1A1A1A;
     color: #e74c3c;
     border: 1px solid #e74c3c;
     padding: 7px 16px;
@@ -63,34 +63,35 @@
 
 /* Cards */
 .profile-card {
-    background: #0d1b2a;
-    border: 1px solid #1e5555;
+    background: #1A1A1A;
+    border: 1px solid #2A2A2A;
     border-radius: 8px;
     padding: 16px;
     min-width: 200px;
     flex: 1;
 }
-.card-heading { margin: 0 0 10px 0; color: #a8dadc; font-size: 0.95em; }
-.bio-label { font-weight: bold; padding: 4px 16px 4px 0; color: #a8dadc; }
-.bio-val   { padding: 4px 0; color: #f1faee; }
+.card-heading { margin: 0 0 10px 0; color: #D4AF37; font-size: 0.95em; }
+.bio-label { font-weight: bold; padding: 10px 16px 10px 0; color: #D4AF37; border-bottom: 1px solid #2A2A2A; }
+.bio-val   { padding: 10px 0; color: #F5F5F5; border-bottom: 1px solid #2A2A2A; }
+.bio-label:last-of-type, .bio-val:last-of-type { border-bottom: none; }
 .loading-text {
-    color: #6a9a9a;
+    color: #B0B0B0;
     margin: 0;
 }
 
 /* Grade bars */
 .grade-bar-wrap { display: flex; align-items: center; gap: 8px; }
-.grade-bar-track { width: 80px; background: #1e5555; border-radius: 4px; height: 10px; }
+.grade-bar-track { width: 80px; background: #2A2A2A; border-radius: 4px; height: 10px; }
 .grade-bar-fill  { height: 10px; border-radius: 4px; }
 .grade-info {
     cursor: help;
-    color: #6b8fa3;
+    color: #B0B0B0;
     font-size: 0.8em;
     position: relative;
     display: inline-block;
 }
 .grade-info:hover {
-    color: #8fb3c5;
+    color: #D4AF37;
 }
 .grade-info[data-tooltip]:hover::after {
     content: attr(data-tooltip);
@@ -99,9 +100,9 @@
     left: 50%;
     transform: translateX(-50%);
     padding: 8px 12px;
-    background: #1a1a2e;
-    color: #f1faee;
-    border: 1px solid #457b9d;
+    background: #1A1A1A;
+    color: #F5F5F5;
+    border: 1px solid #D4AF37;
     border-radius: 6px;
     white-space: normal;
     width: 250px;
@@ -119,12 +120,28 @@
     left: 50%;
     transform: translateX(-50%);
     border: 6px solid transparent;
-    border-top-color: #457b9d;
+    border-top-color: #D4AF37;
     z-index: 1001;
 }
 
+.chart-toggle-btn {
+    background: transparent;
+    border: 1px solid #2A2A2A;
+    color: #B0B0B0;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.75em;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.chart-toggle-btn.active {
+    border-color: #D4AF37;
+    color: #D4AF37;
+    background: rgba(212,175,55,0.08);
+}
+
 .grade-rank {
-    color: #8fa3b0;
+    color: #B0B0B0;
     font-size: 0.82em;
     font-weight: 600;
     margin-left: 4px;
@@ -137,19 +154,21 @@
     width: 100%;
 }
 .history-table th {
-    background: #1e5555;
-    color: #a8dadc;
+    background: #2A2A2A;
+    color: #D4AF37;
     padding: 6px 10px;
     text-align: left;
     font-weight: 600;
     font-size: 0.85em;
     white-space: nowrap;
+    border: 1px solid #2A2A2A;
 }
 .history-table td {
     padding: 5px 10px;
-    color: #f1faee;
+    color: #F5F5F5;
     white-space: nowrap;
     vertical-align: top;
+    border: 1px solid #2A2A2A;
 }
 .history-table td.best-season {
     color: #2ecc71;
@@ -158,16 +177,16 @@
 
 /* Compare search */
 .player-search-input {
-    background: #162535;
-    border: 1px solid #1e5555;
-    color: #f1faee;
+    background: #1A1A1A;
+    border: 1px solid #2A2A2A;
+    color: #F5F5F5;
     padding: 7px 12px;
     border-radius: 4px;
     font-size: 0.95em;
 }
 .player-search-input:focus {
     outline: none;
-    border-color: #2d8b8b;
+    border-color: #D4AF37;
 }
 </style>
 
@@ -182,20 +201,20 @@
         <!-- Primary player panel -->
         <div id="primary-panel" class="profile-panel-wrap">
             <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-                <h2 id="profile-name" style="margin:0;color:#f1faee;"></h2>
-                <span id="profile-subtitle" style="color:#a8dadc;font-size:1em;"></span>
+                <h2 id="profile-name" style="margin:0;color:#F5F5F5;"></h2>
+                <span id="profile-subtitle" style="color:#D4AF37;font-size:1em;"></span>
             </div>
             <div id="primary-card-row" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
-                <div class="profile-card">
+                <div class="profile-card" style="display:flex;flex-direction:column;">
                     <h4 class="card-heading">Player Info</h4>
-                    <table style="font-size:0.9em;border-collapse:collapse;"><tbody id="bio-fields"></tbody></table>
+                    <table style="font-size:0.9em;border-collapse:collapse;width:100%;height:100%;"><tbody id="bio-fields"></tbody></table>
                 </div>
                 <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
                     <img id="player-headshot" src="" alt=""
                          style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
                          onerror="this.style.display='none'">
                     <div style="width:100%;margin-top:auto;padding-top:10px;">
-                        <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                        <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#B0B0B0;">(starters only)</span></h4>
                         <div id="team-grade-container">
                             <div style="position:relative;height:220px;width:100%;">
                                 <canvas id="team-grade-radar"></canvas>
@@ -206,7 +225,13 @@
                 </div>
             </div>
             <div class="profile-card" style="margin-bottom:24px;">
-                <h4 class="card-heading">Fantasy Points by Season</h4>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                    <h4 class="card-heading" style="margin:0;">Fantasy Points by Season</h4>
+                    <div id="chartToggle" style="display:none;gap:4px;display:flex;">
+                        <button class="chart-toggle-btn active" data-mode="total">Total Pts</button>
+                        <button class="chart-toggle-btn" data-mode="ppg">PPG</button>
+                    </div>
+                </div>
                 <div id="chart-placeholder" class="loading-text">Loading...</div>
                 <canvas id="fantasy-chart" style="display:none;max-height:280px;"></canvas>
             </div>
@@ -224,20 +249,20 @@
             </div>
             <div id="compare-content" style="display:none;">
                 <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-                    <h2 id="cmp-name" style="margin:0;color:#f1faee;"></h2>
-                    <span id="cmp-subtitle" style="color:#a8dadc;font-size:1em;"></span>
+                    <h2 id="cmp-name" style="margin:0;color:#F5F5F5;"></h2>
+                    <span id="cmp-subtitle" style="color:#D4AF37;font-size:1em;"></span>
                 </div>
                 <div id="compare-card-row" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
                     <div class="profile-card">
                         <h4 class="card-heading">Player Info</h4>
-                        <table style="font-size:0.9em;border-collapse:collapse;"><tbody id="cmp-bio-fields"></tbody></table>
+                        <table style="font-size:0.9em;border-collapse:collapse;width:100%;"><tbody id="cmp-bio-fields"></tbody></table>
                     </div>
                     <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
                         <img id="cmp-player-headshot" src="" alt=""
                              style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
                              onerror="this.style.display='none'">
                         <div style="width:100%;margin-top:auto;padding-top:10px;">
-                            <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#6b8fa3;">(starters only)</span></h4>
+                            <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#B0B0B0;">(starters only)</span></h4>
                             <div id="cmp-grade-container">
                                 <div style="position:relative;height:220px;width:100%;">
                                     <canvas id="cmp-grade-radar"></canvas>
@@ -409,15 +434,15 @@ function renderStatsIntoPanel(data, panelId, pos) {
                                 max: 100,
                                 ticks: {
                                     stepSize: 25,
-                                    color: '#6b8fa3',
+                                    color: '#B0B0B0',
                                     backdropColor: 'transparent',
                                     font: { size: 10 }
                                 },
                                 grid: {
-                                    color: 'rgba(107, 143, 163, 0.2)'
+                                    color: 'rgba(212, 175, 55, 0.15)'
                                 },
                                 pointLabels: {
-                                    color: '#a8dadc',
+                                    color: '#D4AF37',
                                     font: {
                                         size: 10,
                                         weight: 'bold'
@@ -425,7 +450,7 @@ function renderStatsIntoPanel(data, panelId, pos) {
                                     padding: 5
                                 },
                                 angleLines: {
-                                    color: 'rgba(107, 143, 163, 0.2)'
+                                    color: 'rgba(212, 175, 55, 0.15)'
                                 }
                             }
                         },
@@ -434,10 +459,10 @@ function renderStatsIntoPanel(data, panelId, pos) {
                                 display: false
                             },
                             tooltip: {
-                                backgroundColor: '#1a1a2e',
-                                titleColor: '#f1faee',
-                                bodyColor: '#a8dadc',
-                                borderColor: '#457b9d',
+                                backgroundColor: '#1A1A1A',
+                                titleColor: '#F5F5F5',
+                                bodyColor: '#D4AF37',
+                                borderColor: '#D4AF37',
                                 borderWidth: 1,
                                 padding: 12,
                                 displayColors: false,
@@ -482,12 +507,12 @@ function renderStatsIntoPanel(data, panelId, pos) {
                     var rank = tgRanks[key] ? '#' + tgRanks[key] : '';
                     var pct = score;
                     var color = tg[key] >= 0.7 ? '#2ecc71' : tg[key] >= 0.4 ? '#f39c12' : '#e74c3c';
-                    tgHtml += '<tr style="line-height:1.8;"><td style="padding:4px 8px 4px 0;color:#a8dadc;font-weight:600;">' + key + '</td>'
+                    tgHtml += '<tr style="line-height:1.8;"><td style="padding:4px 8px 4px 0;color:#D4AF37;font-weight:600;">' + key + '</td>'
                             + '<td style="padding:4px 0;"><div style="display:flex;align-items:center;gap:8px;">'
-                            + '<div style="width:60px;background:#1e5555;border-radius:3px;height:8px;">'
+                            + '<div style="width:60px;background:#2A2A2A;border-radius:3px;height:8px;">'
                             + '<div style="width:' + pct + '%;background:' + color + ';height:8px;border-radius:3px;"></div></div>'
-                            + '<span style="color:#f1faee;font-weight:600;min-width:30px;">' + score + '</span>'
-                            + '<span style="color:#8fa3b0;font-size:0.9em;">(' + rank + ')</span></div></td></tr>';
+                            + '<span style="color:#F5F5F5;font-weight:600;min-width:30px;">' + score + '</span>'
+                            + '<span style="color:#B0B0B0;font-size:0.9em;">(' + rank + ')</span></div></td></tr>';
                 }
             });
             tgHtml += '</table>';
@@ -517,41 +542,82 @@ function renderStatsIntoPanel(data, panelId, pos) {
     if (history.length) {
         var seasons = history.map(function(r) { return r.season; });
         var pts     = history.map(function(r) { return r.fantasy_points !== null ? r.fantasy_points : 0; });
+        var gps     = history.map(function(r) { return r.GP || null; });
+        var ppgs    = history.map(function(r, idx) {
+            var gp = gps[idx];
+            var fp = pts[idx];
+            return (gp && gp > 0) ? Math.round((fp / gp) * 10) / 10 : 0;
+        });
+
+        var chartMode = 'total'; // track current mode
+
+        function buildChart(mode) {
+            if (_charts[panelId]) { _charts[panelId].destroy(); delete _charts[panelId]; }
+            var yData  = mode === 'ppg' ? ppgs : pts;
+            var yLabel = mode === 'ppg' ? 'PPG' : 'Fantasy Points';
+            _charts[panelId] = new Chart(chartEl, {
+                type: 'line',
+                data: {
+                    labels: seasons,
+                    datasets: [{
+                        label: yLabel,
+                        data: yData,
+                        borderColor: '#D4AF37',
+                        backgroundColor: 'rgba(212,175,55,0.15)',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#D4AF37',
+                        pointRadius: 5,
+                        tension: 0.3,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: function(items) { return 'Season ' + items[0].label; },
+                                label: function(item) {
+                                    var idx = item.dataIndex;
+                                    var fp = pts[idx];
+                                    var gp = gps[idx];
+                                    var lines = ['Fantasy Pts: ' + fp.toFixed(1)];
+                                    if (gp) {
+                                        lines.push('GP: ' + gp);
+                                        lines.push('PPG: ' + (fp / gp).toFixed(1));
+                                    }
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title:{display:true,text:'Season',color:'#D4AF37'}, ticks:{color:'#F5F5F5'}, grid:{color:'#2A2A2A'} },
+                        y: { title:{display:true,text:yLabel,color:'#D4AF37'}, beginAtZero:true, ticks:{color:'#F5F5F5'}, grid:{color:'#2A2A2A'} }
+                    }
+                }
+            });
+        }
+
         chartPh.style.display = 'none';
         chartEl.style.display = 'block';
-        _charts[panelId] = new Chart(chartEl, {
-            type: 'line',
-            data: {
-                labels: seasons,
-                datasets: [{
-                    label: 'Fantasy Points',
-                    data: pts,
-                    borderColor: '#2d8b8b',
-                    backgroundColor: 'rgba(45,139,139,0.2)',
-                    borderWidth: 2,
-                    pointBackgroundColor: '#a8dadc',
-                    pointRadius: 5,
-                    tension: 0.3,
-                    fill: true,
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            title: function(items) { return 'Season ' + items[0].label; },
-                            label: function(item)  { return 'Fantasy Pts: ' + item.parsed.y.toFixed(1); }
-                        }
-                    }
-                },
-                scales: {
-                    x: { title:{display:true,text:'Season',color:'#a8dadc'}, ticks:{color:'#f1faee'}, grid:{color:'#1e5555'} },
-                    y: { title:{display:true,text:'Fantasy Points',color:'#a8dadc'}, beginAtZero:true, ticks:{color:'#f1faee'}, grid:{color:'#1e5555'} }
-                }
-            }
-        });
+        var toggleEl = document.getElementById('chartToggle');
+        if (toggleEl) toggleEl.style.display = 'flex';
+        buildChart(chartMode);
+
+        // Wire toggle buttons (only once on first panel render)
+        if (panelId === 'primary' && !chartEl._toggleBound) {
+            chartEl._toggleBound = true;
+            document.querySelectorAll('.chart-toggle-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.chart-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    chartMode = btn.getAttribute('data-mode');
+                    buildChart(chartMode);
+                });
+            });
+        }
     } else {
         chartPh.style.display = 'block';
         chartPh.textContent = 'No historical data available.';
@@ -571,20 +637,32 @@ function renderStatsIntoPanel(data, panelId, pos) {
 function renderHistoryTable(data, pos) {
     if (!data || data.length === 0) return '<p class="loading-text">No data available.</p>';
     var labelMap = {
-        season:'Season', GP:'GP', completions:'Comp', attempts:'Att',
+        season:'Season', team:'Team', GP:'GP', completions:'Comp', attempts:'Att',
         passing_yards:'Pass Yds', passing_tds:'Pass TD', interceptions:'INT',
+        passing_interceptions:'INT',
         rushing_yards:'Rush Yds', rushing_tds:'Rush TD',
         carries:'Car', receptions:'Rec', targets:'Tgt',
         receiving_yards:'Rec Yds', receiving_tds:'Rec TD',
         target_share:'Tgt Share', air_yards_share:'Air Yds%',
         fantasy_points:'Fant Pts',
     };
-    var headers = Object.keys(data[0]);
+    var colOrder = {
+        QB: ['season','team','GP','completions','attempts','passing_yards','passing_tds','passing_interceptions','interceptions','rushing_yards','rushing_tds','fantasy_points'],
+        RB: ['season','team','GP','carries','rushing_yards','rushing_tds','receptions','targets','receiving_yards','receiving_tds','target_share','air_yards_share','fantasy_points'],
+        WR: ['season','team','GP','receptions','targets','receiving_yards','receiving_tds','target_share','air_yards_share','rushing_yards','rushing_tds','fantasy_points'],
+        TE: ['season','team','GP','receptions','targets','receiving_yards','receiving_tds','target_share','air_yards_share','fantasy_points'],
+    };
+    var available = Object.keys(data[0]);
+    var ordered = (colOrder[pos] || ['season'].concat(available.filter(function(c){ return c !== 'season'; })));
+    // keep only columns that exist in data, then append any unexpected extras
+    var headers = ordered.filter(function(c){ return available.indexOf(c) !== -1; });
+    var extras = available.filter(function(c){ return headers.indexOf(c) === -1; });
+    headers = headers.concat(extras);
     var html = '<table class="history-table"><thead><tr>';
     headers.forEach(function(h) { html += '<th>' + (labelMap[h] || h) + '</th>'; });
     html += '</tr></thead><tbody>';
     data.forEach(function(row, i) {
-        var bg = i % 2 === 0 ? '#162535' : '#1a2332';
+        var bg = i % 2 === 0 ? '#1A1A1A' : '#121212';
         html += '<tr style="background:' + bg + ';">';
         headers.forEach(function(h) {
             var val = row[h] !== null && row[h] !== undefined ? row[h] : '—';
@@ -605,7 +683,7 @@ function highlightBestSeason(container) {
     var numCols = cells0.length;
     for (var ci = 0; ci < numCols; ci++) {
         var col = cells0[ci] ? cells0[ci].getAttribute('data-col') : null;
-        if (!col || col === 'season') continue;
+        if (!col || col === 'season' || col === 'team') continue;
         var maxVal = -Infinity, maxRow = -1;
         rows.forEach(function(row, ri) {
             var cell = row.querySelectorAll('td')[ci];
@@ -656,8 +734,7 @@ function initPrimaryPanel() {
         bioHtml += '<tr><td class="bio-label">' + escHtml(pair[0]) + '</td><td class="bio-val">' + escHtml(String(pair[1])) + '</td></tr>';
     });
     if (!bioHtml) {
-        bioHtml = '<tr><td class="bio-label">Team</td><td class="bio-val">' + escHtml(_playerTeam || '—') + '</td></tr>';
-        bioHtml += '<tr><td class="bio-label">Position</td><td class="bio-val">' + escHtml(_playerPos || '—') + '</td></tr>';
+        bioHtml = '<tr><td class="bio-label">—</td><td class="bio-val">No data available</td></tr>';
     }
     document.getElementById('bio-fields').innerHTML = bioHtml;
 

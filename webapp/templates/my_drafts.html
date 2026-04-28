@@ -2,31 +2,30 @@
 {% block title %}My Drafts{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/mockdraft.css') }}">
 <div style="max-width:800px;margin:90px auto 60px;padding:0 20px;">
-  <h2 style="color:#a8dadc;margin-bottom:20px;">My Saved Drafts</h2>
+  <h2 style="color:#D4AF37;margin-bottom:20px;">My Saved Drafts</h2>
 
   {% if drafts %}
   <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
     <thead>
       <tr>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Date</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Type</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Scoring</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Teams</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;"></th>
+        <th style="padding:8px 12px;border:1px solid #2A2A2A;color:#D4AF37;background:#1A1A1A;text-align:left;">Date</th>
+        <th style="padding:8px 12px;border:1px solid #2A2A2A;color:#D4AF37;background:#1A1A1A;text-align:left;">Type</th>
+        <th style="padding:8px 12px;border:1px solid #2A2A2A;color:#D4AF37;background:#1A1A1A;text-align:left;">Scoring</th>
+        <th style="padding:8px 12px;border:1px solid #2A2A2A;color:#D4AF37;background:#1A1A1A;text-align:left;">Teams</th>
+        <th style="padding:8px 12px;border:1px solid #2A2A2A;color:#D4AF37;background:#1A1A1A;"></th>
       </tr>
     </thead>
     <tbody>
       {% for d in drafts %}
       <tr>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#f1faee;">{{ d.created_at }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#f1faee;">{{ d.draft_type | capitalize }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;">{{ d.scoring | upper }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#f1faee;">{{ d.num_teams }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;">
+        <td style="padding:8px 12px;border:1px solid #2A2A2A;color:#F5F5F5;">{{ d.created_at }}</td>
+        <td style="padding:8px 12px;border:1px solid #2A2A2A;color:#F5F5F5;">{{ d.draft_type | capitalize }}</td>
+        <td style="padding:8px 12px;border:1px solid #2A2A2A;color:#D4AF37;">{{ d.scoring | upper }}</td>
+        <td style="padding:8px 12px;border:1px solid #2A2A2A;color:#F5F5F5;">{{ d.num_teams }}</td>
+        <td style="padding:8px 12px;border:1px solid #2A2A2A;">
           <a href="{{ url_for('main.view_draft', draft_id=d.id) }}"
-             style="color:#2d8b8b;text-decoration:none;margin-right:12px;">View</a>
+             style="color:#D4AF37;text-decoration:none;margin-right:12px;">View</a>
           <a href="#" class="delete-draft" data-id="{{ d.id }}"
              style="color:#c04040;text-decoration:none;">Delete</a>
         </td>
@@ -35,7 +34,7 @@
     </tbody>
   </table>
   {% else %}
-  <p style="color:#6b8fa3;">No saved drafts yet. <a href="{{ url_for('main.mock_draft') }}" style="color:#2d8b8b;">Run a mock draft</a>.</p>
+  <p style="color:#B0B0B0;">No saved drafts yet. <a href="{{ url_for('main.mock_draft') }}" style="color:#D4AF37;">Run a mock draft</a>.</p>
   {% endif %}
 </div>
 

@@ -224,11 +224,12 @@ try:
     # NFL season Y runs Sep Y – Jan/Feb Y+1; before September the latest complete season is Y-1
     _nfl_end_year = _today.year if _today.month >= 9 else _today.year - 1
 
-    # Try loading up to _nfl_end_year; if nflreadpy doesn't have that year yet, fall back one year
+    # Try loading full history back to 1999 (earliest nflreadpy year); fall back one year at a time if needed
     _stats_raw = pd.DataFrame()
+    _history_start = 1999
     for _try_year in [_nfl_end_year, _nfl_end_year - 1]:
         try:
-            _seasons = list(range(2020, _try_year + 1))
+            _seasons = list(range(_history_start, _try_year + 1))
             _stats_raw = nflreadpy.load_player_stats(_seasons, summary_level='reg').to_pandas()
             if not _stats_raw.empty:
                 print(f'NFL stats loaded through season {_try_year}')
@@ -249,12 +250,12 @@ try:
                            _team=lambda x: x['recent_team'],
                            _name=lambda x: x['player_display_name'])
                    .copy())
-    print(f'NFL data ready: history 2020–{max(_seasons)}, grades/roster from season {_latest_season} ({len(_nfl_latest)} players)')
+    print(f'NFL data ready: history {_history_start}–{max(_seasons)}, grades/roster from season {_latest_season} ({len(_nfl_latest)} players)')
 except Exception as e:
     print(f'Warning: could not load nflreadpy stats: {e}')
 
 
-# ── Sleeper ADP ───────────────────────────────────────────────────────
+# ── ADP helpers ───────────────────────────────────────────────────────
 import re as _re
 
 def _normalize_name(name):
@@ -263,7 +264,72 @@ def _normalize_name(name):
     n = _re.sub(r'[^a-z\s]', '', n)
     return n.strip()
 
-def _fetch_sleeper_adp():
+# ── Sleeper ADP (scoring-format-specific) ─────────────────────────────
+# Sleeper projections endpoint returns per-scoring-type projected points
+# which we use to derive format-specific rank ordering.
+_SLEEPER_SCORING_KEY = {
+    'ppr':      'pts_ppr',
+    'half_ppr': 'pts_half_ppr',
+    'standard': 'pts_std',
+}
+
+def _fetch_sleeper_adp_all():
+    """
+    Fetch Sleeper format-specific rankings using 2025 actual seasonal totals.
+    /v1/stats/nfl/regular/2025 returns pts_ppr, pts_half_ppr, pts_std per player.
+    Sort descending by each scoring type to produce format-aware rankings.
+    Falls back to search_rank if stats unavailable.
+    """
+    empty = pd.DataFrame(columns=['player_name', 'name_key', 'adp_rank', 'team', 'position'])
+    out   = {'ppr': empty, 'half_ppr': empty, 'standard': empty}
+    try:
+        meta_resp  = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=15)
+        stats_resp = requests.get('https://api.sleeper.app/v1/stats/nfl/regular/2025', timeout=15)
+        meta_resp.raise_for_status()
+        stats_resp.raise_for_status()
+        meta  = meta_resp.json()
+        stats = stats_resp.json()
+
+        scoring_keys = {
+            'ppr':      'pts_ppr',
+            'half_ppr': 'pts_half_ppr',
+            'standard': 'pts_std',
+        }
+
+        for scoring, pts_key in scoring_keys.items():
+            entries = []
+            for player_id, pstats in stats.items():
+                pts = pstats.get(pts_key)
+                if pts is None or pts == 0:
+                    continue
+                pmeta    = meta.get(str(player_id), {})
+                pos_list = pmeta.get('fantasy_positions') or []
+                if not any(x in pos_list for x in ('QB', 'RB', 'WR', 'TE')):
+                    continue
+                name = pmeta.get('full_name', '')
+                if not name:
+                    continue
+                pos = pmeta.get('position', '')
+                # Normalize points by position so QBs don't dominate —
+                # QBs score ~2.5x more raw points but are drafted much later in real drafts
+                pos_weight = {'QB': 0.42}.get(pos, 1.0)
+                entries.append((pts * pos_weight, name, pmeta.get('team', ''), pos))
+
+            entries.sort(key=lambda x: x[0], reverse=True)
+            records = [
+                {'player_name': name, 'name_key': _normalize_name(name),
+                 'adp_rank': rank, 'team': team, 'position': pos}
+                for rank, (pts, name, team, pos) in enumerate(entries, 1)
+            ]
+            out[scoring] = pd.DataFrame(records)
+            print(f'Sleeper ADP ({scoring}) from 2025 stats: {len(records)} players')
+
+        return out
+
+    except Exception as e:
+        print(f'Sleeper stats unavailable: {e} — falling back to search_rank')
+
+    # Fallback: search_rank (not format-specific, same for all three)
     try:
         resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=15)
         resp.raise_for_status()
@@ -279,15 +345,102 @@ def _fetch_sleeper_adp():
             name = p.get('full_name', '')
             if not name:
                 continue
-            records.append({'player_name': name, 'name_key': _normalize_name(name), 'adp_rank': int(rank)})
+            records.append({
+                'player_name': name, 'name_key': _normalize_name(name),
+                'adp_rank': int(rank), 'team': p.get('team', ''), 'position': p.get('position', ''),
+            })
         df = pd.DataFrame(records).sort_values('adp_rank').reset_index(drop=True)
-        print(f'Sleeper ADP loaded: {len(df)} players')
-        return df
-    except Exception as e:
-        print(f'Warning: could not fetch Sleeper ADP: {e}')
-        return pd.DataFrame(columns=['player_name', 'name_key', 'adp_rank'])
+        print(f'Sleeper ADP (all formats) from search_rank fallback: {len(df)} players')
+        return {'ppr': df, 'half_ppr': df, 'standard': df}
+    except Exception as e2:
+        print(f'Warning: could not fetch Sleeper ADP: {e2}')
+        return out
 
-_sleeper_adp = _fetch_sleeper_adp()
+# Fetch all three formats at startup (one call for all)
+_sleeper_adp = _fetch_sleeper_adp_all()
+
+# ── ESPN ADP ───────────────────────────────────────────────────────────
+_ESPN_SCORING_TYPE = {'ppr': 'PPR', 'half_ppr': 'HALF', 'standard': 'STANDARD'}
+
+def _fetch_espn_adp():
+    """
+    Fetch ESPN ADP from the public ESPN fantasy API (PPR slot only — slots 0/4 return 404).
+    All three scoring formats share the same PPR ranking list.
+    draftRanksByRankType[PPR].rank is used (ownership.averageDraftPosition is always 170.0).
+    """
+    import json as _json
+    empty = pd.DataFrame(columns=['player_name', 'name_key', 'adp_rank', 'team', 'position'])
+    out = {'ppr': empty, 'half_ppr': empty, 'standard': empty}
+    pos_map = {1: 'QB', 2: 'RB', 3: 'WR', 4: 'TE'}
+    # Only slot 3 (PPR) is publicly available; reuse for all formats
+    espn_configs = {
+        'ppr': {'slot': 3, 'rank_key': 'PPR', 'sort_val': 'PPR'},
+    }
+    for scoring, cfg in espn_configs.items():
+        try:
+            fantasy_filter = _json.dumps({
+                'players': {
+                    'limit': 300,
+                    'sortDraftRanks': {
+                        'sortPriority': 100,
+                        'sortAsc': True,
+                        'value': cfg['sort_val'],
+                    },
+                    'filterSlotIds': {'value': [0, 2, 4, 6, 23]},
+                }
+            })
+            headers = {
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0',
+                'X-Fantasy-Filter': fantasy_filter,
+            }
+            url = (f'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl'
+                   f'/seasons/2025/segments/0/leaguedefaults/{cfg["slot"]}'
+                   f'?view=kona_player_info')
+            resp = requests.get(url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            players_raw = data.get('players', [])
+            entries = []
+            for entry in players_raw:
+                p = entry.get('player', {})
+                name   = p.get('fullName', '')
+                pos_id = p.get('defaultPositionId', 0)
+                if pos_id not in pos_map or not name:
+                    continue
+                pos = pos_map[pos_id]
+                # Use draftRanksByRankType rank — ownership.averageDraftPosition is 170.0 for all
+                rank_info = (p.get('draftRanksByRankType') or {}).get(cfg['rank_key'], {})
+                adp = rank_info.get('rank')
+                if adp is None or adp == 0:
+                    continue
+                try:
+                    adp = float(adp)
+                except (TypeError, ValueError):
+                    continue
+                _espn_team_map = {
+                    1:'ATL',2:'BUF',3:'CHI',4:'CIN',5:'CLE',6:'DAL',7:'DEN',8:'DET',
+                    9:'GB',10:'TEN',11:'IND',12:'KC',13:'LV',14:'LAR',15:'MIA',
+                    16:'MIN',17:'NE',18:'NO',19:'NYG',20:'NYJ',21:'PHI',22:'ARI',
+                    23:'PIT',24:'LAC',25:'SF',26:'SEA',27:'TB',28:'WAS',29:'CAR',
+                    30:'JAX',33:'BAL',34:'HOU',
+                }
+                team_abbr = _espn_team_map.get(p.get('proTeamId', 0), '')
+                entries.append((adp, name, pos, team_abbr))
+            entries.sort(key=lambda x: x[0])
+            records = [
+                {'player_name': name, 'name_key': _normalize_name(name),
+                 'adp_rank': rank_i, 'team': team, 'position': pos}
+                for rank_i, (adp, name, pos, team) in enumerate(entries, 1)
+            ]
+            df = pd.DataFrame(records) if records else out[scoring]
+            out['ppr'] = out['half_ppr'] = out['standard'] = df
+            print(f'ESPN ADP (PPR slot only): {len(records)} players')
+        except Exception as e:
+            print(f'Warning: could not fetch ESPN ADP: {e}')
+    return out
+
+_espn_adp = _fetch_espn_adp()
 
 # ── Team abbreviation normalization ──────────────────────────────────
 def _norm_team(t):
@@ -344,10 +497,11 @@ def _load_model_rankings(scoring='ppr'):
         combined = combined.sort_values('vbd', ascending=False).reset_index(drop=True)
         combined['rank'] = combined.index + 1
 
-        # Join Sleeper ADP
-        if not _sleeper_adp.empty:
+        # Join Sleeper ADP (format-specific)
+        _adp_df = _sleeper_adp.get(scoring, pd.DataFrame())
+        if not _adp_df.empty:
             combined['name_key'] = combined['player_name'].apply(_normalize_name)
-            adp_slim = _sleeper_adp[['name_key', 'adp_rank']].drop_duplicates('name_key')
+            adp_slim = _adp_df[['name_key', 'adp_rank']].drop_duplicates('name_key')
             combined = combined.merge(adp_slim, on='name_key', how='left')
         else:
             combined['adp_rank'] = None
@@ -405,10 +559,19 @@ import pickle as _pickle
 
 _similarity_comps = {}
 _umap_coords_json = '[]'
+_similarity_comps_json = '{}'
 try:
+    import numpy as _np
+    class _NpEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, _np.floating): return float(obj)
+            if isinstance(obj, _np.integer):  return int(obj)
+            if isinstance(obj, _np.ndarray):  return obj.tolist()
+            return super().default(obj)
     _sim_dir = _BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel'
     with open(_sim_dir / 'similarity_comps.pkl', 'rb') as _f:
         _similarity_comps = _pickle.load(_f)
+    _similarity_comps_json = json.dumps(_similarity_comps, cls=_NpEncoder)
     _umap_df = pd.read_pickle(_sim_dir / 'umap_coords.pkl')
     _umap_coords_json = _umap_df.to_json(orient='records')
     print(f'Similarity model loaded: {len(_similarity_comps)} players, {len(_umap_df)} UMAP points')
@@ -928,7 +1091,7 @@ def get_new_model_rankings():
 def player_comps():
     return render_template('player_comps.html',
                            umap_coords_json=_umap_coords_json,
-                           similarity_comps_json=json.dumps(_similarity_comps))
+                           similarity_comps_json=_similarity_comps_json)
 
 @main.route('/save_rankings', methods=['POST'])
 @login_required
@@ -1048,18 +1211,18 @@ def player_stats():
     if not _nfl_seasonal.empty:
         player_rows = _nfl_seasonal[_nfl_seasonal['player_display_name'] == name].sort_values('season')
         if pos == 'QB':
-            cols = ['season', 'games', 'completions', 'attempts', 'passing_yards',
+            cols = ['season', 'recent_team', 'games', 'completions', 'attempts', 'passing_yards',
                     'passing_tds', 'passing_interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points_ppr']
         elif pos == 'RB':
-            cols = ['season', 'games', 'carries', 'rushing_yards', 'rushing_tds',
+            cols = ['season', 'recent_team', 'games', 'carries', 'rushing_yards', 'rushing_tds',
                     'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points_ppr']
         else:  # WR / TE
-            cols = ['season', 'games', 'receptions', 'targets', 'receiving_yards',
+            cols = ['season', 'recent_team', 'games', 'receptions', 'targets', 'receiving_yards',
                     'receiving_tds', 'target_share', 'air_yards_share', 'fantasy_points_ppr']
 
         available = [c for c in cols if c in player_rows.columns]
-        hist = player_rows[available].tail(5).round(1)
-        hist = hist.rename(columns={'games': 'GP', 'fantasy_points_ppr': 'fantasy_points'})
+        hist = player_rows[available].round(1)
+        hist = hist.rename(columns={'games': 'GP', 'fantasy_points_ppr': 'fantasy_points', 'recent_team': 'team'})
         history = _clean_hist(hist)
 
     # Fallback: build history from pkl files when nflreadpy is unavailable
@@ -1082,7 +1245,7 @@ def player_stats():
                     cols = ['season', 'GP', 'receptions', 'targets', 'receiving_yards',
                             'receiving_tds', 'fantasy_points']
                 available = [c for c in cols if c in player_rows.columns]
-                hist = player_rows[available].tail(5).round(1)
+                hist = player_rows[available].round(1)
                 history = _clean_hist(hist)
 
     # --- Rankings info ---
@@ -1174,28 +1337,66 @@ def player_quick_stats():
                     espn_id = str(raw_id)
                 def _sv(v):
                     return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
-                
-                # Normalize team abbreviation in bio
-                bio_team = _r.get('Team')
-                if pd.notna(bio_team) and str(bio_team) not in ('nan', 'None', ''):
-                    bio_team = _norm_team(str(bio_team))
-                else:
-                    bio_team = '—'
-                
+
+                def _fmt_height(v):
+                    try:
+                        inches = float(v)
+                        ft = int(inches // 12)
+                        rem = int(inches % 12)
+                        return f"{ft}'{rem}\""
+                    except (TypeError, ValueError):
+                        return '—'
+
+                def _fmt_weight(v):
+                    try:
+                        return f"{int(float(v))} lbs"
+                    except (TypeError, ValueError):
+                        return '—'
+
+                def _fmt_year(v):
+                    try:
+                        return str(int(float(v)))
+                    except (TypeError, ValueError):
+                        return '—'
+
+                def _fmt_age(birth_str):
+                    try:
+                        from datetime import date
+                        import re as _re_age
+                        s = str(birth_str).strip()
+                        # Try YYYY-MM-DD first, then MM/DD/YYYY
+                        m = _re_age.match(r'(\d{4})-(\d{2})-(\d{2})', s)
+                        if m:
+                            born = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                        else:
+                            m2 = _re_age.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
+                            if m2:
+                                born = date(int(m2.group(3)), int(m2.group(1)), int(m2.group(2)))
+                            else:
+                                return '—'
+                        today = date.today()
+                        age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+                        return str(age)
+                    except Exception:
+                        return '—'
+
+                def _fmt_pick(round_val, pick_val):
+                    try:
+                        r = int(float(round_val))
+                        p = int(float(pick_val))
+                        return f"Rd {r} Pk {p}"
+                    except (TypeError, ValueError):
+                        return '—'
+
                 bio = {
-                    'Team':             bio_team,
-                    'Position':         _sv(_r.get('Pos')),
-                    'Height':           _sv(_r.get('height')),
-                    'Weight':           _sv(_r.get('weight')),
-                    'Birth Date':       _sv(_r.get('BirthDate')),
+                    'Age':              _fmt_age(_r.get('BirthDate')),
+                    'Height':           _fmt_height(_r.get('height')),
+                    'Weight':           _fmt_weight(_r.get('weight')),
                     'College':          _sv(_r.get('College')),
-                    'Rookie Season':    _sv(_r.get('RookieSeason')),
-                    'Experience (yrs)': _sv(_r.get('ExperienceYears')),
-                    'Jersey #':         _sv(_r.get('Jersey')),
-                    'Draft Year':       _sv(_r.get('DraftYear')),
-                    'Round':            _sv(_r.get('DraftRound')),
-                    'Pick':             _sv(_r.get('DraftPick')),
+                    'Draft Year':       _fmt_year(_r.get('DraftYear')),
                     'Draft Team':       _sv(_r.get('DraftTeam')),
+                    'Pick':             _fmt_pick(_r.get('DraftRound'), _r.get('DraftPick')),
+                    'Seasons Played':   _fmt_year(_r.get('ExperienceYears')),
                 }
     except Exception as _e:
         print(f'Warning: could not look up espn_id: {_e}')
@@ -1301,28 +1502,65 @@ def player_profile(name):
                     espn_id = str(raw_id)
                 def _sv(v):
                     return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
-                
-                # Normalize team abbreviation in bio
-                bio_team = row.get('Team')
-                if pd.notna(bio_team) and str(bio_team) not in ('nan', 'None', ''):
-                    bio_team = _norm_team(str(bio_team))
-                else:
-                    bio_team = '—'
-                
+
+                def _fmt_height(v):
+                    try:
+                        inches = float(v)
+                        ft = int(inches // 12)
+                        rem = int(inches % 12)
+                        return f"{ft}'{rem}\""
+                    except (TypeError, ValueError):
+                        return '—'
+
+                def _fmt_weight(v):
+                    try:
+                        return f"{int(float(v))} lbs"
+                    except (TypeError, ValueError):
+                        return '—'
+
+                def _fmt_year(v):
+                    try:
+                        return str(int(float(v)))
+                    except (TypeError, ValueError):
+                        return '—'
+
+                def _fmt_age(birth_str):
+                    try:
+                        from datetime import date
+                        import re as _re_age
+                        s = str(birth_str).strip()
+                        m = _re_age.match(r'(\d{4})-(\d{2})-(\d{2})', s)
+                        if m:
+                            born = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                        else:
+                            m2 = _re_age.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
+                            if m2:
+                                born = date(int(m2.group(3)), int(m2.group(1)), int(m2.group(2)))
+                            else:
+                                return '—'
+                        today = date.today()
+                        age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+                        return str(age)
+                    except Exception:
+                        return '—'
+
+                def _fmt_pick(round_val, pick_val):
+                    try:
+                        r = int(float(round_val))
+                        p = int(float(pick_val))
+                        return f"Rd {r} Pk {p}"
+                    except (TypeError, ValueError):
+                        return '—'
+
                 player_bio = {
-                    'Team':         bio_team,
-                    'Position':     _sv(row.get('Pos')),
-                    'Height':       _sv(row.get('height')),
-                    'Weight':       _sv(row.get('weight')),
-                    'Birth Date':   _sv(row.get('BirthDate')),
-                    'College':      _sv(row.get('College')),
-                    'Rookie Season':_sv(row.get('RookieSeason')),
-                    'Experience (yrs)': _sv(row.get('ExperienceYears')),
-                    'Jersey #':     _sv(row.get('Jersey')),
-                    'Draft Year':   _sv(row.get('DraftYear')),
-                    'Round':        _sv(row.get('DraftRound')),
-                    'Pick':         _sv(row.get('DraftPick')),
-                    'Draft Team':   _sv(row.get('DraftTeam')),
+                    'Age':            _fmt_age(row.get('BirthDate')),
+                    'Height':         _fmt_height(row.get('height')),
+                    'Weight':         _fmt_weight(row.get('weight')),
+                    'College':        _sv(row.get('College')),
+                    'Draft Year':     _fmt_year(row.get('DraftYear')),
+                    'Draft Team':     _sv(row.get('DraftTeam')),
+                    'Pick':           _fmt_pick(row.get('DraftRound'), row.get('DraftPick')),
+                    'Seasons Played': _fmt_year(row.get('ExperienceYears')),
                 }
     except Exception as _e:
         print(f'Warning: could not look up player bio: {_e}')
@@ -1348,22 +1586,71 @@ def mock_draft():
 
 
 @main.route('/mockdraft/players')
-@login_required
 def mockdraft_players():
-    import math
+    import math, re as _re2
     scoring = request.args.get('scoring', 'ppr')
-    records = _model_table.get(scoring) or _model_table.get('ppr') or []
-    if not records:
-        return jsonify([])
-    players = []
-    for row in records:
-        pos = (row.get('Position') or '').replace(r'\d+$', '').strip().upper()
-        import re
-        pos = re.sub(r'\d+$', '', pos).strip()
-        if pos in ('K', 'DEF', 'DST'):
+    source  = request.args.get('source', 'darkhorse').lower()
+
+    def _clean(players_list):
+        out = []
+        for row in players_list:
+            pos = _re2.sub(r'\d+$', '', (row.get('Position') or '')).strip().upper()
+            if pos in ('K', 'DEF', 'DST', 'P'):
+                continue
+            out.append({k: (None if isinstance(v, float) and math.isnan(v) else v)
+                        for k, v in row.items()})
+        return out
+
+    if source == 'darkhorse':
+        records = _model_table.get(scoring) or _model_table.get('ppr') or []
+        return jsonify(_clean(records))
+
+    # External ADP source — build player list from ADP DataFrame
+    adp_map = {'sleeper': _sleeper_adp, 'espn': _espn_adp}
+    adp_dict = adp_map.get(source)
+    if adp_dict is None:
+        # Unknown source — fall back to darkhorse
+        records = _model_table.get(scoring) or _model_table.get('ppr') or []
+        return jsonify(_clean(records))
+
+    adp_df = adp_dict.get(scoring)
+    if adp_df is None:
+        adp_df = adp_dict.get('ppr')
+    if adp_df is None or adp_df.empty:
+        records = _model_table.get(scoring) or _model_table.get('ppr') or []
+        return jsonify(_clean(records))
+
+    # Also pull bye weeks from existing model table for enrichment
+    bye_lookup = {}
+    for row in (_model_table.get('ppr') or []):
+        bye_lookup[_normalize_name(row.get('Name', ''))] = row.get('Bye Week')
+
+    players_out = []
+    for i, row in adp_df.iterrows():
+        pos = (row.get('position') or '').upper()
+        if pos in ('K', 'DEF', 'DST', 'P', ''):
             continue
-        players.append({k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()})
-    return jsonify(players)
+        name = row.get('player_name', '') or ''
+        if not name:
+            continue
+        try:
+            rank = int(row['adp_rank'])
+        except (ValueError, TypeError):
+            continue
+        name_key = row.get('name_key') or _normalize_name(name)
+        team = row.get('team', '')
+        if team is None or (isinstance(team, float) and math.isnan(team)):
+            team = ''
+        players_out.append({
+            'Rank':     rank,
+            'Name':     name,
+            'Position': pos,
+            'Team':     str(team),
+            'ADP':      rank,
+            'Bye Week': bye_lookup.get(name_key, ''),
+        })
+
+    return jsonify(players_out)
 
 
 @main.route('/mockdraft/save', methods=['POST'])

@@ -38,7 +38,14 @@
       "WebFetch(domain:nflreadr.nflverse.com)",
       "Bash(grep -rl \"nfl_data_py\\\\|import_pbp_data\\\\|import_seasonal_data\\\\|import_seasonal_rosters\\\\|import_schedules\\\\|import_weekly_data\\\\|import_ngs_data\\\\|import_players\\\\|import_qbr\" /Users/kmaran3/Dropbox/Darkhorse/Models /Users/kmaran3/Dropbox/Darkhorse/webapp --include=*.py --include=*.ipynb)",
       "Bash(grep -rl \"nfl_data_py\\\\|import_pbp_data\\\\|import_seasonal_data\\\\|import_seasonal_rosters\\\\|import_schedules\\\\|import_weekly_data\\\\|import_ngs_data\\\\|import_players\\\\b\\\\|import_qbr\" /Users/kmaran3/Dropbox/Darkhorse/Models /Users/kmaran3/Dropbox/Darkhorse/webapp --include=*.py --include=*.ipynb)",
-      "Bash(head -20 echo \"---\" grep -n \"age\\\\|birth_date\\\\|load_rosters\" /Users/kmaran3/Dropbox/Darkhorse/Models/NewModel/_run_phase3.py)"
+      "Bash(head -20 echo \"---\" grep -n \"age\\\\|birth_date\\\\|load_rosters\" /Users/kmaran3/Dropbox/Darkhorse/Models/NewModel/_run_phase3.py)",
+      "Bash(sqlite3:*)",
+      "Bash(grep -n \"css-var\\\\|--black\\\\|--charcoal\\\\|--teal\\\\|--gold\\\\|--navy\\\\|--blue\\\\|#[0-9a-fA-F]\\\\{3,6\\\\}\" /Users/kmaran3/Dropbox/Darkhorse/webapp/static/css/styles.css)",
+      "Bash(curl -s \"http://127.0.0.1:5001/mockdraft/players?scoring=ppr&source=sleeper\")",
+      "Bash(node:*)",
+      "Bash(curl -s -b \"session=test\" \"http://127.0.0.1:5001/mockdraft/players?scoring=ppr&source=sleeper\" -w \"\\\\nHTTP_STATUS:%{http_code}\")",
+      "Bash(curl -s \"http://127.0.0.1:5001/mockdraft/players?scoring=ppr&source=espn\" -w \"\\\\nHTTP_STATUS:%{http_code}\")",
+      "Bash(curl -s \"http://127.0.0.1:5001/mockdraft\" -w \"\\\\nHTTP_STATUS:%{http_code}\")"
     ]
   }
 }
