@@ -5,8 +5,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/mockdraft.css') }}">
 <div style="max-width:1100px;margin:90px auto 60px;padding:0 20px;">
   <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
-    <a href="{{ url_for('main.my_drafts') }}" style="color:#2d8b8b;text-decoration:none;">← My Drafts</a>
-    <h2 style="color:#a8dadc;margin:0;">
+    <a href="{{ url_for('main.my_drafts') }}" style="color:var(--gold);text-decoration:none;font-weight:600;">← My Drafts</a>
+    <h2 style="color:var(--white);margin:0;font-weight:700;">
       {{ draft.draft_type | capitalize }} Draft —
       {{ draft.scoring | upper }} —
       {{ draft.created_at.strftime('%B %d, %Y') }}
@@ -67,10 +67,10 @@
           <td {% if t == settings.user_slot - 1 %}class="user-col"{% endif %} style="vertical-align:top;">
             {% if board %}
               {% for pick in board[0].picks[t] if board[0].picks is defined %}
-                <div style="font-size:0.75rem;padding:3px 0;border-bottom:1px solid #2d3d4d;">
+                <div style="font-size:0.75rem;padding:3px 0;border-bottom:1px solid var(--medium-gray);">
                   {{ pick.name }}
                   <span class="pos-badge pos-{{ pick.position }}">{{ pick.position }}</span>
-                  <span style="color:#2d8b8b;">${{ pick.cost or 0 }}</span>
+                  <span style="color:var(--gold);">${{ pick.cost or 0 }}</span>
                 </div>
               {% endfor %}
             {% endif %}
@@ -81,35 +81,35 @@
     </table>
   </div>
   {% else %}
-  <p style="color:#6b8fa3;">No board data saved for this draft.</p>
+  <p style="color:var(--text-secondary);">No board data saved for this draft.</p>
   {% endif %}
 
   {% if user_team %}
   <div style="margin-top:30px;">
-    <h3 style="color:#a8dadc;">Your Team</h3>
+    <h3 style="color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;font-size:0.9em;">Your Team</h3>
     <table style="border-collapse:collapse;font-size:0.85rem;min-width:400px;">
       <thead>
         <tr>
-          <th style="padding:7px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;">Rd</th>
-          <th style="padding:7px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;">Player</th>
-          <th style="padding:7px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;">Pos</th>
-          <th style="padding:7px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;">NFL Team</th>
+          <th style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Rd</th>
+          <th style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Player</th>
+          <th style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Pos</th>
+          <th style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">NFL Team</th>
           {% if draft.draft_type == 'auction' %}
-          <th style="padding:7px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;">Cost</th>
+          <th style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Cost</th>
           {% endif %}
         </tr>
       </thead>
       <tbody>
         {% for pick in user_team %}
-        <tr>
-          <td style="padding:7px 12px;border:1px solid #2d3d4d;color:#6b8fa3;">{{ pick.round }}</td>
-          <td style="padding:7px 12px;border:1px solid #2d3d4d;color:#f1faee;font-weight:600;">{{ pick.name }}</td>
-          <td style="padding:7px 12px;border:1px solid #2d3d4d;">
+        <tr style="background:var(--dark-gray);">
+          <td style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--text-secondary);">{{ pick.round }}</td>
+          <td style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--white);font-weight:600;">{{ pick.name }}</td>
+          <td style="padding:7px 12px;border:1px solid var(--medium-gray);">
             <span class="pos-badge pos-{{ pick.position }}">{{ pick.position }}</span>
           </td>
-          <td style="padding:7px 12px;border:1px solid #2d3d4d;color:#a8dadc;">{{ pick.nfl_team }}</td>
+          <td style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--text-secondary);">{{ pick.nfl_team }}</td>
           {% if draft.draft_type == 'auction' %}
-          <td style="padding:7px 12px;border:1px solid #2d3d4d;color:#2d8b8b;">${{ pick.cost or 0 }}</td>
+          <td style="padding:7px 12px;border:1px solid var(--medium-gray);color:var(--gold);font-weight:600;">${{ pick.cost or 0 }}</td>
           {% endif %}
         </tr>
         {% endfor %}

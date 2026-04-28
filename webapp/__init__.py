@@ -133,10 +133,10 @@ def create_app():
         # Content Security Policy
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline' https://code.jquery.com https://cdn.jsdelivr.net https://cdn.plot.ly; "
+            "style-src 'self' 'unsafe-inline' https://code.jquery.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
-            "font-src 'self' data:;"
         )
         # Force HTTPS in production
         if _is_production():

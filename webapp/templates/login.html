@@ -81,6 +81,11 @@
 
         <div class="auth-footer">
             <p>Don't have an account? <a href="{{ url_for('main.register') }}" class="auth-link">Sign up now</a></p>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(212,175,55,0.15);">
+                <a href="{{ url_for('main.guest_login') }}" style="display:block;text-align:center;padding:10px;border:1px solid rgba(212,175,55,0.3);border-radius:6px;color:#B0B0B0;font-size:0.88em;text-decoration:none;transition:all 0.15s;" onmouseover="this.style.borderColor='#D4AF37';this.style.color='#D4AF37'" onmouseout="this.style.borderColor='rgba(212,175,55,0.3)';this.style.color='#B0B0B0'">
+                    Continue as Guest
+                </a>
+            </div>
         </div>
     </div>
     

@@ -836,6 +836,18 @@ def logout():
     flash('You have been logged out.')
     return redirect(url_for('main.login'))
 
+@main.route('/guest-login')
+def guest_login():
+    from webapp import db
+    guest = User.query.filter_by(id='guest').first()
+    if not guest:
+        guest = User(id='guest', email='guest@darkhorse.local')
+        guest.set_password('guest-no-password')
+        db.session.add(guest)
+        db.session.commit()
+    login_user(guest, remember=False)
+    return redirect(url_for('main.home'))
+
 @main.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
@@ -1327,6 +1339,8 @@ def player_profile(name):
     except Exception as _e:
         print(f'Warning: could not look up player bio: {_e}')
 
+    player_comps_data = _similarity_comps.get(name, [])
+
     return render_template(
         'player_profile.html',
         player_name=name,
@@ -1338,6 +1352,7 @@ def player_profile(name):
         fp_thresholds_json=json.dumps(_fp_thresholds),
         back_url=back_url,
         compare=compare,
+        player_comps_json=json.dumps(player_comps_data),
     )
 
 

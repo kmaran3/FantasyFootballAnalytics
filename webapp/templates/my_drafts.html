@@ -4,38 +4,38 @@
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/mockdraft.css') }}">
 <div style="max-width:800px;margin:90px auto 60px;padding:0 20px;">
-  <h2 style="color:#a8dadc;margin-bottom:20px;">My Saved Drafts</h2>
+  <h2 style="color:var(--gold);margin-bottom:20px;font-weight:700;letter-spacing:-0.01em;">My Saved Drafts</h2>
 
   {% if drafts %}
   <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
     <thead>
       <tr>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Date</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Type</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Scoring</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;text-align:left;">Teams</th>
-        <th style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;background:#0d1b2a;"></th>
+        <th style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-align:left;text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Date</th>
+        <th style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-align:left;text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Type</th>
+        <th style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-align:left;text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Scoring</th>
+        <th style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--gold);background:var(--black);text-align:left;text-transform:uppercase;font-size:0.82em;letter-spacing:0.04em;">Teams</th>
+        <th style="padding:8px 12px;border:1px solid var(--medium-gray);background:var(--black);"></th>
       </tr>
     </thead>
     <tbody>
       {% for d in drafts %}
-      <tr>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#f1faee;">{{ d.created_at }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#f1faee;">{{ d.draft_type | capitalize }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#a8dadc;">{{ d.scoring | upper }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;color:#f1faee;">{{ d.num_teams }}</td>
-        <td style="padding:8px 12px;border:1px solid #2d3d4d;">
+      <tr style="background:var(--dark-gray);">
+        <td style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--white);">{{ d.created_at }}</td>
+        <td style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--white);">{{ d.draft_type | capitalize }}</td>
+        <td style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--text-secondary);">{{ d.scoring | upper }}</td>
+        <td style="padding:8px 12px;border:1px solid var(--medium-gray);color:var(--white);">{{ d.num_teams }}</td>
+        <td style="padding:8px 12px;border:1px solid var(--medium-gray);">
           <a href="{{ url_for('main.view_draft', draft_id=d.id) }}"
-             style="color:#2d8b8b;text-decoration:none;margin-right:12px;">View</a>
+             style="color:var(--gold);text-decoration:none;margin-right:12px;font-weight:600;">View</a>
           <a href="#" class="delete-draft" data-id="{{ d.id }}"
-             style="color:#c04040;text-decoration:none;">Delete</a>
+             style="color:#e74c3c;text-decoration:none;">Delete</a>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p style="color:#6b8fa3;">No saved drafts yet. <a href="{{ url_for('main.mock_draft') }}" style="color:#2d8b8b;">Run a mock draft</a>.</p>
+  <p style="color:var(--text-secondary);">No saved drafts yet. <a href="{{ url_for('main.mock_draft') }}" style="color:var(--gold);">Run a mock draft</a>.</p>
   {% endif %}
 </div>
 
