@@ -16,32 +16,32 @@
     margin-bottom: 24px;
 }
 .profile-back-btn {
-    background: #1A1A1A;
-    color: #D4AF37;
-    border: 1px solid #D4AF37;
+    background: var(--dark-gray);
+    color: var(--gold);
+    border: 1px solid var(--gold);
     padding: 7px 16px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.9em;
     text-decoration: none;
     font-weight: 600;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
 }
-.profile-back-btn:hover { opacity: 0.8; }
+.profile-back-btn:hover { background: var(--gold); color: var(--black); }
 .compare-open-btn {
-    background: #D4AF37;
-    color: #0B0B0B;
-    border: none;
+    background: var(--dark-gray);
+    color: var(--gold);
+    border: 1px solid var(--gold);
     padding: 7px 16px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.9em;
     font-weight: 600;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
 }
-.compare-open-btn:hover { opacity: 0.8; }
+.compare-open-btn:hover { background: var(--gold); color: var(--black); }
 .compare-clear-btn {
-    background: #1A1A1A;
+    background: var(--dark-gray);
     color: #e74c3c;
     border: 1px solid #e74c3c;
     padding: 7px 16px;
@@ -63,36 +63,33 @@
 
 /* Cards */
 .profile-card {
-    background: #1A1A1A;
-    border: 1px solid #2A2A2A;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
     border-radius: 8px;
     padding: 16px;
     min-width: 200px;
     flex: 1;
 }
-.card-heading { margin: 0 0 10px 0; color: #D4AF37; font-size: 0.95em; }
-.bio-label { font-weight: bold; padding: 10px 16px 10px 0; color: #D4AF37; border-bottom: 1px solid #2A2A2A; }
-.bio-val   { padding: 10px 0; color: #F5F5F5; border-bottom: 1px solid #2A2A2A; }
-.bio-label:last-of-type, .bio-val:last-of-type { border-bottom: none; }
+.card-heading { margin: 0 0 10px 0; color: var(--gold); font-size: 0.95em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.bio-label { font-weight: 600; padding: 4px 16px 4px 0; color: var(--text-secondary); font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.03em; }
+.bio-val   { padding: 4px 0; color: var(--white); }
 .loading-text {
-    color: #B0B0B0;
+    color: var(--text-secondary);
     margin: 0;
 }
 
 /* Grade bars */
 .grade-bar-wrap { display: flex; align-items: center; gap: 8px; }
-.grade-bar-track { width: 80px; background: #2A2A2A; border-radius: 4px; height: 10px; }
+.grade-bar-track { width: 80px; background: var(--medium-gray); border-radius: 4px; height: 10px; }
 .grade-bar-fill  { height: 10px; border-radius: 4px; }
 .grade-info {
     cursor: help;
-    color: #B0B0B0;
+    color: var(--text-secondary);
     font-size: 0.8em;
     position: relative;
     display: inline-block;
 }
-.grade-info:hover {
-    color: #D4AF37;
-}
+.grade-info:hover { color: var(--light-gray); }
 .grade-info[data-tooltip]:hover::after {
     content: attr(data-tooltip);
     position: absolute;
@@ -100,16 +97,16 @@
     left: 50%;
     transform: translateX(-50%);
     padding: 8px 12px;
-    background: #1A1A1A;
-    color: #F5F5F5;
-    border: 1px solid #D4AF37;
+    background: var(--black);
+    color: var(--white);
+    border: 1px solid var(--gold);
     border-radius: 6px;
     white-space: normal;
     width: 250px;
     font-size: 0.85rem;
     z-index: 1000;
     margin-bottom: 5px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
     line-height: 1.4;
     text-align: left;
 }
@@ -120,28 +117,11 @@
     left: 50%;
     transform: translateX(-50%);
     border: 6px solid transparent;
-    border-top-color: #D4AF37;
+    border-top-color: var(--gold);
     z-index: 1001;
 }
-
-.chart-toggle-btn {
-    background: transparent;
-    border: 1px solid #2A2A2A;
-    color: #B0B0B0;
-    border-radius: 4px;
-    padding: 3px 10px;
-    font-size: 0.75em;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-.chart-toggle-btn.active {
-    border-color: #D4AF37;
-    color: #D4AF37;
-    background: rgba(212,175,55,0.08);
-}
-
 .grade-rank {
-    color: #B0B0B0;
+    color: var(--text-secondary);
     font-size: 0.82em;
     font-weight: 600;
     margin-left: 4px;
@@ -154,39 +134,166 @@
     width: 100%;
 }
 .history-table th {
-    background: #2A2A2A;
-    color: #D4AF37;
+    background: var(--black);
+    color: var(--gold);
     padding: 6px 10px;
     text-align: left;
     font-weight: 600;
-    font-size: 0.85em;
+    font-size: 0.82em;
     white-space: nowrap;
-    border: 1px solid #2A2A2A;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--medium-gray);
 }
 .history-table td {
     padding: 5px 10px;
-    color: #F5F5F5;
+    color: var(--white);
     white-space: nowrap;
     vertical-align: top;
-    border: 1px solid #2A2A2A;
+    border-bottom: 1px solid var(--medium-gray);
 }
 .history-table td.best-season {
-    color: #2ecc71;
+    color: var(--gold);
+    font-weight: 700;
+    background: var(--gold-glow);
+}
+
+/* ── Season Similarities card ── */
+.comps-preview-card {
+    background: var(--black);
+    border: 1px solid var(--medium-gray);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    text-decoration: none;
+    display: block;
+}
+.comps-preview-card:hover { border-color: var(--gold); box-shadow: 0 0 16px var(--gold-glow); }
+.comps-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.comps-preview-title {
+    font-size: 0.72em;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--gold);
     font-weight: 700;
 }
+.comps-preview-link {
+    font-size: 0.72em;
+    color: var(--text-secondary);
+    font-family: monospace;
+    transition: color 0.15s;
+}
+.comps-preview-card:hover .comps-preview-link { color: var(--gold); }
+.comps-proj-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--medium-gray);
+}
+.comps-proj-ppg {
+    font-size: 2em;
+    font-weight: 700;
+    color: var(--white);
+    font-family: monospace;
+    line-height: 1;
+}
+.comps-proj-label {
+    font-size: 0.68em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 3px;
+}
+.comps-proj-delta {
+    font-size: 0.8em;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 20px;
+    margin-bottom: 3px;
+}
+.comps-proj-delta.up   { background: rgba(89,161,79,0.15); color: #59a14f; border: 1px solid rgba(89,161,79,0.3); }
+.comps-proj-delta.down { background: rgba(225,87,89,0.15); color: #e15759; border: 1px solid rgba(225,87,89,0.3); }
+.comps-proj-delta.flat { background: var(--gold-glow); color: var(--gold); border: 1px solid rgba(212,175,55,0.3); }
+.comps-section-label {
+    font-size: 0.68em;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    margin-top: 2px;
+}
+.comp-mini-list { display: flex; flex-direction: column; gap: 8px; }
+.comp-mini-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 9px 12px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    transition: border-color 0.12s;
+}
+.comp-mini-row:hover { border-color: var(--gold); }
+.comp-mini-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+.comp-mini-rank { color: var(--text-secondary); font-size: 0.72em; font-family: monospace; margin-right: 5px; }
+.comp-mini-name { color: var(--white); font-weight: 700; font-size: 0.95em; }
+.comp-mini-season { color: var(--text-secondary); margin-left: 6px; font-size: 0.8em; }
+.comp-mini-ppg { color: var(--gold); font-family: monospace; font-weight: 700; font-size: 0.9em; }
+.comp-repeat-badge {
+    display: inline-block;
+    background: var(--gold-glow);
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    border-radius: 3px;
+    font-size: 0.65em;
+    font-weight: 700;
+    padding: 1px 5px;
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+}
+.comp-mini-sim-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.comp-mini-sim-track { flex: 1; height: 3px; background: var(--medium-gray); border-radius: 2px; overflow: hidden; }
+.comp-mini-sim-fill { height: 3px; border-radius: 2px; background: var(--gold); }
+.comp-mini-sim-label { color: var(--text-secondary); font-size: 0.72em; font-family: monospace; min-width: 48px; text-align: right; }
+.comps-repeat-note {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: var(--gold-glow);
+    border: 1px solid rgba(212,175,55,0.3);
+    border-radius: 6px;
+    font-size: 0.78em;
+    color: var(--gold);
+    line-height: 1.5;
+}
+.comps-no-data { font-size: 0.82em; color: var(--text-secondary); font-style: italic; }
 
 /* Compare search */
 .player-search-input {
-    background: #1A1A1A;
-    border: 1px solid #2A2A2A;
-    color: #F5F5F5;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    color: var(--white);
     padding: 7px 12px;
     border-radius: 4px;
     font-size: 0.95em;
 }
 .player-search-input:focus {
     outline: none;
-    border-color: #D4AF37;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold-glow);
 }
 </style>
 
@@ -201,8 +308,8 @@
         <!-- Primary player panel -->
         <div id="primary-panel" class="profile-panel-wrap">
             <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-                <h2 id="profile-name" style="margin:0;color:#F5F5F5;"></h2>
-                <span id="profile-subtitle" style="color:#D4AF37;font-size:1em;"></span>
+                <h2 id="profile-name" style="margin:0;color:var(--white);"></h2>
+                <span id="profile-subtitle" style="color:var(--gold);font-size:1em;font-weight:600;"></span>
             </div>
             <div id="primary-card-row" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
                 <div class="profile-card" style="display:flex;flex-direction:column;">
@@ -214,7 +321,7 @@
                          style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
                          onerror="this.style.display='none'">
                     <div style="width:100%;margin-top:auto;padding-top:10px;">
-                        <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#B0B0B0;">(starters only)</span></h4>
+                        <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:var(--text-secondary);">(starters only)</span></h4>
                         <div id="team-grade-container">
                             <div style="position:relative;height:220px;width:100%;">
                                 <canvas id="team-grade-radar"></canvas>
@@ -235,6 +342,14 @@
                 <div id="chart-placeholder" class="loading-text">Loading...</div>
                 <canvas id="fantasy-chart" style="display:none;max-height:280px;"></canvas>
             </div>
+            <a id="comps-preview-card" class="comps-preview-card" href="#">
+                <div class="comps-preview-header">
+                    <span class="comps-preview-title">&#x25A0; Season Similarities &amp; 2026 Projection</span>
+                    <span class="comps-preview-link">View Full Analysis →</span>
+                </div>
+                <div id="comps-preview-body"><p class="comps-no-data">No comp data available for this player.</p></div>
+            </a>
+
             <div class="profile-card">
                 <h4 class="card-heading">Season History</h4>
                 <div id="history-table" style="overflow-x:auto;"><p class="loading-text">Loading...</p></div>
@@ -249,8 +364,8 @@
             </div>
             <div id="compare-content" style="display:none;">
                 <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-                    <h2 id="cmp-name" style="margin:0;color:#F5F5F5;"></h2>
-                    <span id="cmp-subtitle" style="color:#D4AF37;font-size:1em;"></span>
+                    <h2 id="cmp-name" style="margin:0;color:var(--white);"></h2>
+                    <span id="cmp-subtitle" style="color:var(--gold);font-size:1em;font-weight:600;"></span>
                 </div>
                 <div id="compare-card-row" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
                     <div class="profile-card">
@@ -262,7 +377,7 @@
                              style="max-width:100%;max-height:180px;object-fit:contain;border-radius:6px;display:block;margin:0 auto;"
                              onerror="this.style.display='none'">
                         <div style="width:100%;margin-top:auto;padding-top:10px;">
-                            <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:#B0B0B0;">(starters only)</span></h4>
+                            <h4 class="card-heading" style="margin-bottom:8px;">Team Grades <span style="font-size:0.75em;color:var(--text-secondary);">(starters only)</span></h4>
                             <div id="cmp-grade-container">
                                 <div style="position:relative;height:220px;width:100%;">
                                     <canvas id="cmp-grade-radar"></canvas>
@@ -413,13 +528,13 @@ function renderStatsIntoPanel(data, panelId, pos) {
                         datasets: [{
                             label: 'Team Grade',
                             data: values,
-                            backgroundColor: 'rgba(46, 204, 113, 0.2)',
-                            borderColor: 'rgba(46, 204, 113, 1)',
+                            backgroundColor: 'rgba(212,175,55,0.15)',
+                            borderColor: '#D4AF37',
                             borderWidth: 2,
-                            pointBackgroundColor: 'rgba(46, 204, 113, 1)',
-                            pointBorderColor: '#fff',
-                            pointHoverBackgroundColor: '#fff',
-                            pointHoverBorderColor: 'rgba(46, 204, 113, 1)',
+                            pointBackgroundColor: '#D4AF37',
+                            pointBorderColor: '#0B0B0B',
+                            pointHoverBackgroundColor: '#F5F5F5',
+                            pointHoverBorderColor: '#D4AF37',
                             pointRadius: 4,
                             pointHoverRadius: 6
                         }]
@@ -439,7 +554,7 @@ function renderStatsIntoPanel(data, panelId, pos) {
                                     font: { size: 10 }
                                 },
                                 grid: {
-                                    color: 'rgba(212, 175, 55, 0.15)'
+                                    color: 'rgba(42,42,42,0.8)'
                                 },
                                 pointLabels: {
                                     color: '#D4AF37',
@@ -450,7 +565,7 @@ function renderStatsIntoPanel(data, panelId, pos) {
                                     padding: 5
                                 },
                                 angleLines: {
-                                    color: 'rgba(212, 175, 55, 0.15)'
+                                    color: 'rgba(42,42,42,0.8)'
                                 }
                             }
                         },
@@ -459,7 +574,7 @@ function renderStatsIntoPanel(data, panelId, pos) {
                                 display: false
                             },
                             tooltip: {
-                                backgroundColor: '#1A1A1A',
+                                backgroundColor: '#0B0B0B',
                                 titleColor: '#F5F5F5',
                                 bodyColor: '#D4AF37',
                                 borderColor: '#D4AF37',
@@ -507,7 +622,7 @@ function renderStatsIntoPanel(data, panelId, pos) {
                     var rank = tgRanks[key] ? '#' + tgRanks[key] : '';
                     var pct = score;
                     var color = tg[key] >= 0.7 ? '#2ecc71' : tg[key] >= 0.4 ? '#f39c12' : '#e74c3c';
-                    tgHtml += '<tr style="line-height:1.8;"><td style="padding:4px 8px 4px 0;color:#D4AF37;font-weight:600;">' + key + '</td>'
+                    tgHtml += '<tr style="line-height:1.8;"><td style="padding:4px 8px 4px 0;color:#D4AF37;font-weight:600;font-size:0.88em;text-transform:uppercase;letter-spacing:0.03em;">' + key + '</td>'
                             + '<td style="padding:4px 0;"><div style="display:flex;align-items:center;gap:8px;">'
                             + '<div style="width:60px;background:#2A2A2A;border-radius:3px;height:8px;">'
                             + '<div style="width:' + pct + '%;background:' + color + ';height:8px;border-radius:3px;"></div></div>'
@@ -542,82 +657,47 @@ function renderStatsIntoPanel(data, panelId, pos) {
     if (history.length) {
         var seasons = history.map(function(r) { return r.season; });
         var pts     = history.map(function(r) { return r.fantasy_points !== null ? r.fantasy_points : 0; });
-        var gps     = history.map(function(r) { return r.GP || null; });
-        var ppgs    = history.map(function(r, idx) {
-            var gp = gps[idx];
-            var fp = pts[idx];
-            return (gp && gp > 0) ? Math.round((fp / gp) * 10) / 10 : 0;
-        });
-
-        var chartMode = 'total'; // track current mode
-
-        function buildChart(mode) {
-            if (_charts[panelId]) { _charts[panelId].destroy(); delete _charts[panelId]; }
-            var yData  = mode === 'ppg' ? ppgs : pts;
-            var yLabel = mode === 'ppg' ? 'PPG' : 'Fantasy Points';
-            _charts[panelId] = new Chart(chartEl, {
-                type: 'line',
-                data: {
-                    labels: seasons,
-                    datasets: [{
-                        label: yLabel,
-                        data: yData,
-                        borderColor: '#D4AF37',
-                        backgroundColor: 'rgba(212,175,55,0.15)',
-                        borderWidth: 2,
-                        pointBackgroundColor: '#D4AF37',
-                        pointRadius: 5,
-                        tension: 0.3,
-                        fill: true,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                title: function(items) { return 'Season ' + items[0].label; },
-                                label: function(item) {
-                                    var idx = item.dataIndex;
-                                    var fp = pts[idx];
-                                    var gp = gps[idx];
-                                    var lines = ['Fantasy Pts: ' + fp.toFixed(1)];
-                                    if (gp) {
-                                        lines.push('GP: ' + gp);
-                                        lines.push('PPG: ' + (fp / gp).toFixed(1));
-                                    }
-                                    return lines;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: { title:{display:true,text:'Season',color:'#D4AF37'}, ticks:{color:'#F5F5F5'}, grid:{color:'#2A2A2A'} },
-                        y: { title:{display:true,text:yLabel,color:'#D4AF37'}, beginAtZero:true, ticks:{color:'#F5F5F5'}, grid:{color:'#2A2A2A'} }
-                    }
-                }
-            });
-        }
-
         chartPh.style.display = 'none';
         chartEl.style.display = 'block';
-        var toggleEl = document.getElementById('chartToggle');
-        if (toggleEl) toggleEl.style.display = 'flex';
-        buildChart(chartMode);
-
-        // Wire toggle buttons (only once on first panel render)
-        if (panelId === 'primary' && !chartEl._toggleBound) {
-            chartEl._toggleBound = true;
-            document.querySelectorAll('.chart-toggle-btn').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.chart-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
-                    btn.classList.add('active');
-                    chartMode = btn.getAttribute('data-mode');
-                    buildChart(chartMode);
-                });
-            });
-        }
+        _charts[panelId] = new Chart(chartEl, {
+            type: 'line',
+            data: {
+                labels: seasons,
+                datasets: [{
+                    label: 'Fantasy Points',
+                    data: pts,
+                    borderColor: '#D4AF37',
+                    backgroundColor: 'rgba(212,175,55,0.12)',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#D4AF37',
+                    pointBorderColor: '#0B0B0B',
+                    pointRadius: 5,
+                    tension: 0.3,
+                    fill: true,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#0B0B0B',
+                        titleColor: '#F5F5F5',
+                        bodyColor: '#D4AF37',
+                        borderColor: '#D4AF37',
+                        borderWidth: 1,
+                        callbacks: {
+                            title: function(items) { return 'Season ' + items[0].label; },
+                            label: function(item)  { return 'Fantasy Pts: ' + item.parsed.y.toFixed(1); }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title:{display:true,text:'Season',color:'#D4AF37'}, ticks:{color:'#B0B0B0'}, grid:{color:'#2A2A2A'} },
+                    y: { title:{display:true,text:'Fantasy Points',color:'#D4AF37'}, beginAtZero:true, ticks:{color:'#B0B0B0'}, grid:{color:'#2A2A2A'} }
+                }
+            }
+        });
     } else {
         chartPh.style.display = 'block';
         chartPh.textContent = 'No historical data available.';
@@ -662,7 +742,7 @@ function renderHistoryTable(data, pos) {
     headers.forEach(function(h) { html += '<th>' + (labelMap[h] || h) + '</th>'; });
     html += '</tr></thead><tbody>';
     data.forEach(function(row, i) {
-        var bg = i % 2 === 0 ? '#1A1A1A' : '#121212';
+        var bg = i % 2 === 0 ? '#1A1A1A' : '#0B0B0B';
         html += '<tr style="background:' + bg + ';">';
         headers.forEach(function(h) {
             var val = row[h] !== null && row[h] !== undefined ? row[h] : '—';
@@ -845,6 +925,78 @@ $(function() {
         document.getElementById('compareBtn').click();
     }
 });
+
+// ── Comps preview card ────────────────────────────────────────────
+(function() {
+    var comps = {{ player_comps_json | safe }};
+    var card  = document.getElementById('comps-preview-card');
+    var body  = document.getElementById('comps-preview-body');
+
+    // Set link to player comps page pre-focused on this player
+    card.href = '/player-comps?player=' + encodeURIComponent(_playerName);
+
+    if (!comps || !comps.length) return;
+
+    // Weighted projection
+    var totalSim = comps.reduce(function(s, c) { return s + c.similarity; }, 0);
+    var projPpg  = comps.reduce(function(s, c) { return s + c.outcome_ppg * c.similarity; }, 0) / totalSim;
+
+    // Delta vs prior season (ppg_lag1 is in curr_features of first comp)
+    var priorPpg  = comps[0].curr_features && comps[0].curr_features.ppg_lag1 != null
+                  ? comps[0].curr_features.ppg_lag1 : null;
+    var deltaHtml = '';
+    if (priorPpg !== null) {
+        var diff  = projPpg - priorPpg;
+        var sign  = diff >= 0 ? '+' : '';
+        var cls   = diff > 0.3 ? 'up' : diff < -0.3 ? 'down' : 'flat';
+        var arrow = diff > 0.3 ? '▲' : diff < -0.3 ? '▼' : '▶';
+        deltaHtml = '<div class="comps-proj-delta ' + cls + '">' + arrow + ' ' + sign + diff.toFixed(1) + ' vs 2025</div>';
+    }
+
+    // Top 5 comps preview
+    var maxSim = comps[0] ? comps[0].similarity : 1;
+    var topFive = comps.slice(0, 5).map(function(c, i) {
+        var simPct = Math.round(c.similarity * 100);
+        var barWidth = Math.round((c.similarity / maxSim) * 100);
+        return '<div class="comp-mini-row">'
+            + '<div class="comp-mini-top">'
+            + '<span><span class="comp-mini-rank">#' + (i + 1) + '</span>'
+            + '<span class="comp-mini-name">' + c.player + '</span>'
+            + '<span class="comp-mini-season">\'' + String(c.season).slice(2) + ' · ' + c.team + '</span></span>'
+            + '<span class="comp-mini-ppg">' + c.outcome_ppg + ' PPG</span>'
+            + '</div>'
+            + '<div class="comp-mini-sim-bar-wrap">'
+            + '<div class="comp-mini-sim-track"><div class="comp-mini-sim-fill" style="width:' + barWidth + '%"></div></div>'
+            + '<span class="comp-mini-sim-label">' + simPct + '% match</span>'
+            + '</div>'
+            + '</div>';
+    }).join('');
+
+    // Self-comp note: if the player's own previous seasons appear in the top comps,
+    // that means their metrics are consistent year-over-year — worth surfacing.
+    var selfComps = comps.filter(function(c) {
+        return c.player.toLowerCase() === _playerName.toLowerCase();
+    });
+    var repeatNoteHtml = '';
+    if (selfComps.length > 0) {
+        var seasons = selfComps.map(function(c) { return "'" + String(c.season).slice(2); }).join(', ');
+        repeatNoteHtml = '<div class="comps-repeat-note">'
+            + '&#9670; <strong>' + _playerName + '</strong> shows up as their own closest comp'
+            + (selfComps.length > 1 ? ' across ' + selfComps.length + ' prior seasons (' + seasons + ')' : ' from ' + seasons)
+            + ' — a sign of consistent, repeatable production entering 2026.'
+            + '</div>';
+    }
+
+    body.innerHTML =
+        '<div class="comps-proj-row">'
+      + '  <div><div class="comps-proj-label">2026 Projected PPG</div>'
+      + '  <div class="comps-proj-ppg">' + projPpg.toFixed(1) + '</div></div>'
+      + deltaHtml
+      + '</div>'
+      + '<div class="comps-section-label">Top Season Similarities</div>'
+      + '<div class="comp-mini-list">' + topFive + '</div>'
+      + repeatNoteHtml;
+})();
 
 // ── Boot ──────────────────────────────────────────────────────────
 initPrimaryPanel();

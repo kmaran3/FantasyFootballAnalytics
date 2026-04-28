@@ -14,7 +14,6 @@
     padding: 72px 24px 40px;
     text-align: center;
 }
-
 .hero-title {
     font-size: 3em;
     font-weight: 800;
@@ -88,19 +87,15 @@
     border-radius: 10px;
     overflow: hidden;
 }
-
 .feature-card {
     background: #0B0B0B;
     padding: 28px 24px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    transition: background 0.15s;
 }
-
-.feature-icon {
-    font-size: 1.4em;
-    line-height: 1;
-}
+.feature-card:hover { background: var(--dark-gray); }
 .feature-tag {
     font-size: 0.65em;
     text-transform: uppercase;
@@ -123,6 +118,7 @@
     font-size: 0.75em;
     color: #B0B0B0;
     font-family: monospace;
+    transition: color 0.15s;
 }
 .feature-card:hover .feature-arrow { color: #D4AF37; }
 
@@ -134,6 +130,7 @@
     color: #555555;
     font-family: monospace;
     letter-spacing: 0.06em;
+    opacity: 0.6;
 }
 </style>
 

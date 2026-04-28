@@ -880,7 +880,7 @@ body.rankings-body {
     letter-spacing: 0.05em;
 }
     font-size: 0.95em;
-    color: #D4AF37;
+    color: var(--gold);
     margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -894,8 +894,8 @@ body.rankings-body {
 }
 
 .dd-stat {
-    background-color: #1A1A1A;
-    border: 1px solid #2A2A2A;
+    background-color: var(--black);
+    border: 1px solid var(--medium-gray);
     border-radius: 4px;
     padding: 3px 10px;
     font-size: 0.88em;
@@ -903,7 +903,7 @@ body.rankings-body {
 }
 
 .dd-stat b {
-    color: #D4AF37;
+    color: var(--gold);
     margin-right: 3px;
 }
 
@@ -914,22 +914,22 @@ body.rankings-body {
 }
 
 .dd-game {
-    background-color: #2A2A2A;
-    border: 1px solid #D4AF37;
+    background-color: var(--dark-gray);
+    border: 1px solid var(--gold);
     border-radius: 4px;
     padding: 4px 10px;
     font-size: 0.88em;
     white-space: nowrap;
-    color: #F5F5F5;
+    color: var(--white);
 }
 
 .dd-game b {
-    color: #D4AF37;
+    color: var(--gold);
     margin-right: 4px;
 }
 
 .dd-na {
-    color: #B0B0B0;
+    color: var(--text-secondary);
     font-style: italic;
     font-size: 0.85em;
 }
@@ -938,18 +938,18 @@ body.rankings-body {
 
 .group-toggle-btn {
     padding: 6px 14px;
-    background: #1A1A1A;
-    color: #D4AF37;
-    border: 1px solid #2A2A2A;
+    background: var(--dark-gray);
+    color: var(--gold);
+    border: 1px solid var(--gold);
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.95em;
-    transition: background 0.2s;
+    transition: all 0.2s;
 }
 .group-toggle-btn:hover,
 .group-toggle-btn.active {
-    background: #D4AF37;
-    color: #0B0B0B;
+    background: var(--gold);
+    color: var(--black);
 }
 
 /* Roster sortable table */
@@ -959,31 +959,31 @@ body.rankings-body {
     font-size: 0.9em;
 }
 .roster-table thead th {
-    background: #1A1A1A;
-    color: #D4AF37;
+    background: var(--black);
+    color: var(--gold);
     padding: 8px 12px;
     text-align: left;
     white-space: nowrap;
-    border-bottom: 2px solid #2A2A2A;
+    border-bottom: 2px solid var(--medium-gray);
     user-select: none;
 }
 .roster-table thead th.sortable {
     cursor: pointer;
 }
 .roster-table thead th.sortable:hover {
-    color: #B8962E;
+    color: var(--light-gray);
 }
 .roster-table tbody tr {
-    border-bottom: 1px solid #2A2A2A;
+    border-bottom: 1px solid var(--medium-gray);
     cursor: pointer;
     transition: background 0.15s;
 }
 .roster-table tbody tr:hover {
-    background: #1A1A1A !important;
+    background: var(--dark-gray) !important;
 }
 .roster-table tbody td {
     padding: 7px 12px;
-    color: #F5F5F5;
+    color: var(--white);
     white-space: nowrap;
 }
 .sort-arrow { 
@@ -998,7 +998,7 @@ body.rankings-body {
 
 /* Fantasy points color tiers */
 .fp-cell { font-weight: 600; }
-.fp-green  { background: rgba(212,175,55,0.15); color: #D4AF37; }
+.fp-green  { background: rgba(212,175,55,0.15); color: var(--gold); }
 .fp-yellow { background: rgba(139,139,45,0.25); color: #c8c870; }
 .fp-red    { background: rgba(139,45,45,0.25);  color: #c87070; }
 
@@ -1010,9 +1010,9 @@ body.rankings-body {
     font-size: 0.8em;
     font-weight: 700;
 }
-.pos-QB  { background: #1a3d5c; color: #a8dadc; }
-.pos-RB  { background: #1a3d2a; color: #88dca8; }
-.pos-WR  { background: #3d2a1a; color: #dca888; }
+.pos-QB  { background: rgba(78,121,167,0.25); color: #8ab4d8; }
+.pos-RB  { background: rgba(89,161,79,0.25);  color: #88cc88; }
+.pos-WR  { background: rgba(225,87,89,0.25);  color: #e88a8a; }
 
 /* ═══════════════════════════════════════════════════════════════
    AUTHENTICATION PAGES (LOGIN / REGISTER)
@@ -1439,19 +1439,19 @@ body.auth-page footer {
         height: 36px;
     }
 }
-.pos-TE  { background: #3d1a3d; color: #dca8dc; }
+.pos-TE  { background: rgba(242,142,43,0.2);  color: #f0b870; }
 
 /* Player name link style in table */
 .player-name-link {
     font-weight: 600;
-    color: #F5F5F5;
+    color: var(--white);
     text-decoration: underline;
     text-decoration-color: transparent;
     transition: color 0.15s, text-decoration-color 0.15s;
 }
 .roster-table tbody tr:hover .player-name-link {
-    color: #D4AF37;
-    text-decoration-color: #D4AF37;
+    color: var(--gold);
+    text-decoration-color: var(--gold);
 }
 
 /* Grouped sections */
@@ -1460,56 +1460,56 @@ body.auth-page footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #1A1A1A;
-    border: 1px solid #2A2A2A;
+    background: var(--black);
+    border: 1px solid var(--medium-gray);
     border-radius: 6px 6px 0 0;
     padding: 10px 16px;
     cursor: pointer;
-    color: #D4AF37;
+    color: var(--gold);
     font-weight: 700;
     font-size: 1em;
+    transition: background 0.15s;
 }
-.roster-section-header:hover { background: #121212; }
-.section-toggle { color: #D4AF37; font-size: 0.85em; }
-.roster-section-body { border: 1px solid #2A2A2A; border-top: none; border-radius: 0 0 6px 6px; overflow: hidden; }
+.roster-section-header:hover { background: var(--dark-gray); }
+.section-toggle { color: var(--text-secondary); font-size: 0.85em; }
+.roster-section-body { border: 1px solid var(--medium-gray); border-top: none; border-radius: 0 0 6px 6px; overflow: hidden; }
 
-/* Profile panel */
+/* Profile panel buttons */
 .roster-back-btn,
 .compare-open-btn,
 .compare-clear-btn {
     padding: 8px 18px;
-    background: #1A1A1A;
-    color: #D4AF37;
-    border: 1px solid #D4AF37;
+    background: var(--dark-gray);
+    color: var(--gold);
+    border: 1px solid var(--gold);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.95em;
-    transition: background 0.2s, opacity 0.15s;
+    transition: all 0.2s;
 }
-.roster-back-btn:hover  { opacity: 0.8; }
-.compare-open-btn       { background: #D4AF37; color: #0B0B0B; border-color: #D4AF37; }
-.compare-open-btn:hover { opacity: 0.8; }
-.compare-clear-btn      { border-color: #e74c3c; color: #e74c3c; background: #1A1A1A; }
-.compare-clear-btn:hover { opacity: 0.8; }
+.roster-back-btn:hover  { background: var(--gold); color: var(--black); }
+.compare-open-btn:hover { background: var(--gold); color: var(--black); }
+.compare-clear-btn      { border-color: #e74c3c; color: #e74c3c; }
+.compare-clear-btn:hover { background: #e74c3c; color: var(--white); }
 
 .profile-card {
-    background: #1A1A1A;
-    border: 1px solid #2A2A2A;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
     border-radius: 8px;
     padding: 16px;
     min-width: 200px;
     flex: 1;
 }
-.card-heading { margin: 0 0 10px 0; color: #D4AF37; font-size: 0.95em; }
-.loading-text { color: #B0B0B0; margin: 0; }
+.card-heading { margin: 0 0 10px 0; color: var(--gold); font-size: 0.95em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.loading-text { color: var(--text-secondary); margin: 0; }
 
 /* Bio / grade kv rows */
-.bio-label { font-weight: bold; padding: 4px 16px 4px 0; color: #D4AF37; }
-.bio-val   { padding: 4px 0; color: #F5F5F5; }
+.bio-label { font-weight: 600; padding: 4px 16px 4px 0; color: var(--text-secondary); font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.03em; }
+.bio-val   { padding: 4px 0; color: var(--white); }
 
 /* Grade bar */
 .grade-bar-wrap { display: flex; align-items: center; gap: 8px; }
-.grade-bar-track { width: 80px; background: #2A2A2A; border-radius: 4px; height: 10px; }
+.grade-bar-track { width: 80px; background: var(--medium-gray); border-radius: 4px; height: 10px; }
 .grade-bar-fill  { height: 10px; border-radius: 4px; }
 
 /* Grade info tooltip (ⓘ) */
@@ -1517,7 +1517,7 @@ body.auth-page footer {
     position: relative;
     display: inline-block;
     cursor: help;
-    color: #B0B0B0;
+    color: var(--text-secondary);
     font-size: 0.8em;
     vertical-align: middle;
 }
@@ -1527,9 +1527,9 @@ body.auth-page footer {
     bottom: calc(100% + 6px);
     left: 50%;
     transform: translateX(-50%);
-    background: #1A1A1A;
-    color: #F5F5F5;
-    border: 1px solid #D4AF37;
+    background: var(--black);
+    color: var(--white);
+    border: 1px solid var(--gold);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 0.85em;
@@ -1550,23 +1550,27 @@ body.auth-page footer {
     font-size: 0.88em;
 }
 .history-table thead th {
-    background: #2A2A2A;
-    color: #D4AF37;
+    background: var(--black);
+    color: var(--gold);
     padding: 6px 10px;
     text-align: left;
     white-space: nowrap;
-    border: 1px solid #2A2A2A;
+    border-bottom: 1px solid var(--medium-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.82em;
 }
 .history-table tbody td {
     padding: 6px 10px;
-    color: #F5F5F5;
+    color: var(--white);
     white-space: nowrap;
-    border: 1px solid #2A2A2A;
+    border-bottom: 1px solid var(--medium-gray);
 }
 
 /* Best-season highlight */
 td.best-season {
-    color: #2ecc71 !important;
+    background: var(--gold-glow) !important;
+    color: var(--gold) !important;
     font-weight: 700;
 }
 
