@@ -45,7 +45,10 @@
       "Bash(node:*)",
       "Bash(curl -s -b \"session=test\" \"http://127.0.0.1:5001/mockdraft/players?scoring=ppr&source=sleeper\" -w \"\\\\nHTTP_STATUS:%{http_code}\")",
       "Bash(curl -s \"http://127.0.0.1:5001/mockdraft/players?scoring=ppr&source=espn\" -w \"\\\\nHTTP_STATUS:%{http_code}\")",
-      "Bash(curl -s \"http://127.0.0.1:5001/mockdraft\" -w \"\\\\nHTTP_STATUS:%{http_code}\")"
+      "Bash(curl -s \"http://127.0.0.1:5001/mockdraft\" -w \"\\\\nHTTP_STATUS:%{http_code}\")",
+      "Bash(brew install:*)",
+      "Bash(railway status:*)",
+      "Bash(railway list:*)"
     ]
   }
 }
