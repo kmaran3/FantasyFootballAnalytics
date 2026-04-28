@@ -1321,6 +1321,7 @@ def player_stats():
         'ranking': ranking,
         'team_grade': team_grade,
         'team_grade_ranks': team_grade_ranks,
+        'comps': _similarity_comps.get(name, []),
     })
 
 

@@ -71,8 +71,8 @@
     flex: 1;
 }
 .card-heading { margin: 0 0 10px 0; color: var(--gold); font-size: 0.95em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.bio-label { font-weight: 600; padding: 4px 16px 4px 0; color: var(--text-secondary); font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.03em; }
-.bio-val   { padding: 4px 0; color: var(--white); }
+.bio-label { font-weight: 600; padding: 9px 16px 9px 0; color: var(--text-secondary); font-size: 0.88em; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--medium-gray); }
+.bio-val   { padding: 9px 0; color: var(--white); border-bottom: 1px solid var(--medium-gray); }
 .loading-text {
     color: var(--text-secondary);
     margin: 0;
@@ -125,6 +125,30 @@
     font-size: 0.82em;
     font-weight: 600;
     margin-left: 4px;
+}
+
+/* Chart toggle buttons */
+.chart-toggle-btn {
+    background: var(--dark-gray);
+    color: var(--text-secondary);
+    border: 1px solid var(--medium-gray);
+    padding: 4px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.78em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    transition: all 0.15s;
+}
+.chart-toggle-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(212,175,55,0.08);
+}
+.chart-toggle-btn.active {
+    background: var(--gold);
+    color: var(--black);
+    border-color: var(--gold);
 }
 
 /* History table */
@@ -308,7 +332,7 @@
         <!-- Primary player panel -->
         <div id="primary-panel" class="profile-panel-wrap">
             <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-                <h2 id="profile-name" style="margin:0;color:var(--white);"></h2>
+                <h2 style="margin:0;"><a id="profile-name" style="color:var(--white);text-decoration:none;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--white)'"></a></h2>
                 <span id="profile-subtitle" style="color:var(--gold);font-size:1em;font-weight:600;"></span>
             </div>
             <div id="primary-card-row" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
@@ -334,7 +358,7 @@
             <div class="profile-card" style="margin-bottom:24px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                     <h4 class="card-heading" style="margin:0;">Fantasy Points by Season</h4>
-                    <div id="chartToggle" style="display:none;gap:4px;display:flex;">
+                    <div id="chartToggle" style="display:none;gap:4px;">
                         <button class="chart-toggle-btn active" data-mode="total">Total Pts</button>
                         <button class="chart-toggle-btn" data-mode="ppg">PPG</button>
                     </div>
@@ -342,13 +366,13 @@
                 <div id="chart-placeholder" class="loading-text">Loading...</div>
                 <canvas id="fantasy-chart" style="display:none;max-height:280px;"></canvas>
             </div>
-            <a id="comps-preview-card" class="comps-preview-card" href="#">
+            <div id="comps-preview-card" class="comps-preview-card" style="cursor:default;">
                 <div class="comps-preview-header">
                     <span class="comps-preview-title">&#x25A0; Season Similarities &amp; 2026 Projection</span>
-                    <span class="comps-preview-link">View Full Analysis →</span>
+                    <a id="comps-preview-link" href="#" class="comps-preview-link" style="pointer-events:auto;">View Full Analysis →</a>
                 </div>
                 <div id="comps-preview-body"><p class="comps-no-data">No comp data available for this player.</p></div>
-            </a>
+            </div>
 
             <div class="profile-card">
                 <h4 class="card-heading">Season History</h4>
@@ -364,13 +388,13 @@
             </div>
             <div id="compare-content" style="display:none;">
                 <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-                    <h2 id="cmp-name" style="margin:0;color:var(--white);"></h2>
+                    <h2 style="margin:0;"><a id="cmp-name" style="color:var(--white);text-decoration:none;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--white)'"></a></h2>
                     <span id="cmp-subtitle" style="color:var(--gold);font-size:1em;font-weight:600;"></span>
                 </div>
                 <div id="compare-card-row" style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
-                    <div class="profile-card">
+                    <div class="profile-card" style="display:flex;flex-direction:column;">
                         <h4 class="card-heading">Player Info</h4>
-                        <table style="font-size:0.9em;border-collapse:collapse;width:100%;"><tbody id="cmp-bio-fields"></tbody></table>
+                        <table style="font-size:0.9em;border-collapse:collapse;width:100%;height:100%;"><tbody id="cmp-bio-fields"></tbody></table>
                     </div>
                     <div class="profile-card" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:10px;min-height:260px;">
                         <img id="cmp-player-headshot" src="" alt=""
@@ -388,9 +412,22 @@
                     </div>
                 </div>
                 <div class="profile-card" style="margin-bottom:24px;">
-                    <h4 class="card-heading">Fantasy Points by Season</h4>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                        <h4 class="card-heading" style="margin:0;">Fantasy Points by Season</h4>
+                        <div id="cmp-chartToggle" style="display:none;gap:4px;">
+                            <button class="chart-toggle-btn active" data-mode="total">Total Pts</button>
+                            <button class="chart-toggle-btn" data-mode="ppg">PPG</button>
+                        </div>
+                    </div>
                     <div id="cmp-chart-placeholder" class="loading-text">Loading...</div>
                     <canvas id="cmp-fantasy-chart" style="display:none;max-height:280px;"></canvas>
+                </div>
+                <div id="cmp-comps-preview-card" class="comps-preview-card" style="margin-bottom:24px;cursor:default;">
+                    <div class="comps-preview-header">
+                        <span class="comps-preview-title">&#x25A0; Season Similarities &amp; 2026 Projection</span>
+                        <a id="cmp-comps-link" href="#" class="comps-preview-link" style="pointer-events:auto;">View Full Analysis →</a>
+                    </div>
+                    <div id="cmp-comps-preview-body"><p class="comps-no-data">No comp data available for this player.</p></div>
                 </div>
                 <div class="profile-card">
                     <h4 class="card-heading">Season History</h4>
@@ -469,11 +506,14 @@ function renderStatsIntoPanel(data, panelId, pos) {
     console.log('data:', data);
     
     var isPrimary  = (panelId === 'primary');
-    var radarCanvasId = isPrimary ? 'team-grade-radar' : 'cmp-grade-radar';
-    var tableId = isPrimary ? 'team-grade-table' : 'cmp-grade-table';
-    var chartElId  = isPrimary ? 'fantasy-chart'       : 'cmp-fantasy-chart';
-    var chartPhId  = isPrimary ? 'chart-placeholder'   : 'cmp-chart-placeholder';
-    var histElId   = isPrimary ? 'history-table'       : 'cmp-history-table';
+    var radarCanvasId = isPrimary ? 'team-grade-radar'   : 'cmp-grade-radar';
+    var tableId       = isPrimary ? 'team-grade-table'   : 'cmp-grade-table';
+    var chartElId     = isPrimary ? 'fantasy-chart'      : 'cmp-fantasy-chart';
+    var chartPhId     = isPrimary ? 'chart-placeholder'  : 'cmp-chart-placeholder';
+    var chartToggleId = isPrimary ? 'chartToggle'        : 'cmp-chartToggle';
+    var histElId      = isPrimary ? 'history-table'      : 'cmp-history-table';
+    var compsBodyId   = isPrimary ? 'comps-preview-body' : 'cmp-comps-preview-body';
+    var compsLinkId   = isPrimary ? 'comps-preview-card' : 'cmp-comps-link';
 
     // Team grades - Radar Chart with table fallback
     var tg = data.team_grade || {};
@@ -655,53 +695,149 @@ function renderStatsIntoPanel(data, panelId, pos) {
     if (_charts[panelId]) { _charts[panelId].destroy(); delete _charts[panelId]; }
 
     if (history.length) {
-        var seasons = history.map(function(r) { return r.season; });
-        var pts     = history.map(function(r) { return r.fantasy_points !== null ? r.fantasy_points : 0; });
+        var _seasons = history.map(function(r) { return r.season; });
+        var _pts     = history.map(function(r) { return r.fantasy_points !== null ? +r.fantasy_points : 0; });
+        var _gps     = history.map(function(r) { return r.GP !== null && r.GP !== undefined ? +r.GP : 0; });
+        var _ppgs    = _pts.map(function(p, i) { return _gps[i] > 0 ? +(p / _gps[i]).toFixed(1) : 0; });
+
         chartPh.style.display = 'none';
         chartEl.style.display = 'block';
-        _charts[panelId] = new Chart(chartEl, {
-            type: 'line',
-            data: {
-                labels: seasons,
-                datasets: [{
-                    label: 'Fantasy Points',
-                    data: pts,
-                    borderColor: '#D4AF37',
-                    backgroundColor: 'rgba(212,175,55,0.12)',
-                    borderWidth: 2,
-                    pointBackgroundColor: '#D4AF37',
-                    pointBorderColor: '#0B0B0B',
-                    pointRadius: 5,
-                    tension: 0.3,
-                    fill: true,
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#0B0B0B',
-                        titleColor: '#F5F5F5',
-                        bodyColor: '#D4AF37',
+
+        function buildChart(mode) {
+            if (_charts[panelId]) { _charts[panelId].destroy(); delete _charts[panelId]; }
+            var yData  = mode === 'ppg' ? _ppgs : _pts;
+            var yLabel = mode === 'ppg' ? 'PPG' : 'Fantasy Points';
+            _charts[panelId] = new Chart(chartEl, {
+                type: 'line',
+                data: {
+                    labels: _seasons,
+                    datasets: [{
+                        label: yLabel,
+                        data: yData,
                         borderColor: '#D4AF37',
-                        borderWidth: 1,
-                        callbacks: {
-                            title: function(items) { return 'Season ' + items[0].label; },
-                            label: function(item)  { return 'Fantasy Pts: ' + item.parsed.y.toFixed(1); }
-                        }
-                    }
+                        backgroundColor: 'rgba(212,175,55,0.12)',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#D4AF37',
+                        pointBorderColor: '#0B0B0B',
+                        pointRadius: 5,
+                        tension: 0.3,
+                        fill: true,
+                    }]
                 },
-                scales: {
-                    x: { title:{display:true,text:'Season',color:'#D4AF37'}, ticks:{color:'#B0B0B0'}, grid:{color:'#2A2A2A'} },
-                    y: { title:{display:true,text:'Fantasy Points',color:'#D4AF37'}, beginAtZero:true, ticks:{color:'#B0B0B0'}, grid:{color:'#2A2A2A'} }
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0B0B0B',
+                            titleColor: '#F5F5F5',
+                            bodyColor: '#D4AF37',
+                            borderColor: '#D4AF37',
+                            borderWidth: 1,
+                            callbacks: {
+                                title: function(items) { return 'Season ' + items[0].label; },
+                                label: function(item) {
+                                    var idx = item.dataIndex;
+                                    var fp  = _pts[idx];
+                                    var gp  = _gps[idx];
+                                    var ppg = _ppgs[idx];
+                                    var lines = ['Total Pts: ' + fp.toFixed(1)];
+                                    lines.push('GP: ' + (gp || '—'));
+                                    lines.push('PPG: ' + (gp > 0 ? ppg.toFixed(1) : '—'));
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title:{display:true,text:'Season',color:'#D4AF37'}, ticks:{color:'#B0B0B0'}, grid:{color:'#2A2A2A'} },
+                        y: { title:{display:true,text:yLabel,color:'#D4AF37'}, beginAtZero:true, ticks:{color:'#B0B0B0'}, grid:{color:'#2A2A2A'} }
+                    }
                 }
-            }
-        });
+            });
+        }
+
+        buildChart('total');
+
+        // Wire up toggle
+        var toggleDiv = document.getElementById(chartToggleId);
+        if (toggleDiv) {
+            toggleDiv.style.display = 'flex';
+            toggleDiv.querySelectorAll('.chart-toggle-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    toggleDiv.querySelectorAll('.chart-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    buildChart(btn.dataset.mode);
+                });
+            });
+        }
     } else {
         chartPh.style.display = 'block';
         chartPh.textContent = 'No historical data available.';
         chartEl.style.display = 'none';
+    }
+
+    // Season Similarities (compare panel — primary panel renders from inline template data)
+    if (!isPrimary) {
+        var compsBody = document.getElementById(compsBodyId);
+        var compsLink = document.getElementById(compsLinkId);
+        var cmpName   = document.getElementById('cmp-name') ? document.getElementById('cmp-name').textContent : '';
+        if (compsLink) compsLink.href = '/player-comps?player=' + encodeURIComponent(cmpName);
+        var comps = data.comps || [];
+        if (compsBody) {
+            if (!comps.length) {
+                compsBody.innerHTML = '<p class="comps-no-data">No comp data available for this player.</p>';
+            } else {
+                var totalSim = comps.reduce(function(s, c) { return s + c.similarity; }, 0);
+                var projPpg  = comps.reduce(function(s, c) { return s + c.outcome_ppg * c.similarity; }, 0) / totalSim;
+                var priorPpg = comps[0].curr_features && comps[0].curr_features.ppg_lag1 != null ? comps[0].curr_features.ppg_lag1 : null;
+                var deltaHtml = '';
+                if (priorPpg !== null) {
+                    var diff = projPpg - priorPpg;
+                    var sign = diff >= 0 ? '+' : '';
+                    var cls  = diff > 0.3 ? 'up' : diff < -0.3 ? 'down' : 'flat';
+                    var arrow = diff > 0.3 ? '▲' : diff < -0.3 ? '▼' : '▶';
+                    deltaHtml = '<div class="comps-proj-delta ' + cls + '">' + arrow + ' ' + sign + diff.toFixed(1) + ' vs 2025</div>';
+                }
+                var maxSim = comps[0].similarity || 1;
+                var topFive = comps.slice(0, 5).map(function(c, i) {
+                    var simPct = Math.round(c.similarity * 100);
+                    var barWidth = Math.round((c.similarity / maxSim) * 100);
+                    return '<div class="comp-mini-row">'
+                        + '<div class="comp-mini-top">'
+                        + '<span><span class="comp-mini-rank">#' + (i + 1) + '</span>'
+                        + '<span class="comp-mini-name">' + c.player + '</span>'
+                        + '<span class="comp-mini-season">\'' + String(c.season).slice(2) + ' · ' + c.team + '</span></span>'
+                        + '<span class="comp-mini-ppg">' + c.outcome_ppg + ' PPG</span>'
+                        + '</div>'
+                        + '<div class="comp-mini-sim-bar-wrap">'
+                        + '<div class="comp-mini-sim-track"><div class="comp-mini-sim-fill" style="width:' + barWidth + '%"></div></div>'
+                        + '<span class="comp-mini-sim-label">' + simPct + '% match</span>'
+                        + '</div></div>';
+                }).join('');
+                var selfComps = comps.filter(function(c) {
+                    return c.player.toLowerCase() === cmpName.toLowerCase();
+                });
+                var repeatNoteHtml = '';
+                if (selfComps.length > 0) {
+                    var selfSeasons = selfComps.map(function(c) { return "'" + String(c.season).slice(2); }).join(', ');
+                    repeatNoteHtml = '<div class="comps-repeat-note">'
+                        + '&#9670; <strong>' + cmpName + '</strong> shows up as their own closest comp'
+                        + (selfComps.length > 1 ? ' across ' + selfComps.length + ' prior seasons (' + selfSeasons + ')' : ' from ' + selfSeasons)
+                        + ' — a sign of consistent, repeatable production entering 2026.'
+                        + '</div>';
+                }
+                compsBody.innerHTML =
+                    '<div class="comps-proj-row">'
+                  + '<div><div class="comps-proj-label">2026 Projected PPG</div>'
+                  + '<div class="comps-proj-ppg">' + projPpg.toFixed(1) + '</div></div>'
+                  + deltaHtml
+                  + '</div>'
+                  + '<div class="comps-section-label">Top Season Similarities</div>'
+                  + '<div class="comp-mini-list">' + topFive + '</div>'
+                  + repeatNoteHtml;
+            }
+        }
     }
 
     // History table
@@ -796,7 +932,9 @@ function loadPlayerStats(name, pos, team, panelId) {
 
 // ── Initialize primary panel on page load ─────────────────────────
 function initPrimaryPanel() {
-    document.getElementById('profile-name').textContent = _playerName;
+    var profileNameEl = document.getElementById('profile-name');
+    profileNameEl.textContent = _playerName;
+    profileNameEl.href = '/player/' + encodeURIComponent(_playerName) + '?pos=' + encodeURIComponent(_playerPos) + '&team=' + encodeURIComponent(_playerTeam);
     document.getElementById('profile-subtitle').textContent = (_playerPos || '') + ' · ' + (_playerTeam || '');
 
     var headshot = document.getElementById('player-headshot');
@@ -872,7 +1010,9 @@ $(function() {
 
             // Headshot: look up espn_id from ROSTER_STATS is not available directly,
             // so we attempt to use the player_quick_stats endpoint for espn_id
-            document.getElementById('cmp-name').textContent = cmpName;
+            var cmpNameEl = document.getElementById('cmp-name');
+            cmpNameEl.textContent = cmpName;
+            cmpNameEl.href = '/player/' + encodeURIComponent(cmpName) + '?pos=' + encodeURIComponent(cmpPos) + '&team=' + encodeURIComponent(cmpTeam);
             document.getElementById('cmp-subtitle').textContent = cmpPos + ' · ' + cmpTeam;
 
             var cmpHeadshot = document.getElementById('cmp-player-headshot');
@@ -929,11 +1069,11 @@ $(function() {
 // ── Comps preview card ────────────────────────────────────────────
 (function() {
     var comps = {{ player_comps_json | safe }};
-    var card  = document.getElementById('comps-preview-card');
     var body  = document.getElementById('comps-preview-body');
+    var link  = document.getElementById('comps-preview-link');
 
     // Set link to player comps page pre-focused on this player
-    card.href = '/player-comps?player=' + encodeURIComponent(_playerName);
+    if (link) link.href = '/player-comps?player=' + encodeURIComponent(_playerName);
 
     if (!comps || !comps.length) return;
 
