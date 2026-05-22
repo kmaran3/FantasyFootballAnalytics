@@ -15,12 +15,13 @@
     <div class="nav-logo">
         <img src="{{ url_for('static', filename='images/flask_logo.png') }}" alt="Darkhorse" class="nav-logo-img">
     </div>
-    <nav>
+    <nav id="main-nav">
         <ul>
             <li><a href="{{ url_for('main.home') }}">Home</a></li>
             <li><a href="{{ url_for('main.rankings') }}">Rankings</a></li>
             <li style="display:none"><a href="{{ url_for('main.player_comps') }}">Player Comps</a></li>
             <li><a href="{{ url_for('main.mock_draft') }}">Mock Draft</a></li>
+            <li><a href="{{ url_for('main.draft_board') }}">Draft Board</a></li>
             <li><a href="{{ url_for('main.my_drafts') }}">My Drafts</a></li>
             <li style="display:none"><a href="{{ url_for('main.rosters') }}">Rosters</a></li>
             <li><a href="{{ url_for('main.about') }}">About</a></li>
@@ -33,12 +34,34 @@
             {% endif %}
         </ul>
     </nav>
+    <button class="hamburger" id="hamburger-btn" aria-label="Toggle navigation" aria-expanded="false">
+        <span></span><span></span><span></span>
+    </button>
 </header>
-    <main class="{% block main_class %}{% endblock %}">
-        {% block content %}{% endblock %}
-    </main>
-    <footer>
-        <p>© 2024 Darkhorse CopyrightTM</p>
-    </footer>
+<main class="{% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+</main>
+<footer>
+    <p>© 2024 Darkhorse CopyrightTM</p>
+</footer>
+<script>
+(function () {
+    var btn = document.getElementById('hamburger-btn');
+    var nav = document.getElementById('main-nav');
+    if (!btn || !nav) return;
+    btn.addEventListener('click', function () {
+        var open = nav.classList.toggle('nav-open');
+        btn.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    nav.querySelectorAll('a').forEach(function (link) {
+        link.addEventListener('click', function () {
+            nav.classList.remove('nav-open');
+            btn.classList.remove('open');
+            btn.setAttribute('aria-expanded', 'false');
+        });
+    });
+})();
+</script>
 </body>
 </html>

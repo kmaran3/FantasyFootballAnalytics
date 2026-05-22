@@ -48,7 +48,8 @@
       "Bash(curl -s \"http://127.0.0.1:5001/mockdraft\" -w \"\\\\nHTTP_STATUS:%{http_code}\")",
       "Bash(brew install:*)",
       "Bash(railway status:*)",
-      "Bash(railway list:*)"
+      "Bash(railway list:*)",
+      "Bash(python -c \":*)"
     ]
   }
 }

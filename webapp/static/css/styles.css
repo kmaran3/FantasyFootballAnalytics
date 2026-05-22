@@ -1424,19 +1424,179 @@ body.auth-page footer {
     .auth-card {
         padding: 2rem 1.5rem;
     }
-    
+
     .auth-title {
         font-size: 1.75rem;
     }
-    
+
     .auth-icon {
         width: 60px;
         height: 60px;
     }
-    
+
     .auth-icon svg {
         width: 36px;
         height: 36px;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — TABLET (≤768px) & PHONE (≤480px)
+═══════════════════════════════════════════════════════════════ */
+
+/* --- Hamburger button --- */
+.hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+    z-index: 1100;
+}
+
+.hamburger span {
+    display: block;
+    width: 24px;
+    height: 2px;
+    background: var(--white);
+    border-radius: 2px;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+.hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* --- Tablet breakpoint (≤768px) --- */
+@media (max-width: 768px) {
+    .hamburger { display: flex; }
+
+    nav {
+        position: fixed;
+        top: 64px;
+        left: 0;
+        right: 0;
+        background: var(--black);
+        border-bottom: 1px solid var(--gold);
+        transform: translateY(-110%);
+        transition: transform 0.3s ease;
+        z-index: 998;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+    }
+
+    nav.nav-open { transform: translateY(0); }
+
+    nav ul {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 4px 0;
+    }
+
+    nav ul li { margin: 0; }
+    nav ul li.login,
+    nav ul li.register { margin-left: 0; }
+
+    nav ul li a {
+        display: block;
+        padding: 13px 20px;
+        border-bottom: 1px solid var(--medium-gray);
+        font-size: 1em;
+    }
+
+    nav ul li:last-child a { border-bottom: none; }
+
+    main {
+        padding: 1em;
+        padding-top: 76px;
+    }
+
+    /* Rankings: reset fixed side margins */
+    .rankings-main #ranking_table {
+        margin-left: 0;
+        margin-right: 0;
+    }
+    .rankings-main .position-filter-bar {
+        padding-left: 8px;
+        padding-right: 8px;
+        top: 64px;
+    }
+    .filter-bar-inner {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    /* Left/right fixed panels off on tablet — rankings uses them */
+    .left-panel,
+    .right-panel,
+    .saved-lists {
+        position: static;
+        width: auto;
+        margin: 8px auto;
+        display: block;
+    }
+
+    /* Table: horizontal scroll wrapper */
+    .table-scroll-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 6px;
+    }
+
+    table {
+        width: 100%;
+        min-width: 480px;
+    }
+
+    /* Profile split → stack */
+    .profile-panels-split {
+        flex-direction: column;
+    }
+
+    /* Footer */
+    footer { font-size: 0.85em; padding: 0.75em 1em; }
+}
+
+/* --- Phone breakpoint (≤480px) --- */
+@media (max-width: 480px) {
+    header.banner { padding: 8px 12px; }
+    .nav-logo-img { height: 36px; width: 36px; }
+
+    main {
+        padding: 0.75em;
+        padding-top: 70px;
+    }
+
+    /* Shrink filter bar elements */
+    .position-filter-btn  { padding: 5px 10px; font-size: 0.82em; }
+    .custom-dropdown-btn  { padding: 5px 10px; font-size: 0.82em; }
+    .player-search-input  { width: 100%; box-sizing: border-box; }
+    .filter-buttons       { flex-wrap: wrap; }
+
+    /* Full-width tables */
+    table { width: 100%; }
+    th, td { font-size: 0.78em; padding: 6px 4px; }
+
+    /* Auth pages */
+    .auth-card  { padding: 1.5rem 1rem; }
+    .auth-title { font-size: 1.5rem; }
+
+    /* Form inputs full width */
+    form input[type="text"],
+    form input[type="password"],
+    form input[type="email"] {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Rankings: sticky player col */
+    .rankings-main .position-filter-bar {
+        padding-left: 4px;
+        padding-right: 4px;
     }
 }
 .pos-TE  { background: rgba(242,142,43,0.2);  color: #f0b870; }

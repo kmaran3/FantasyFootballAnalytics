@@ -77,6 +77,7 @@
 
 <div id="ranking_table" class="ranking-table">
     {% if table_data %}
+        <div class="table-scroll-wrap">
         <table class="table table-striped" id="sortable-table">
             <thead>
                 <tr>
@@ -100,12 +101,27 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>{# /table-scroll-wrap #}
     {% else %}
         <p>No data available for {{ table_type }} rankings.</p>
     {% endif %}
 </div>
 
 <style>
+/* Mobile: sticky player-name column in rankings table */
+@media (max-width: 768px) {
+    #sortable-table td:first-child,
+    #sortable-table th:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--black);
+    }
+    #sortable-table th:first-child {
+        z-index: 3;
+    }
+}
+
 .col-info {
     position: relative;
     display: inline-block;

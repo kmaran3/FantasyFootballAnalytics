@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, text
 from bs4 import BeautifulSoup
 from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
-from webapp import db, User, UserRanking, MockDraft
+from webapp import db, User, UserRanking, MockDraft, DraftBoardSession, SavedLeague
 import json
 import sys
 from datetime import datetime, timedelta
@@ -1835,6 +1835,1076 @@ def rosters():
         roster_stats_json=json.dumps(_roster_stats),
         fp_thresholds_json=json.dumps(_fp_thresholds),
     )
+
+# ══════════════════════════════════════════════════════════════════
+#  DRAFT BOARD — helpers
+# ══════════════════════════════════════════════════════════════════
+
+def _detect_sleeper_scoring(scoring_settings):
+    """Infer PPR / half_ppr / standard from a Sleeper scoring_settings dict."""
+    rec = float(scoring_settings.get('rec', 0) or 0)
+    if rec >= 1.0:
+        return 'ppr'
+    if rec >= 0.5:
+        return 'half_ppr'
+    return 'standard'
+
+
+def _parse_sleeper_roster_positions(roster_positions):
+    """Convert Sleeper roster_positions list to our slot-count dict."""
+    slots = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0, 'FLEX': 0, 'K': 0, 'DST': 0, 'bench': 0}
+    for pos in (roster_positions or []):
+        pos = str(pos).upper()
+        if pos == 'QB':
+            slots['QB'] += 1
+        elif pos == 'RB':
+            slots['RB'] += 1
+        elif pos == 'WR':
+            slots['WR'] += 1
+        elif pos == 'TE':
+            slots['TE'] += 1
+        elif pos in ('FLEX', 'WR,RB,TE', 'RB,WR,TE', 'WR/RB/TE', 'RB/WR/TE'):
+            slots['FLEX'] += 1
+        elif pos == 'K':
+            slots['K'] += 1
+        elif pos in ('DEF', 'DST'):
+            slots['DST'] += 1
+        elif pos == 'BN':
+            slots['bench'] += 1
+        # IR slots are excluded from draft round count
+    return slots
+
+
+# In-memory cache for Sleeper player map (player_id → {name, position, team})
+_sleeper_player_cache = {'ts': 0, 'data': {}}
+_SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
+
+
+def _get_sleeper_player_map():
+    """Fetch + cache the Sleeper NFL player dict. Returns {player_id: {name, position, team}}."""
+    import time
+    now = time.time()
+    if now - _sleeper_player_cache['ts'] < _SLEEPER_PLAYER_CACHE_TTL and _sleeper_player_cache['data']:
+        return _sleeper_player_cache['data']
+    try:
+        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=20)
+        if resp.status_code == 200:
+            slim = {}
+            for pid, p in (resp.json() or {}).items():
+                first = p.get('first_name') or ''
+                last  = p.get('last_name') or ''
+                name  = f'{first} {last}'.strip()
+                if name:
+                    slim[str(pid)] = {
+                        'name':     name,
+                        'position': (p.get('position') or '').upper(),
+                        'team':     p.get('team') or '',
+                    }
+            _sleeper_player_cache['ts']   = now
+            _sleeper_player_cache['data'] = slim
+            return slim
+    except Exception:
+        pass
+    return _sleeper_player_cache['data']  # return stale on failure
+
+
+def _format_sleeper_pick(pick, roster_id_to_slot=None):
+    """Normalise a raw Sleeper pick object into our unified format.
+
+    roster_id_to_slot: {roster_id (int) → draft_slot (int, 1-indexed)}
+    When provided, uses the actual picking team's slot (handles traded picks).
+    """
+    meta  = pick.get('metadata') or {}
+    first = meta.get('first_name', '')
+    last  = meta.get('last_name', '')
+    name  = f'{first} {last}'.strip()
+
+    # `roster_id` / `picked_by` = who actually made this pick (after any trades)
+    roster_id = pick.get('roster_id') or pick.get('picked_by') or 0
+    try:
+        roster_id = int(roster_id)
+    except (TypeError, ValueError):
+        roster_id = 0
+
+    if roster_id_to_slot and roster_id in roster_id_to_slot:
+        actual_slot = roster_id_to_slot[roster_id]
+    else:
+        actual_slot = pick.get('draft_slot', 1)
+
+    return {
+        'player_id':     pick.get('player_id', ''),
+        'name':          name,
+        'position':      meta.get('position', '').upper(),
+        'nfl_team':      meta.get('team', ''),
+        'round':         pick.get('round', 1),
+        'pick_no':       pick.get('pick_no', 0),
+        'draft_slot':    actual_slot,
+        'roster_id':     roster_id,
+        'original_slot': pick.get('draft_slot', 1),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+#  DRAFT BOARD — routes
+# ══════════════════════════════════════════════════════════════════
+
+@main.route('/draft-board')
+@login_required
+def draft_board():
+    return render_template('draft_board.html')
+
+
+@main.route('/draft-board/sleeper/lookup', methods=['POST'])
+@login_required
+def draft_board_sleeper_lookup():
+    """Given a Sleeper username, return their NFL leagues for the current season."""
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    if not username:
+        return jsonify({'error': 'Username required'}), 400
+
+    try:
+        user_resp = requests.get(f'https://api.sleeper.app/v1/user/{username}', timeout=8)
+        if user_resp.status_code != 200 or not user_resp.json():
+            return jsonify({'error': 'Sleeper user not found'}), 404
+        user_data = user_resp.json()
+        user_id   = user_data.get('user_id')
+
+        season = datetime.utcnow().year
+        leagues_resp = requests.get(
+            f'https://api.sleeper.app/v1/user/{user_id}/leagues/nfl/{season}',
+            timeout=8,
+        )
+        leagues = leagues_resp.json() if leagues_resp.status_code == 200 else []
+
+        return jsonify({
+            'user_id':      user_id,
+            'display_name': user_data.get('display_name', username),
+            'leagues': [
+                {
+                    'league_id':  lg.get('league_id'),
+                    'name':       lg.get('name', 'Unnamed League'),
+                    'num_teams':  lg.get('total_rosters', 12),
+                    'status':     lg.get('status', ''),
+                    'scoring':    _detect_sleeper_scoring(lg.get('scoring_settings') or {}),
+                }
+                for lg in (leagues or [])
+            ],
+        })
+    except requests.RequestException:
+        return jsonify({'error': 'Failed to connect to Sleeper API'}), 503
+
+
+@main.route('/draft-board/sleeper/connect', methods=['POST'])
+@login_required
+def draft_board_sleeper_connect():
+    """Connect to a specific Sleeper league: return draft metadata + existing picks."""
+    data            = request.get_json(silent=True) or {}
+    league_id       = (data.get('league_id') or '').strip()
+    sleeper_user_id = (data.get('sleeper_user_id') or '').strip()
+
+    if not league_id:
+        return jsonify({'error': 'league_id required'}), 400
+
+    try:
+        # League metadata
+        lg_resp = requests.get(f'https://api.sleeper.app/v1/league/{league_id}', timeout=8)
+        if lg_resp.status_code != 200:
+            return jsonify({'error': 'League not found'}), 404
+        league    = lg_resp.json()
+        scoring   = _detect_sleeper_scoring(league.get('scoring_settings') or {})
+        num_teams = league.get('total_rosters', 12)
+        roster_slots = _parse_sleeper_roster_positions(league.get('roster_positions') or [])
+
+        # Detect dynasty / keeper leagues
+        # Sleeper returns type as an integer: 0=redraft, 1=keeper, 2=dynasty
+        # It can also be a string in some endpoints, so normalise both.
+        league_settings = league.get('settings') or {}
+        raw_type = league.get('type') or league_settings.get('type') or 0
+        _type_int_map = {0: 'redraft', 1: 'keeper', 2: 'dynasty'}
+        if isinstance(raw_type, int):
+            league_type = _type_int_map.get(raw_type, 'redraft')
+        else:
+            league_type = str(raw_type).lower() or 'redraft'
+        is_dynasty = league_type in ('dynasty', 'keeper')
+
+        # Users map: user_id → display_name
+        users_resp = requests.get(f'https://api.sleeper.app/v1/league/{league_id}/users', timeout=8)
+        users_data = users_resp.json() if users_resp.status_code == 200 else []
+        user_map   = {u['user_id']: u.get('display_name') or u.get('user_id', '') for u in (users_data or [])}
+
+        # Drafts — prefer in-progress, then pre_draft, then most recent complete
+        drafts_resp = requests.get(f'https://api.sleeper.app/v1/league/{league_id}/drafts', timeout=8)
+        drafts = drafts_resp.json() if drafts_resp.status_code == 200 else []
+        if not drafts:
+            return jsonify({'error': 'No draft found for this league'}), 404
+
+        draft = None
+        for status_pref in ('in_progress', 'pre_draft', 'complete'):
+            for d in drafts:
+                if d.get('status') == status_pref:
+                    draft = d
+                    break
+            if draft:
+                break
+        if not draft:
+            draft = drafts[0]
+
+        draft_id       = draft.get('draft_id')
+        draft_status   = draft.get('status', 'pre_draft')
+        draft_settings = draft.get('settings') or {}
+
+        # num_rounds: use the actual draft's rounds setting, not the roster size
+        num_rounds = int(draft_settings.get('rounds') or 0)
+
+        # slot_to_roster_id: the canonical Sleeper mapping of draft slot → roster_id
+        # This is the most reliable source and accounts for pick trades.
+        slot_to_roster = draft.get('slot_to_roster_id') or {}
+        # Build inverse: roster_id (int) → slot (int, 1-indexed)
+        roster_id_to_slot = {}
+        for slot_str, rid in slot_to_roster.items():
+            try:
+                roster_id_to_slot[int(rid)] = int(slot_str)
+            except (TypeError, ValueError):
+                pass
+
+        # Also build owner_to_slot from draft_order as a fallback
+        draft_order   = draft.get('draft_order') or {}
+        owner_to_slot = {}
+        for uid, slot in draft_order.items():
+            try:
+                owner_to_slot[str(uid)] = int(slot)
+            except (ValueError, TypeError):
+                pass
+
+        # Fetch full league rosters — needed for slot mapping and player lists
+        rosters_resp = requests.get(f'https://api.sleeper.app/v1/league/{league_id}/rosters', timeout=8)
+        rosters_data = rosters_resp.json() if rosters_resp.status_code == 200 else []
+
+        # Build roster_id → slot if slot_to_roster was empty (older leagues)
+        # Fallback: derive from draft_order + owner_id on roster
+        if not roster_id_to_slot:
+            for roster in (rosters_data or []):
+                owner_id  = str(roster.get('owner_id') or '')
+                roster_id = roster.get('roster_id')
+                if roster_id and owner_id in owner_to_slot:
+                    roster_id_to_slot[int(roster_id)] = owner_to_slot[owner_id]
+                elif roster_id:
+                    roster_id_to_slot[int(roster_id)] = int(roster_id)  # 1:1 fallback
+
+        # Build team_names indexed by slot (0-indexed)
+        team_names = [f'Team {i + 1}' for i in range(num_teams)]
+
+        # Map roster_id → owner display name
+        rid_to_name = {}
+        for roster in (rosters_data or []):
+            rid       = int(roster.get('roster_id') or 0)
+            owner_id  = str(roster.get('owner_id') or '')
+            slot      = roster_id_to_slot.get(rid)
+            disp_name = user_map.get(owner_id, '')
+            if disp_name:
+                rid_to_name[rid] = disp_name
+            if slot and disp_name:
+                idx = slot - 1
+                if 0 <= idx < num_teams:
+                    team_names[idx] = disp_name
+
+        # Fallback: fill names from draft_order if still missing
+        for uid, slot in draft_order.items():
+            try:
+                idx = int(slot) - 1
+                if 0 <= idx < num_teams and team_names[idx] == f'Team {idx + 1}':
+                    team_names[idx] = user_map.get(str(uid), team_names[idx])
+            except (ValueError, TypeError):
+                pass
+
+        # Determine user's draft slot (1-indexed)
+        user_slot = 1
+        if sleeper_user_id:
+            # Try slot_to_roster first (roster_id_to_slot is the inverse but we need user→slot)
+            for uid, slot in draft_order.items():
+                if str(uid) == str(sleeper_user_id):
+                    try:
+                        user_slot = int(slot)
+                    except (ValueError, TypeError):
+                        pass
+                    break
+            # Also check roster owner_id
+            if user_slot == 1:
+                for roster in (rosters_data or []):
+                    if str(roster.get('owner_id') or '') == str(sleeper_user_id):
+                        rid  = int(roster.get('roster_id') or 1)
+                        slot = roster_id_to_slot.get(rid, 1)
+                        user_slot = slot
+                        break
+
+        # Fetch existing draft picks — pass roster_id_to_slot so traded picks are attributed correctly
+        picks_resp = requests.get(f'https://api.sleeper.app/v1/draft/{draft_id}/picks', timeout=8)
+        picks_raw  = picks_resp.json() if picks_resp.status_code == 200 else []
+
+        # If num_rounds still 0, infer from picks
+        if num_rounds <= 0 and picks_raw:
+            num_rounds = max((p.get('round', 1) for p in picks_raw), default=1)
+        if num_rounds <= 0:
+            num_rounds = max(sum(v for k, v in roster_slots.items()), 1)
+
+        picks = [_format_sleeper_pick(p, roster_id_to_slot) for p in picks_raw]
+
+        # Resolve player IDs → names
+        player_map = _get_sleeper_player_map()
+
+        # Starter slot labels (positions that are actual starters, not BN/IR/TAXI)
+        _non_starter = {'BN', 'IR', 'TAXI'}
+        starter_slot_labels = [
+            p for p in (league.get('roster_positions') or [])
+            if p not in _non_starter
+        ]
+
+        def _resolve(pid):
+            """Return a player dict from the Sleeper player map, or None."""
+            if not pid or str(pid) == '0':
+                return None
+            p = player_map.get(str(pid))
+            if not p:
+                return None
+            return {'id': pid, 'name': p['name'], 'position': p['position'], 'team': p['team']}
+
+        # Build structured team_rosters with starters/bench/reserve/taxi in Sleeper order
+        empty_roster = {
+            'starters':          [],
+            'starter_slots':     starter_slot_labels,
+            'bench':             [],
+            'reserve':           [],
+            'taxi':              [],
+        }
+        team_rosters = [None] * num_teams
+
+        for roster in (rosters_data or []):
+            rid      = int(roster.get('roster_id') or 1)
+            owner_id = str(roster.get('owner_id') or '')
+            slot     = roster_id_to_slot.get(rid, rid)          # 1-indexed
+            idx      = max(0, min(slot - 1, num_teams - 1))     # 0-indexed
+
+            all_ids     = set(roster.get('players') or [])
+            starter_ids = roster.get('starters') or []
+            reserve_ids = set(roster.get('reserve') or [])
+            taxi_ids    = set(roster.get('taxi') or [])
+            starter_set = set(pid for pid in starter_ids if pid and pid != '0')
+            bench_ids   = [
+                pid for pid in all_ids
+                if pid not in starter_set and pid not in reserve_ids and pid not in taxi_ids
+            ]
+
+            # Starters: preserve Sleeper order, pair with slot label
+            starters_out = []
+            for pid, label in zip(starter_ids, starter_slot_labels + ['?'] * 10):
+                p = _resolve(pid)
+                starters_out.append({
+                    'slot':     label,
+                    'player':   p,             # None = empty slot
+                })
+
+            team_rosters[idx] = {
+                'starters':      starters_out,
+                'starter_slots': starter_slot_labels,
+                'bench':         [p for p in (_resolve(pid) for pid in bench_ids) if p],
+                'reserve':       [p for p in (_resolve(pid) for pid in reserve_ids) if p],
+                'taxi':          [p for p in (_resolve(pid) for pid in taxi_ids) if p],
+            }
+
+            # Backfill team name from owner if still generic
+            if team_names[idx] == f'Team {idx + 1}' and owner_id in user_map:
+                team_names[idx] = user_map[owner_id]
+
+        # Fill any slots that had no roster data
+        team_rosters = [r if r is not None else dict(empty_roster) for r in team_rosters]
+
+        # Flat list of every player name on any roster, resolved via Sleeper's player map.
+        # Used by the frontend to reliably mark players as drafted (avoids name-suffix mismatches).
+        roster_player_names = []
+        for roster in (rosters_data or []):
+            for pid in (roster.get('players') or []):
+                p = player_map.get(str(pid))
+                if p and p.get('name'):
+                    roster_player_names.append(p['name'])
+
+        return jsonify({
+            'draft_id':            draft_id,
+            'league_name':         league.get('name', 'My League'),
+            'num_teams':           num_teams,
+            'num_rounds':          num_rounds,
+            'scoring':             scoring,
+            'roster_slots':        roster_slots,
+            'starter_slot_labels': starter_slot_labels,
+            'team_names':          team_names,
+            'user_slot':           user_slot,
+            'draft_status':        draft_status,
+            'league_type':         league_type,
+            'picks':               picks,
+            'team_rosters':        team_rosters,
+            'roster_player_names': roster_player_names,
+        })
+    except requests.RequestException:
+        return jsonify({'error': 'Failed to connect to Sleeper API'}), 503
+
+
+@main.route('/draft-board/sleeper/sync')
+@login_required
+def draft_board_sleeper_sync():
+    """
+    Unified polling endpoint — fetches picks AND current rosters in one call.
+    Requires: draft_id, league_id (for rosters + slot mapping)
+    Returns: { picks, team_rosters, draft_status }
+    """
+    draft_id  = request.args.get('draft_id', '').strip()
+    league_id = request.args.get('league_id', '').strip()
+    if not draft_id or not league_id:
+        return jsonify({'error': 'draft_id and league_id required'}), 400
+
+    try:
+        # ── 1. Draft metadata (need slot_to_roster_id for trade correction) ──
+        draft_resp = requests.get(f'https://api.sleeper.app/v1/draft/{draft_id}', timeout=8)
+        draft      = draft_resp.json() if draft_resp.status_code == 200 else {}
+        draft_status    = draft.get('status', 'in_progress')
+        slot_to_roster  = draft.get('slot_to_roster_id') or {}
+        draft_order     = draft.get('draft_order') or {}
+
+        # Build roster_id → slot mapping (accounts for traded picks)
+        roster_id_to_slot = {}
+        for slot_str, rid in slot_to_roster.items():
+            try:
+                roster_id_to_slot[int(rid)] = int(slot_str)
+            except (TypeError, ValueError):
+                pass
+
+        # ── 2. Picks (with trade-corrected slot attribution) ──
+        picks_resp = requests.get(f'https://api.sleeper.app/v1/draft/{draft_id}/picks', timeout=8)
+        picks_raw  = picks_resp.json() if picks_resp.status_code == 200 else []
+
+        # If slot_to_roster was empty, fall back to roster_id derived from rosters endpoint
+        need_roster_fallback = not roster_id_to_slot
+
+        picks = [_format_sleeper_pick(p, roster_id_to_slot) for p in picks_raw]
+
+        # ── 3. Current rosters (starters / bench / IR / taxi) ──
+        rosters_resp = requests.get(f'https://api.sleeper.app/v1/league/{league_id}/rosters', timeout=8)
+        rosters_data = rosters_resp.json() if rosters_resp.status_code == 200 else []
+
+        # If we need a fallback slot mapping, derive from roster owner + draft_order
+        if need_roster_fallback:
+            users_resp = requests.get(f'https://api.sleeper.app/v1/league/{league_id}/users', timeout=8)
+            users_data = users_resp.json() if users_resp.status_code == 200 else []
+            owner_to_slot_fb = {}
+            for u in (users_data or []):
+                uid  = u.get('user_id', '')
+                slot = draft_order.get(uid)
+                if slot:
+                    try:
+                        owner_to_slot_fb[str(uid)] = int(slot)
+                    except (TypeError, ValueError):
+                        pass
+            for roster in (rosters_data or []):
+                rid      = roster.get('roster_id')
+                owner_id = str(roster.get('owner_id') or '')
+                slot     = owner_to_slot_fb.get(owner_id, rid)
+                if rid and slot:
+                    try:
+                        roster_id_to_slot[int(rid)] = int(slot)
+                    except (TypeError, ValueError):
+                        pass
+            # Re-format picks with the now-populated mapping
+            picks = [_format_sleeper_pick(p, roster_id_to_slot) for p in picks_raw]
+
+        player_map   = _get_sleeper_player_map()
+        _non_starter = {'BN', 'IR', 'TAXI'}
+
+        # Get league roster_positions for starter slot labels
+        league_resp   = requests.get(f'https://api.sleeper.app/v1/league/{league_id}', timeout=8)
+        league_data   = league_resp.json() if league_resp.status_code == 200 else {}
+        starter_slots = [
+            p for p in (league_data.get('roster_positions') or [])
+            if p not in _non_starter
+        ]
+
+        def _resolve(pid):
+            if not pid or str(pid) == '0':
+                return None
+            p = player_map.get(str(pid))
+            return {'id': pid, 'name': p['name'], 'position': p['position'], 'team': p['team']} if p else None
+
+        num_teams    = league_data.get('total_rosters', len(rosters_data))
+        team_rosters = [None] * num_teams
+
+        for roster in (rosters_data or []):
+            rid      = int(roster.get('roster_id') or 1)
+            owner_id = str(roster.get('owner_id') or '')
+            slot     = roster_id_to_slot.get(rid, rid)
+            idx      = max(0, min(slot - 1, num_teams - 1))
+
+            all_ids     = set(roster.get('players') or [])
+            starter_ids = roster.get('starters') or []
+            reserve_ids = set(roster.get('reserve') or [])
+            taxi_ids    = set(roster.get('taxi') or [])
+            starter_set = set(pid for pid in starter_ids if pid and pid != '0')
+            bench_ids   = [
+                pid for pid in all_ids
+                if pid not in starter_set and pid not in reserve_ids and pid not in taxi_ids
+            ]
+
+            starters_out = []
+            for pid, label in zip(starter_ids, starter_slots + ['?'] * 10):
+                starters_out.append({'slot': label, 'player': _resolve(pid)})
+
+            team_rosters[idx] = {
+                'starters': starters_out,
+                'bench':    [p for p in (_resolve(pid) for pid in bench_ids) if p],
+                'reserve':  [p for p in (_resolve(pid) for pid in reserve_ids) if p],
+                'taxi':     [p for p in (_resolve(pid) for pid in taxi_ids) if p],
+            }
+
+        team_rosters = [r if r is not None else {'starters': [], 'bench': [], 'reserve': [], 'taxi': []} for r in team_rosters]
+
+        # Flat list of every player name on any roster (Sleeper player map names).
+        # Sent to the frontend so it can reliably mark players as drafted.
+        roster_player_names = []
+        for roster in (rosters_data or []):
+            for pid in (roster.get('players') or []):
+                p = player_map.get(str(pid))
+                if p and p.get('name'):
+                    roster_player_names.append(p['name'])
+
+        return jsonify({
+            'picks':               picks,
+            'team_rosters':        team_rosters,
+            'draft_status':        draft_status,
+            'roster_player_names': roster_player_names,
+        })
+
+    except requests.RequestException:
+        return jsonify({'error': 'Sleeper API unavailable'}), 503
+
+
+@main.route('/draft-board/save', methods=['POST'])
+@login_required
+def draft_board_save():
+    """Upsert the user's draft board session (one session per user)."""
+    data = request.get_json(silent=True) or {}
+    existing = DraftBoardSession.query.filter_by(user_id=current_user.id).first()
+    if existing:
+        existing.source    = data.get('source', 'manual')
+        existing.league_id = data.get('league_id')
+        existing.draft_id  = data.get('draft_id')
+        existing.settings  = json.dumps(data.get('settings', {}))
+        existing.state     = json.dumps(data.get('state', {}))
+        existing.last_pick = int(data.get('last_pick', 0))
+        existing.updated_at = datetime.utcnow()
+    else:
+        db.session.add(DraftBoardSession(
+            user_id   = current_user.id,
+            source    = data.get('source', 'manual'),
+            league_id = data.get('league_id'),
+            draft_id  = data.get('draft_id'),
+            settings  = json.dumps(data.get('settings', {})),
+            state     = json.dumps(data.get('state', {})),
+            last_pick = int(data.get('last_pick', 0)),
+        ))
+    db.session.commit()
+    return jsonify({'saved': True})
+
+
+@main.route('/draft-board/load')
+@login_required
+def draft_board_load():
+    """Return the user's saved draft board session, if any."""
+    sess = DraftBoardSession.query.filter_by(user_id=current_user.id).first()
+    if not sess:
+        return jsonify({'found': False})
+    return jsonify({
+        'found':      True,
+        'source':     sess.source,
+        'league_id':  sess.league_id,
+        'draft_id':   sess.draft_id,
+        'settings':   json.loads(sess.settings)   if sess.settings   else {},
+        'state':      json.loads(sess.state)       if sess.state      else {},
+        'last_pick':  sess.last_pick or 0,
+        'updated_at': sess.updated_at.isoformat()  if sess.updated_at else None,
+    })
+
+
+@main.route('/draft-board/reset', methods=['POST'])
+@login_required
+def draft_board_reset():
+    """Delete the user's saved draft board session so they can start fresh."""
+    sess = DraftBoardSession.query.filter_by(user_id=current_user.id).first()
+    if sess:
+        db.session.delete(sess)
+        db.session.commit()
+    return jsonify({'reset': True})
+
+
+# ── Saved leagues ─────────────────────────────────────────────
+
+@main.route('/draft-board/leagues')
+@login_required
+def draft_board_leagues_list():
+    """Return all leagues saved by the current user."""
+    leagues = (SavedLeague.query
+               .filter_by(user_id=current_user.id)
+               .order_by(SavedLeague.last_accessed.desc())
+               .all())
+    return jsonify([{
+        'league_id':       lg.league_id,
+        'league_name':     lg.league_name,
+        'source':          lg.source,
+        'num_teams':       lg.num_teams,
+        'scoring':         lg.scoring,
+        'league_type':     lg.league_type,
+        'sleeper_user_id': lg.sleeper_user_id,
+        'user_slot':       lg.user_slot,
+        'last_accessed':   lg.last_accessed.isoformat() if lg.last_accessed else None,
+    } for lg in leagues])
+
+
+@main.route('/draft-board/leagues/save', methods=['POST'])
+@login_required
+def draft_board_leagues_save():
+    """Upsert a saved league entry for the current user."""
+    data      = request.get_json(silent=True) or {}
+    league_id = (data.get('league_id') or '').strip()
+    if not league_id:
+        return jsonify({'error': 'league_id required'}), 400
+
+    existing = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
+    if existing:
+        existing.league_name    = data.get('league_name', existing.league_name)
+        existing.num_teams      = data.get('num_teams', existing.num_teams)
+        existing.scoring        = data.get('scoring', existing.scoring)
+        existing.league_type    = data.get('league_type', existing.league_type)
+        existing.sleeper_user_id = data.get('sleeper_user_id', existing.sleeper_user_id)
+        existing.user_slot      = data.get('user_slot', existing.user_slot)
+        existing.last_accessed  = datetime.utcnow()
+    else:
+        db.session.add(SavedLeague(
+            user_id        = current_user.id,
+            league_id      = league_id,
+            league_name    = data.get('league_name', 'My League'),
+            source         = data.get('source', 'sleeper'),
+            num_teams      = data.get('num_teams', 12),
+            scoring        = data.get('scoring', 'ppr'),
+            league_type    = data.get('league_type', 'redraft'),
+            sleeper_user_id = data.get('sleeper_user_id'),
+            user_slot      = data.get('user_slot'),
+        ))
+    db.session.commit()
+    return jsonify({'saved': True})
+
+
+@main.route('/draft-board/leagues/<league_id>', methods=['DELETE'])
+@login_required
+def draft_board_leagues_delete(league_id):
+    """Remove a saved league from the user's account."""
+    lg = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
+    if lg:
+        db.session.delete(lg)
+        db.session.commit()
+    return jsonify({'deleted': True})
+
+
+@main.route('/draft-board/ai-suggest', methods=['POST'])
+@login_required
+def draft_board_ai_suggest():
+    """Return AI draft suggestions (in-draft) or full roster analysis (draft complete)."""
+    data = request.get_json(silent=True) or {}
+
+    # ── Draft-complete: full position-group analysis ───────────────────────
+    if data.get('mode') == 'complete':
+        roster              = data.get('roster') or {}
+        league_type         = (data.get('league_type') or 'redraft').lower()
+        is_dynasty          = league_type in ('dynasty', 'keeper')
+        starter_slot_labels = data.get('starter_slot_labels') or []
+        # team_label: 'you' for the user's own team, or the team's name for others.
+        # Used to generate correctly-pronouned trade suggestions.
+        raw_label  = (data.get('team_label') or 'you').strip()
+        is_self    = raw_label.lower() == 'you'
+        # Possessive: "Your RB group" vs "Team X's RB group"
+        poss       = 'Your' if is_self else f"{raw_label}'s"
+        # Subject: "you" vs "they" / "this team"
+        subj       = 'you' if is_self else 'this team'
+
+        # Derive which positions the league actually uses from starter slot labels.
+        # FLEX-type slots expand to their component positions.
+        _flex_expansion = {
+            'FLEX':       {'RB', 'WR', 'TE'},
+            'SUPER_FLEX': {'QB', 'RB', 'WR', 'TE'},
+            'IDP_FLEX':   {'QB', 'RB', 'WR', 'TE', 'DB', 'LB', 'DL'},
+            'REC_FLEX':   {'WR', 'TE'},
+            'WRRB_FLEX':  {'WR', 'RB'},
+        }
+        _skip_slots = {'BN', 'IR', 'TAXI', 'DL', 'DB', 'LB'}  # non-scoring / IDP only
+        league_positions = set()
+        for slot in starter_slot_labels:
+            su = slot.upper()
+            if su in _skip_slots:
+                continue
+            if su in _flex_expansion:
+                league_positions.update(_flex_expansion[su])
+            else:
+                league_positions.add(su)
+
+        # Fall back to all standard skill positions if labels not provided
+        if not league_positions:
+            league_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
+
+        # Ordered list of positions to analyze (only those in the league)
+        _pos_order = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        analyze_positions = [p for p in _pos_order if p in league_positions]
+
+        # Reject empty rosters — can't grade what isn't there
+        all_roster_players = (roster.get('starters') or []) + (roster.get('bench') or [])
+        if not any(p and p.get('name') for p in all_roster_players):
+            return jsonify({'mode': 'complete', 'position_groups': [], 'overall_grade': '—',
+                            'strengths': [], 'needs': [], 'is_dynasty': is_dynasty,
+                            'trade_suggestions': [], 'empty': True})
+
+        # Frontend sends starters = exactly the filled starter slots from the right panel,
+        # bench = everyone else. No slot-matching needed here.
+        starters_by_pos = defaultdict(list)
+        for p in (roster.get('starters') or []):
+            if p and p.get('position'):
+                starters_by_pos[p['position'].upper()].append(p)
+
+        by_pos = defaultdict(list)
+        for p in (roster.get('starters') or []):
+            if p and p.get('position'):
+                by_pos[p['position'].upper()].append(p)
+        for p in (roster.get('bench') or []):
+            if p and p.get('position'):
+                by_pos[p['position'].upper()].append(p)
+
+        # Per-position depth targets (dynasty needs much more depth)
+        targets_depth = {
+            'QB':  (3 if is_dynasty else 2),
+            'RB':  (8 if is_dynasty else 4),
+            'WR':  (9 if is_dynasty else 5),
+            'TE':  (3 if is_dynasty else 2),
+            'K':   1,
+            'DST': 1,
+        }
+
+        grade_map = {'A': 4, 'B': 3, 'C': 2, 'D': 1, 'F': 0}
+
+        def _grade(count, ideal, min_count):
+            if count == 0:          return 'F'
+            if count < min_count:   return 'D'
+            ratio = count / max(ideal, 1)
+            if ratio >= 0.85:       return 'A'
+            if ratio >= 0.65:       return 'B'
+            if ratio >= 0.45:       return 'C'
+            return 'D'
+
+        def _quality_grade(starters):
+            """Grade quality based on actual starters' ranks.
+            Lower rank = better player. Unranked starters (retired/inactive) count as rank 999.
+            Returns grade A-F, or None only if the starters list is completely empty."""
+            if not starters:
+                return None
+            # Unranked players (not in our rankings = likely inactive/retired) get a penalty rank
+            ranks = [p.get('rank') if p.get('rank') is not None else 999 for p in starters]
+            best_rank = min(ranks)
+            avg_rank  = sum(ranks) / len(ranks)
+            # Weight: 60% best starter, 40% average of starters
+            combined  = best_rank * 0.6 + avg_rank * 0.4
+            if combined <= 12:      return 'A'
+            elif combined <= 25:    return 'B'
+            elif combined <= 50:    return 'C'
+            elif combined <= 80:    return 'D'
+            else:                   return 'F'
+
+        def _note(pos, count, depth_grade, all_players, qual_grade=None, starters=None):
+            starters = starters or []
+            # Only name players who have rank data — unranked players are likely inactive/retired
+            ranked_starters = [p for p in starters if p.get('rank') is not None]
+            top_starters = [p.get('name', '') for p in ranked_starters[:2] if p.get('name')]
+            anchor = ' & '.join(top_starters) if top_starters else None
+
+            # Also check bench for notable backup depth
+            all_ranked = [p for p in all_players if p.get('rank') is not None]
+            starter_names = {p.get('name') for p in starters}
+            bench_ranked = [p for p in all_ranked if p.get('name') not in starter_names]
+
+            depth_part = ''
+            qual_part  = ''
+
+            if depth_grade == 'F':
+                return f'No {pos} on this roster — a critical gap.'
+            if depth_grade == 'D':
+                depth_part = f'Very thin at {pos} ({count} player{"s" if count != 1 else ""}) — needs depth.'
+            elif depth_grade == 'A':
+                depth_part = f'Loaded at {pos} ({count} players) — among the deepest in the league.'
+            elif depth_grade == 'B':
+                depth_part = f'Solid {pos} corps ({count} players) with quality depth behind the starters.'
+            else:
+                depth_part = f'Adequate {pos} depth ({count} players) — serviceable but not a strength.'
+
+            if anchor:
+                depth_part += f' Anchored by {anchor}.'
+            elif bench_ranked and not anchor:
+                backup_name = bench_ranked[0].get('name', '').split()[-1]
+                depth_part += f' {backup_name} leads a thin starter group.'
+
+            if qual_grade == 'A':
+                qual_part = ' Elite-caliber starters at this position.'
+            elif qual_grade == 'B':
+                qual_part = ' Quality starters — above-average production expected.'
+            elif qual_grade == 'C':
+                qual_part = ' Average starter quality — manageable but not dominant.'
+            elif qual_grade == 'D':
+                qual_part = ' Below-average starters — a clear upgrade target.'
+            elif qual_grade == 'F':
+                qual_part = ' Low-end starters — significant weakness in the lineup.'
+
+            return (depth_part + qual_part).strip()
+
+        groups = []
+        for pos in analyze_positions:
+            all_players = by_pos.get(pos, [])
+            starters    = starters_by_pos.get(pos, [])
+            # Dedupe
+            if pos in ('RB', 'WR', 'TE', 'QB'):
+                seen = set()
+                deduped = []
+                for p in all_players:
+                    nm = p.get('name', '')
+                    if nm and nm not in seen:
+                        seen.add(nm)
+                        deduped.append(p)
+                all_players = deduped
+            # Sort by rank
+            all_players.sort(key=lambda p: p.get('rank') or 9999)
+            starters.sort(key=lambda p: p.get('rank') or 9999)
+            count       = len(all_players)
+            ideal       = targets_depth.get(pos, 2)
+            depth_grade = _grade(count, ideal, 1)
+            # Quality is based on actual starters; fall back to all players if no starter data
+            qual_grade  = _quality_grade(starters) if starters else _quality_grade(all_players[:2])
+
+            # Combined grade: average depth and quality grades when both available
+            if qual_grade:
+                depth_score = grade_map.get(depth_grade, 0)
+                qual_score  = grade_map.get(qual_grade, 0)
+                combined    = (depth_score * 0.5 + qual_score * 0.5)
+                if combined >= 3.6:   grade = 'A'
+                elif combined >= 3.0: grade = 'B'
+                elif combined >= 2.0: grade = 'C'
+                elif combined >= 1.0: grade = 'D'
+                else:                 grade = 'F'
+            else:
+                grade = depth_grade
+
+            # Show only the actual starters for this position in the card.
+            # If no starters identified (e.g. manual mode fallback), show top-ranked players.
+            display_players = starters if starters else all_players[:2]
+
+            groups.append({
+                'position':  pos,
+                'count':     count,
+                'grade':     grade,
+                'note':      _note(pos, count, depth_grade, all_players, qual_grade, starters),
+                'players':   [{'name': p.get('name', ''), 'team': p.get('team', '')}
+                               for p in display_players if p.get('name')],
+            })
+
+        # Trade suggestions — specific, player-named recommendations
+        trade_suggestions = []
+        skill_positions = [p for p in analyze_positions if p not in ('K', 'DST')]
+        grade_val = lambda g: grade_map.get(g, 0)
+
+        surplus  = [g for g in groups if g['position'] in skill_positions and grade_val(g['grade']) >= 3]
+        average  = [g for g in groups if g['position'] in skill_positions and grade_val(g['grade']) == 2]
+        deficit  = [g for g in groups if g['position'] in skill_positions and grade_val(g['grade']) <= 1]
+
+        def _top_names(group, n=2):
+            """Return last names of top n players in group."""
+            ps = group.get('players') or []
+            names = [p['name'].split()[-1] for p in ps[:n] if p.get('name')]
+            return names
+
+        def _names_str(group, n=2):
+            names = _top_names(group, n)
+            if not names: return None
+            return ' & '.join(names) if len(names) > 1 else names[0]
+
+        # 1. Hard imbalances: stacked at one pos, thin at another
+        for s in surplus:
+            for d in deficit:
+                if s['position'] == d['position']:
+                    continue
+                s_names = _names_str(s, 2)
+                d_pos   = d['position']
+                depth_note = f' ({s["count"]} {s["position"]}s drafted, graded {s["grade"]})'
+                bait_note  = f' — {s_names} could be the centerpiece' if s_names else ''
+                trade_suggestions.append(
+                    f'{poss} {s["position"]} group is a clear strength{depth_note}{bait_note}. '
+                    f'{poss} {d_pos} ({d["grade"]}) is a liability. '
+                    f'Package {s["position"]} depth to acquire an elite {d_pos}.'
+                )
+
+        # 2. Quality upgrades: average group, surplus to deal
+        for avg_g in average:
+            pos = avg_g['position']
+            for s in surplus:
+                if s['position'] == pos:
+                    continue
+                s_names = _names_str(s, 1)
+                avg_names = _names_str(avg_g, 1)
+                from_note = f' — {s_names} has trade value' if s_names else ''
+                starter_note = f' ({avg_names} is the current starter)' if avg_names else ''
+                trade_suggestions.append(
+                    f'{poss} {pos} group is graded {avg_g["grade"]}{starter_note}. '
+                    f'There is {s["position"]} depth to move{from_note}. '
+                    f'A {pos} upgrade here could push {subj} into contention.'
+                )
+                break  # one suggestion per average group
+
+        # 3. Sell-high when stacked with no deficits
+        if len(surplus) >= 2 and not deficit:
+            s = surplus[0]
+            s_names = _names_str(s, 2)
+            sell_note = f'{s_names} represent' if s_names else f'The {s["position"]} depth represents'
+            trade_suggestions.append(
+                f'No critical weaknesses — strong, balanced roster. '
+                f'{sell_note} surplus value at {s["position"]} ({s["grade"]}). '
+                f'Consider dealing that depth for future picks or an elite player at any position.'
+            )
+
+        # 4. Warn if roster is balanced but star-less (all C grades)
+        if not surplus and not deficit and len(average) >= 3:
+            trade_suggestions.append(
+                f'Roster is balanced but lacks a true alpha — no elite group stands out. '
+                f'Look to consolidate by moving multiple average players for one proven starter.'
+            )
+
+        # Overall grade = weighted average (skill positions matter more)
+        weight = {'QB': 2, 'RB': 3, 'WR': 3, 'TE': 2, 'K': 0.5, 'DST': 0.5}
+        total_w, total_score = 0, 0
+        for g in groups:
+            w = weight.get(g['position'], 1)
+            total_score += grade_map.get(g['grade'], 0) * w
+            total_w += w
+        avg = total_score / total_w if total_w else 2
+        if avg >= 3.6:   overall = 'A'
+        elif avg >= 3.1: overall = 'A-'
+        elif avg >= 2.7: overall = 'B+'
+        elif avg >= 2.3: overall = 'B'
+        elif avg >= 1.8: overall = 'B-'
+        elif avg >= 1.4: overall = 'C+'
+        elif avg >= 1.0: overall = 'C'
+        else:            overall = 'D'
+
+        non_special = [p for p in analyze_positions if p not in ('K', 'DST')]
+        strengths = [g['position'] for g in groups
+                     if grade_map.get(g['grade'], 0) >= 3 and g['position'] in non_special]
+        needs     = [g['position'] for g in groups
+                     if grade_map.get(g['grade'], 0) <= 1 and g['position'] in non_special]
+
+        return jsonify({
+            'mode':              'complete',
+            'position_groups':   groups,
+            'overall_grade':     overall,
+            'strengths':         strengths,
+            'needs':             needs,
+            'is_dynasty':        is_dynasty,
+            'trade_suggestions': trade_suggestions,
+        })
+
+    # ── In-draft suggestions (existing logic) ─────────────────────────────
+    data             = data  # already parsed above
+    user_roster      = data.get('user_roster', [])
+    roster_slots     = data.get('roster_slots', {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'FLEX': 1})
+    available        = data.get('available_players', [])
+    other_teams      = data.get('other_teams', [])
+    pick_number      = int(data.get('pick_number', 0))
+    picks_until_next = int(data.get('picks_until_next', 12))
+
+    # --- Positional need ---
+    filled = {}
+    for pick in user_roster:
+        pos = (pick.get('position') or pick.get('Position') or '').upper()
+        filled[pos] = filled.get(pos, 0) + 1
+
+    starter_needs = {
+        'QB': int(roster_slots.get('QB', 1)),
+        'RB': int(roster_slots.get('RB', 2)),
+        'WR': int(roster_slots.get('WR', 2)),
+        'TE': int(roster_slots.get('TE', 1)),
+    }
+
+    need_scores = {
+        pos: max(0, needed - filled.get(pos, 0)) / max(needed, 1)
+        for pos, needed in starter_needs.items()
+    }
+    sorted_needs = sorted(need_scores.items(), key=lambda x: -x[1])
+
+    # --- Top targets (one from each most-needed position) ---
+    targets, seen = [], set()
+    for pos, score in sorted_needs:
+        if score <= 0:
+            continue
+        for p in available:
+            p_pos  = (p.get('Position') or '').upper()
+            p_name = p.get('Name', '')
+            if p_pos == pos and p_name not in seen:
+                targets.append(p)
+                seen.add(p_name)
+                break
+        if len(targets) >= 3:
+            break
+
+    # Fill remaining target slots with best available at any position
+    if len(targets) < 3:
+        for p in available:
+            p_name = p.get('Name', '')
+            if p_name not in seen:
+                targets.append(p)
+                seen.add(p_name)
+            if len(targets) >= 3:
+                break
+
+    # --- Best available (top 3 regardless of position) ---
+    best_available = available[:3]
+
+    # --- Danger alerts: players likely taken before next pick ---
+    alerts = []
+    for p in available[:15]:
+        adp = p.get('ADP') or p.get('Rank') or 999
+        try:
+            adp = float(adp)
+        except (TypeError, ValueError):
+            continue
+        if adp <= pick_number + picks_until_next:
+            pos = (p.get('Position') or '').upper()
+            teams_needing = sum(
+                1 for t in other_teams
+                if sum(
+                    1 for tp in (t.get('picks') or [])
+                    if (tp.get('position') or '').upper() == pos
+                ) < starter_needs.get(pos, 2)
+            )
+            alerts.append({
+                'name':         p.get('Name', ''),
+                'position':     pos,
+                'adp':          adp,
+                'teams_needing': teams_needing,
+                'urgency':      'high' if teams_needing >= 2 or adp <= pick_number else 'medium',
+            })
+
+    return jsonify({
+        'needs':          [{'position': pos, 'score': round(sc, 2)} for pos, sc in sorted_needs],
+        'targets':        targets[:3],
+        'best_available': best_available,
+        'alerts':         alerts[:2],
+    })
+
 
 def fetch_player_data():
     url = 'https://www.footballguys.com/adp'

@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Draft Board — Darkhorse{% endblock %}
+{% block body_class %}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/draft_board.css') }}">
+
+<div class="db-page" id="db-page">
+
+    <!-- ── Top action bar (hidden until draft active) ── -->
+    <div class="db-topbar" id="db-topbar" style="display:none">
+        <span class="db-topbar-title" id="db-league-name">Draft Board</span>
+        <span class="db-topbar-meta" id="db-topbar-meta"></span>
+        <div class="db-sync-badge" id="db-sync-badge" style="display:none">
+            <span class="db-sync-dot" id="db-sync-dot"></span>
+            <span id="db-sync-label">Connecting…</span>
+        </div>
+        <button class="db-topbar-btn" id="db-sync-now-btn" style="display:none">Sync Now</button>
+        <button class="db-topbar-btn" id="db-reset-btn">+ Add League / Draft</button>
+    </div>
+
+
+    <!-- ════════════════════════════════════════════════
+         SETUP PANEL
+    ════════════════════════════════════════════════ -->
+    <div class="db-setup-wrap" id="db-setup-wrap">
+        <div class="db-setup-card">
+            <h1 class="db-setup-title">Draft Board</h1>
+            <p class="db-setup-subtitle">Track your live draft in real time — cross off players, monitor every team, and get AI suggestions.</p>
+
+            <!-- Saved leagues -->
+            <div id="db-saved-leagues-wrap" style="display:none;margin-bottom:1.5rem">
+                <div class="db-setup-section-label">My Leagues</div>
+                <div id="db-saved-leagues-list"></div>
+                <div style="height:1px;background:var(--medium-gray);margin:1.25rem 0"></div>
+                <div class="db-setup-section-label">Connect New League</div>
+            </div>
+
+            <!-- Source tabs -->
+            <div class="db-source-tabs">
+                <button class="db-source-tab active" data-source="sleeper">Sleeper</button>
+                <button class="db-source-tab" data-source="manual">Manual</button>
+                <button class="db-source-tab" data-source="espn" disabled>ESPN <span class="cs-label">soon</span></button>
+                <button class="db-source-tab" data-source="yahoo" disabled>Yahoo <span class="cs-label">soon</span></button>
+            </div>
+
+            <!-- ── Sleeper setup ── -->
+            <div id="setup-sleeper">
+                <div class="db-form-group">
+                    <label class="db-form-label" for="sleeper-username">Sleeper Username</label>
+                    <div style="display:flex;gap:8px">
+                        <input class="db-form-input" id="sleeper-username" type="text" placeholder="e.g. johndoe" autocomplete="off">
+                        <button class="db-topbar-btn" id="sleeper-lookup-btn" style="white-space:nowrap;padding:8px 16px">Find Leagues</button>
+                    </div>
+                </div>
+
+                <div class="db-form-group" id="sleeper-league-group" style="display:none">
+                    <label class="db-form-label" for="sleeper-league-select">Select League</label>
+                    <select class="db-form-select" id="sleeper-league-select">
+                        <option value="">Choose a league…</option>
+                    </select>
+                </div>
+
+                <div class="db-form-group" id="sleeper-scoring-group" style="display:none">
+                    <label class="db-form-label" for="sleeper-scoring-select">Scoring Format <span style="color:var(--text-secondary);font-weight:400">(auto-detected)</span></label>
+                    <select class="db-form-select" id="sleeper-scoring-select">
+                        <option value="ppr">PPR</option>
+                        <option value="half_ppr">Half PPR</option>
+                        <option value="standard">Standard</option>
+                    </select>
+                </div>
+
+                <p class="db-setup-error" id="sleeper-error"></p>
+                <button class="db-setup-btn" id="sleeper-connect-btn" style="display:none">
+                    Connect to League
+                </button>
+            </div>
+
+            <!-- ── Manual setup ── -->
+            <div id="setup-manual" style="display:none">
+                <div class="db-form-row">
+                    <div class="db-form-group">
+                        <label class="db-form-label" for="manual-num-teams">Number of Teams</label>
+                        <select class="db-form-select" id="manual-num-teams">
+                            <option value="8">8</option>
+                            <option value="10">10</option>
+                            <option value="12" selected>12</option>
+                            <option value="14">14</option>
+                            <option value="16">16</option>
+                        </select>
+                    </div>
+                    <div class="db-form-group">
+                        <label class="db-form-label" for="manual-user-slot">Your Draft Slot</label>
+                        <select class="db-form-select" id="manual-user-slot">
+                            <!-- populated by JS when numTeams changes -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="db-form-row">
+                    <div class="db-form-group">
+                        <label class="db-form-label" for="manual-scoring">Scoring Format</label>
+                        <select class="db-form-select" id="manual-scoring">
+                            <option value="ppr" selected>PPR</option>
+                            <option value="half_ppr">Half PPR</option>
+                            <option value="standard">Standard</option>
+                        </select>
+                    </div>
+                    <div class="db-form-group">
+                        <label class="db-form-label" for="manual-num-rounds">Rounds</label>
+                        <select class="db-form-select" id="manual-num-rounds">
+                            <option value="13">13</option>
+                            <option value="14">14</option>
+                            <option value="15" selected>15</option>
+                            <option value="16">16</option>
+                            <option value="17">17</option>
+                            <option value="18">18</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Roster slots -->
+                <div class="db-form-group">
+                    <label class="db-form-label">Roster Slots</label>
+                    <div class="db-form-row">
+                        <div class="db-form-group" style="margin-bottom:0">
+                            <label class="db-form-label" style="font-size:0.78em;color:var(--text-secondary)">QB</label>
+                            <input class="db-form-input" id="slot-QB" type="number" value="1" min="0" max="3">
+                        </div>
+                        <div class="db-form-group" style="margin-bottom:0">
+                            <label class="db-form-label" style="font-size:0.78em;color:var(--text-secondary)">RB</label>
+                            <input class="db-form-input" id="slot-RB" type="number" value="2" min="0" max="5">
+                        </div>
+                    </div>
+                    <div class="db-form-row" style="margin-top:8px">
+                        <div class="db-form-group" style="margin-bottom:0">
+                            <label class="db-form-label" style="font-size:0.78em;color:var(--text-secondary)">WR</label>
+                            <input class="db-form-input" id="slot-WR" type="number" value="2" min="0" max="5">
+                        </div>
+                        <div class="db-form-group" style="margin-bottom:0">
+                            <label class="db-form-label" style="font-size:0.78em;color:var(--text-secondary)">TE</label>
+                            <input class="db-form-input" id="slot-TE" type="number" value="1" min="0" max="3">
+                        </div>
+                    </div>
+                    <div class="db-form-row" style="margin-top:8px">
+                        <div class="db-form-group" style="margin-bottom:0">
+                            <label class="db-form-label" style="font-size:0.78em;color:var(--text-secondary)">FLEX</label>
+                            <input class="db-form-input" id="slot-FLEX" type="number" value="1" min="0" max="3">
+                        </div>
+                        <div class="db-form-group" style="margin-bottom:0">
+                            <label class="db-form-label" style="font-size:0.78em;color:var(--text-secondary)">Bench</label>
+                            <input class="db-form-input" id="slot-bench" type="number" value="6" min="0" max="10">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Team names -->
+                <div class="db-form-group">
+                    <label class="db-form-label">Team Names <span style="color:var(--text-secondary);font-weight:400">(click to rename)</span></label>
+                    <div class="db-team-names-grid" id="manual-team-names"></div>
+                </div>
+
+                <p class="db-setup-error" id="manual-error"></p>
+                <button class="db-setup-btn" id="manual-start-btn">Start Draft Board</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════
+         ACTIVE DRAFT BOARD
+    ════════════════════════════════════════════════ -->
+    <div class="db-active" id="db-active" style="display:none">
+        <div class="db-layout">
+
+            <!-- LEFT: Available Players -->
+            <div class="db-available" id="db-available-panel">
+                <div class="db-panel-header">
+                    Players
+                    <span class="db-avail-count" id="db-avail-count">—</span>
+                    <button class="db-avail-toggle" id="db-avail-toggle" title="Show available only">Available only</button>
+                </div>
+                <div class="db-search-wrap">
+                    <input class="db-search" id="db-search" type="text" placeholder="Search players…" autocomplete="off">
+                </div>
+                <div class="db-pos-tabs" id="db-pos-tabs">
+                    <button class="db-pos-tab active" data-pos="ALL">ALL</button>
+                    <button class="db-pos-tab" data-pos="QB">QB</button>
+                    <button class="db-pos-tab" data-pos="RB">RB</button>
+                    <button class="db-pos-tab" data-pos="WR">WR</button>
+                    <button class="db-pos-tab" data-pos="TE">TE</button>
+                </div>
+                <div class="db-player-list" id="db-player-list"></div>
+            </div>
+
+            <!-- CENTER: Board (now full width) -->
+            <div class="db-board-center">
+                <div class="db-board-scroll" id="db-board-scroll">
+                    <table class="db-board-table" id="db-board-table">
+                        <thead>
+                            <tr id="db-board-header">
+                                <th class="db-round-col">Rd</th>
+                            </tr>
+                        </thead>
+                        <tbody id="db-board-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Drag handle above bottom row -->
+    <div class="db-ot-resize-handle" id="db-bottom-resize-handle" style="display:none" title="Drag to resize"></div>
+
+    <!-- Bottom row: Other Teams + AI Bar — full width, below the three-column layout, above footer -->
+    <div class="db-bottom-row" id="db-bottom-row" style="display:none">
+
+        <!-- Other Teams -->
+        <div class="db-other-teams" id="db-other-teams">
+            <div class="db-panel-header" style="padding:6px 12px">
+                Rosters
+                <button class="db-ot-toggle" id="db-ot-toggle" title="Collapse / expand">›</button>
+            </div>
+            <div class="db-ot-tabs" id="db-ot-tabs"></div>
+            <div class="db-ot-body" id="db-ot-body"></div>
+        </div>
+
+        <!-- AI Suggestion Bar -->
+        <div class="db-ai-bar" id="db-ai-bar">
+            <span class="db-ai-placeholder" id="db-ai-placeholder">AI suggestions will appear after picks are made.</span>
+
+            <div class="db-ai-section" id="db-ai-need-section" style="display:none">
+                <span class="db-ai-label">Need</span>
+                <div class="db-need-pills" id="db-ai-needs"></div>
+            </div>
+
+            <div class="db-ai-section" id="db-ai-targets-section" style="display:none">
+                <span class="db-ai-label">Top Targets</span>
+                <div class="db-target-chips" id="db-ai-targets"></div>
+            </div>
+
+            <div class="db-ai-section" id="db-ai-bav-section" style="display:none">
+                <span class="db-ai-label">Best Available</span>
+                <div class="db-bav-chips" id="db-ai-bav"></div>
+            </div>
+
+            <div class="db-alerts" id="db-ai-alerts"></div>
+        </div>
+
+    </div>
+
+    <!-- Mobile FAB to open drawer -->
+    <button class="db-mobile-fab" id="db-mobile-fab" style="display:none">
+        ⚡ Players &amp; Roster
+    </button>
+
+    <!-- Mobile bottom drawer -->
+    <div class="db-drawer" id="db-drawer">
+        <div class="db-drawer-handle" id="db-drawer-handle"></div>
+        <div class="db-drawer-tabs">
+            <button class="db-drawer-tab active" data-dtab="available">Available</button>
+            <button class="db-drawer-tab" data-dtab="your-team">Your Team</button>
+        </div>
+        <div class="db-drawer-body" id="db-drawer-body">
+            <!-- Content swapped by JS based on active drawer tab -->
+        </div>
+    </div>
+
+    <!-- Player picker modal -->
+    <div class="db-picker-overlay" id="db-picker-overlay" style="display:none">
+        <div class="db-picker-modal">
+            <div class="db-picker-header">
+                <span class="db-picker-title" id="db-picker-title">Select Player</span>
+                <button class="db-picker-close" id="db-picker-close">✕</button>
+            </div>
+            <input class="db-picker-search" id="db-picker-search" type="text" placeholder="Search…" autocomplete="off">
+            <div class="db-picker-list" id="db-picker-list"></div>
+            <select class="db-picker-team-select" id="db-picker-team-select">
+                <option value="">Assign to team…</option>
+            </select>
+            <button class="db-picker-confirm-btn" id="db-picker-confirm-btn">Draft Player</button>
+        </div>
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/draft_board.js') }}"></script>
+{% endblock %}
