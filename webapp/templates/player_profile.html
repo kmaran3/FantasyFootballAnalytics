@@ -323,7 +323,7 @@
 
 <div class="profile-page-wrap">
     <div class="profile-top-bar">
-        <a id="backBtn" class="profile-back-btn" href="{{ back_url }}">&larr; Back to Rankings</a>
+        <a id="backBtn" class="profile-back-btn" href="{{ back_url }}">&larr; Back to {% if back_url and 'draft-board' in back_url %}Draft Board{% else %}Rankings{% endif %}</a>
         <button id="compareBtn" class="compare-open-btn">Compare Player</button>
         <button id="clearCompareBtn" class="compare-clear-btn" style="display:none;">Clear Compare</button>
     </div>

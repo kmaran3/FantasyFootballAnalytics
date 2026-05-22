@@ -42,6 +42,36 @@ class MockDraft(db.Model):
     user_team = db.Column(db.Text, nullable=False)           # JSON: just user's picks
 
 
+class SavedLeague(db.Model):
+    __tablename__ = 'saved_league'
+    id             = db.Column(db.Integer, primary_key=True)
+    user_id        = db.Column(db.String(100), db.ForeignKey('user.id'), nullable=False)
+    league_id      = db.Column(db.String(100), nullable=False)
+    league_name    = db.Column(db.String(200))
+    source         = db.Column(db.String(20), default='sleeper')
+    num_teams      = db.Column(db.Integer)
+    scoring        = db.Column(db.String(20))
+    league_type    = db.Column(db.String(20))
+    sleeper_user_id = db.Column(db.String(100))
+    user_slot      = db.Column(db.Integer)
+    last_accessed  = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('user_id', 'league_id', name='uq_user_league'),)
+
+
+class DraftBoardSession(db.Model):
+    __tablename__ = 'draft_board_session'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.String(100), db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    source     = db.Column(db.String(20))       # 'sleeper' | 'manual' | 'espn' | 'yahoo'
+    league_id  = db.Column(db.String(100))      # external league ID
+    draft_id   = db.Column(db.String(100))      # external draft ID (Sleeper draft_id, etc.)
+    settings   = db.Column(db.Text)             # JSON: {numTeams, scoringFormat, rosterSlots, teamNames, userSlot}
+    state      = db.Column(db.Text)             # JSON: {board, drafted, userRoster, otherRosters, currentPickNo}
+    last_pick  = db.Column(db.Integer, default=0)  # total picks recorded at last save
+
+
 def _get_secret_key(app):
     env_name = (os.environ.get('FLASK_ENV') or 'development').lower()
     env_secret = os.environ.get('SECRET_KEY')

@@ -1,0 +1,1438 @@
+/* ═══════════════════════════════════════════════════════════════
+   DRAFT BOARD PAGE
+   Dark gold theme — matches rest of Darkhorse UI
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Page wrapper ────────────────────────────────────────────── */
+.db-page {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 64px);
+    padding: 0;
+}
+
+/* ── Top action bar ──────────────────────────────────────────── */
+.db-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--black);
+    border-bottom: 1px solid var(--medium-gray);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.db-topbar-title {
+    font-size: 1em;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-right: 8px;
+}
+
+.db-topbar-meta {
+    font-size: 0.82em;
+    color: var(--text-secondary);
+}
+
+.db-sync-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.db-sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--medium-gray);
+    flex-shrink: 0;
+}
+
+.db-sync-dot.live     { background: #4caf50; animation: db-pulse-dot 2s infinite; }
+.db-sync-dot.error    { background: #e74c3c; }
+.db-sync-dot.paused   { background: var(--gold); }
+
+@keyframes db-pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+}
+
+.db-topbar-btn {
+    padding: 5px 12px;
+    background: var(--dark-gray);
+    color: var(--light-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 5px;
+    font-size: 0.82em;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.db-topbar-btn:hover {
+    background: var(--gold);
+    color: var(--black);
+    border-color: var(--gold);
+}
+.db-topbar-btn.danger:hover {
+    background: #c0392b;
+    border-color: #c0392b;
+    color: #fff;
+}
+
+/* ── Setup: saved leagues & section label ────────────────────── */
+
+.db-setup-section-label {
+    font-size: 0.72em;
+    font-weight: 700;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.6rem;
+}
+
+.db-saved-league-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 7px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+}
+
+.db-saved-league-row:hover { border-color: var(--gold); }
+
+.db-saved-league-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.db-saved-league-name {
+    font-size: 0.92em;
+    font-weight: 600;
+    color: var(--white);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-saved-league-meta {
+    font-size: 0.76em;
+    color: var(--text-secondary);
+}
+
+.db-saved-league-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* ── Setup panel ─────────────────────────────────────────────── */
+.db-setup-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2em 1em;
+    overflow-y: auto;
+}
+
+.db-setup-card {
+    background: var(--black);
+    border: 1px solid var(--gold);
+    border-radius: 12px;
+    padding: 2rem 2.5rem;
+    max-width: 520px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.8), 0 0 60px var(--gold-glow);
+}
+
+.db-setup-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--white);
+    margin: 0 0 0.3rem;
+    letter-spacing: -0.02em;
+}
+
+.db-setup-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0 0 1.5rem;
+}
+
+/* Source tabs */
+.db-source-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.db-source-tab {
+    padding: 7px 18px;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    background: var(--dark-gray);
+    color: var(--light-gray);
+    font-size: 0.9em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.db-source-tab:hover:not(:disabled) {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+.db-source-tab.active {
+    background: var(--gold);
+    color: var(--black);
+    border-color: var(--gold);
+    font-weight: 600;
+}
+
+.db-source-tab:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.db-source-tab .cs-label {
+    font-size: 0.68em;
+    vertical-align: super;
+    color: var(--text-secondary);
+}
+
+/* Form inside setup card */
+.db-form-group {
+    margin-bottom: 1rem;
+}
+
+.db-form-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--light-gray);
+    margin-bottom: 0.35rem;
+}
+
+.db-form-input,
+.db-form-select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    color: var(--white);
+    font-size: 0.95em;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.db-form-input::placeholder { color: var(--text-secondary); }
+
+.db-form-input:focus,
+.db-form-select:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold-glow);
+}
+
+.db-form-select option { background: var(--dark-gray); }
+
+.db-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* Team name grid (manual mode) */
+.db-team-names-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.db-team-name-entry {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.db-team-name-entry .slot-label {
+    font-size: 0.75em;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    min-width: 20px;
+}
+
+.db-team-name-entry.user-slot .slot-label { color: var(--gold); font-weight: 700; }
+.db-team-name-entry.user-slot input { border-color: var(--gold); }
+
+/* Setup action button */
+.db-setup-btn {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+    color: var(--black);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 0.5rem;
+    box-shadow: 0 4px 12px var(--gold-glow);
+}
+
+.db-setup-btn:hover {
+    background: linear-gradient(135deg, var(--gold-dim), #9A7B2A);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(212,175,55,0.35);
+}
+
+.db-setup-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.db-setup-error {
+    color: #e74c3c;
+    font-size: 0.85em;
+    margin-top: 0.5rem;
+    display: none;
+}
+
+/* Loading spinner in setup */
+.db-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--medium-gray);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: db-spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+@keyframes db-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Active board layout ─────────────────────────────────────── */
+.db-active {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.db-layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 210px 1fr;
+    gap: 0;
+    align-items: start;  /* panels don't stretch — left/right become sticky */
+}
+
+/* ── Available players panel ─────────────────────────────────── */
+.db-available {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--medium-gray);
+    background: var(--black);
+    overflow: hidden;
+    /* Stick below the topbar (~49px) and fill the rest of the viewport */
+    position: sticky;
+    top: 49px;
+    height: calc(100vh - 49px);
+    align-self: start;
+}
+
+.db-panel-header {
+    padding: 10px 14px 8px;
+    font-size: 0.75em;
+    font-weight: 700;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--medium-gray);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.db-avail-count {
+    background: var(--medium-gray);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.85em;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.db-search-wrap {
+    padding: 8px 10px 6px;
+    border-bottom: 1px solid var(--medium-gray);
+    flex-shrink: 0;
+}
+
+.db-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 5px;
+    color: var(--white);
+    font-size: 0.88em;
+    outline: none;
+}
+
+.db-search::placeholder { color: var(--text-secondary); }
+.db-search:focus { border-color: var(--gold); }
+
+/* Position filter tabs */
+.db-pos-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--medium-gray);
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+}
+
+.db-pos-tab {
+    flex: 1;
+    padding: 4px 4px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 4px;
+    color: var(--light-gray);
+    font-size: 0.78em;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+}
+
+.db-pos-tab:hover    { border-color: var(--gold); color: var(--gold); }
+.db-pos-tab.active   { background: var(--gold); color: var(--black); border-color: var(--gold); }
+
+/* Player list */
+.db-player-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.db-player-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(42,42,42,0.6);
+    cursor: pointer;
+    transition: background 0.12s;
+    min-height: 36px;
+}
+
+.db-player-row:hover:not(.db-player-drafted) {
+    background: var(--dark-gray);
+}
+
+.db-player-row.db-player-drafted {
+    opacity: 0.38;
+    cursor: default;
+}
+
+.db-player-row.db-player-drafted .db-player-name {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+.db-player-rank {
+    font-size: 0.72em;
+    color: var(--text-secondary);
+    min-width: 22px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.db-player-name {
+    flex: 1;
+    font-size: 0.84em;
+    color: var(--white);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+.db-player-nfl {
+    font-size: 0.72em;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+/* ── Position badges ─────────────────────────────────────────── */
+.db-pos-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.7em;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.db-pos-badge.pos-QB  { background: rgba(78,121,167,0.35); color: #8ab4d8; }
+.db-pos-badge.pos-RB  { background: rgba(89,161,79,0.35);  color: #88cc88; }
+.db-pos-badge.pos-WR  { background: rgba(225,87,89,0.35);  color: #e88a8a; }
+.db-pos-badge.pos-TE  { background: rgba(242,142,43,0.3);  color: #f0b870; }
+.db-pos-badge.pos-K   { background: rgba(160,160,160,0.2); color: #aaa; }
+.db-pos-badge.pos-DST { background: rgba(130,100,200,0.3); color: #b8a4e8; }
+.db-pos-badge.pos-DEF { background: rgba(130,100,200,0.3); color: #b8a4e8; }
+
+/* ── Board center column ─────────────────────────────────────── */
+.db-board-center {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.db-board-scroll {
+    flex: none;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+/* ── Resize handle between board and other teams ─────────────── */
+.db-ot-resize-handle {
+    flex-shrink: 0;
+    height: 10px;
+    background: var(--dark-gray);
+    cursor: ns-resize;
+    border-top: 1px solid var(--medium-gray);
+    border-bottom: 1px solid var(--medium-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.db-ot-resize-handle::after {
+    content: '• • •';
+    font-size: 0.45em;
+    letter-spacing: 3px;
+    color: var(--medium-gray);
+    pointer-events: none;
+}
+
+.db-ot-resize-handle:hover,
+.db-ot-resize-handle.dragging {
+    background: rgba(212,175,55,0.15);
+    border-color: rgba(212,175,55,0.4);
+}
+
+.db-ot-resize-handle.dragging::after { color: var(--gold); }
+
+/* Board table — table-layout:fixed + width:100% distributes columns equally */
+.db-board-table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+    font-size: 1em; /* scaled by JS per team count */
+}
+
+.db-board-table thead th {
+    background: var(--black);
+    color: var(--gold);
+    font-size: 0.72em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 8px 4px;
+    border-bottom: 2px solid var(--gold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.db-board-table thead th.db-round-col {
+    width: 36px;
+    position: sticky;
+    left: 0;
+    z-index: 20;
+}
+
+.db-board-table thead th.db-user-col {
+    background: rgba(212,175,55,0.12);
+    border-left: 2px solid var(--gold);
+    border-right: 2px solid var(--gold);
+    color: var(--gold);
+}
+
+/* Table cells */
+.db-round-cell {
+    width: 36px;
+    font-size: 0.72em;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 4px 2px;
+    background: var(--black);
+    border-right: 1px solid var(--medium-gray);
+    position: sticky;
+    left: 0;
+    z-index: 5;
+}
+
+.db-cell {
+    padding: 4px 4px;
+    border: 1px solid rgba(42,42,42,0.8);
+    vertical-align: middle;
+    font-size: 0.78em;
+    transition: background 0.15s;
+}
+
+.db-cell.db-cell-empty {
+    cursor: pointer;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.db-cell.db-cell-empty:hover {
+    background: var(--dark-gray);
+    border-color: var(--gold);
+}
+
+.db-pick-label {
+    font-size: 0.75em;
+    font-weight: 600;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.03em;
+}
+
+/* Pick label inside a filled cell — sits above the player name */
+.db-pick-label-filled {
+    display: block;
+    font-size: 0.7em;
+    font-weight: 700;
+    color: var(--gold);
+    opacity: 0.7;
+    letter-spacing: 0.05em;
+    margin-bottom: 2px;
+}
+
+.db-cell-player-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.db-cell.db-user-cell {
+    background: rgba(212,175,55,0.05);
+    border-left: 2px solid rgba(212,175,55,0.4);
+    border-right: 2px solid rgba(212,175,55,0.4);
+}
+
+.db-cell.db-user-cell.db-cell-empty:hover {
+    background: rgba(212,175,55,0.12);
+    border-color: var(--gold);
+}
+
+.db-cell.db-cell-filled {
+    cursor: default;
+}
+
+.db-cell-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.2;
+}
+
+.db-cell-name {
+    color: var(--white);
+    font-weight: 600;
+    font-size: 0.92em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-cell-nfl {
+    color: var(--text-secondary);
+    font-size: 0.78em;
+}
+
+/* ── Profile links ─────────────────────────────────────────── */
+.db-profile-link {
+    color: inherit;
+    text-decoration: none;
+}
+.db-profile-link:hover {
+    color: var(--gold);
+    text-decoration: underline;
+}
+
+/* ── Available-only toggle ──────────────────────────────────── */
+.db-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.db-avail-toggle {
+    margin-left: auto;
+    font-size: 0.7em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--medium-gray);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+.db-avail-toggle:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+}
+.db-avail-toggle.active {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: var(--black);
+    font-weight: 700;
+}
+
+/* ── Sync-ok flash ──────────────────────────────────────────── */
+.db-topbar-btn.db-sync-ok {
+    background: rgba(80, 200, 120, 0.25);
+    border-color: #50c878;
+    color: #50c878;
+}
+
+/* Current pick indicator row */
+.db-current-pick-row td { background: rgba(212,175,55,0.04) !important; }
+
+/* ── Roster section header (STARTERS / BENCH / IR / TAXI) ───── */
+
+.db-roster-section-hdr {
+    font-size: 0.65em;
+    font-weight: 700;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 14px 3px;
+    background: rgba(212,175,55,0.06);
+    border-top: 1px solid rgba(212,175,55,0.2);
+    border-bottom: 1px solid rgba(42,42,42,0.6);
+    flex-shrink: 0;
+}
+
+/* First section header has no top border */
+.db-roster-slots .db-roster-section-hdr:first-child,
+.db-ot-body .db-roster-section-hdr:first-child {
+    border-top: none;
+}
+
+/* ── Bottom row: Other Teams + AI Bar side by side ───────────── */
+.db-bottom-row {
+    display: flex;
+    flex-direction: row;
+    border-top: 2px solid var(--medium-gray);
+}
+
+/* ── Other teams panel ───────────────────────────────────────── */
+.db-other-teams {
+    flex: 1;
+    background: var(--charcoal);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--medium-gray);
+}
+
+.db-other-teams.ot-collapsed {
+    flex: none;
+    width: auto;
+}
+
+.db-other-teams.ot-collapsed .db-ot-tabs,
+.db-other-teams.ot-collapsed .db-ot-body {
+    display: none;
+}
+
+/* Toggle button in Other Teams header */
+.db-ot-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1em;
+    line-height: 1;
+    padding: 0 4px;
+    margin-left: auto;
+    transition: color 0.15s, transform 0.2s;
+    transform: rotate(90deg);   /* › points down when expanded */
+}
+
+.db-ot-toggle:hover { color: var(--gold); }
+
+.db-other-teams.ot-collapsed .db-ot-toggle {
+    transform: rotate(0deg);    /* › points right when collapsed */
+}
+
+.db-ot-tabs {
+    display: flex;
+    overflow: hidden;
+    border-bottom: 1px solid var(--medium-gray);
+    flex-shrink: 0;
+}
+
+.db-ot-tab {
+    flex: 1;
+    padding: 6px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 0.78em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    min-width: 0;
+}
+
+.db-ot-tab:hover  { color: var(--white); }
+.db-ot-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+.db-ot-body {
+    overflow-y: hidden;
+    padding: 0;
+}
+
+.db-ot-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    align-items: start;
+}
+
+.db-ot-col {
+    overflow-y: hidden;
+    border-right: 1px solid var(--medium-gray);
+}
+
+.db-ot-col:last-child {
+    border-right: none;
+    overflow-y: auto;
+}
+
+.db-ot-pick {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 0.78em;
+    white-space: nowrap;
+}
+
+.db-ot-pick .db-pos-badge { font-size: 0.68em; }
+
+/* ── Your team panel ─────────────────────────────────────────── */
+.db-your-team {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--medium-gray);
+    background: var(--black);
+    overflow: hidden;
+    /* Stick below the topbar (~49px) and fill the rest of the viewport */
+    position: sticky;
+    top: 49px;
+    height: calc(100vh - 49px);
+    align-self: start;
+}
+
+.db-roster-slots {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.db-slot-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 14px;
+    border-bottom: 1px solid rgba(42,42,42,0.5);
+    min-height: 34px;
+}
+
+.db-slot-label {
+    font-size: 0.7em;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    width: 42px;        /* fixed width forces multi-word labels like "Super Flex" to wrap */
+    min-width: 42px;
+    flex-shrink: 0;
+    white-space: normal;
+    line-height: 1.2;
+}
+
+.db-slot-value {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    font-style: italic;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-top: 1px;  /* align baseline with label first line */
+}
+
+.db-slot-value.filled {
+    color: var(--white);
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* ── AI suggestion bar ───────────────────────────────────────── */
+.db-ai-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--black);
+    border-left: 2px solid var(--gold);
+    flex: 1;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.db-ai-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.db-ai-label {
+    font-size: 0.66em;
+    font-weight: 700;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+
+/* Needs bar */
+.db-need-pills {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.db-need-pill {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.76em;
+    font-weight: 600;
+}
+
+.db-need-bar-wrap {
+    width: 40px;
+    height: 5px;
+    background: var(--medium-gray);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.db-need-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--gold);
+    transition: width 0.4s ease;
+}
+
+.db-need-pill.urgent  .db-need-bar-fill { background: #e74c3c; }
+.db-need-pill.medium  .db-need-bar-fill { background: var(--gold); }
+.db-need-pill.low     .db-need-bar-fill { background: #4caf50; }
+
+/* Target / best available chips */
+.db-target-chips,
+.db-bav-chips {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.db-target-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 0.76em;
+    white-space: nowrap;
+    cursor: default;
+    transition: border-color 0.15s;
+}
+
+.db-target-chip:hover { border-color: var(--gold); }
+
+/* Alert pills */
+.db-alerts {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+/* ── Draft-complete analysis ─────────────────────────────────── */
+.db-analysis-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+.db-overall-grade {
+    font-size: 1.4em;
+    font-weight: 800;
+    line-height: 1;
+}
+.db-analysis-tag {
+    font-size: 0.72em;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.db-analysis-tag.strength {
+    background: rgba(80,200,120,0.15);
+    color: #50c878;
+    border: 1px solid rgba(80,200,120,0.3);
+}
+.db-analysis-tag.need {
+    background: rgba(225,87,89,0.12);
+    color: #e15759;
+    border: 1px solid rgba(225,87,89,0.25);
+}
+
+.db-pos-group-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.db-pos-group-card {
+    background: var(--dark-gray);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-top: 3px solid var(--gold);
+    border-radius: 6px;
+    padding: 8px 10px;
+    min-width: 100px;
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.db-pos-group-top {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    margin-bottom: 4px;
+}
+.db-pos-group-label {
+    font-size: 0.72em;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.db-pos-group-grade {
+    font-size: 1.1em;
+    font-weight: 800;
+    line-height: 1;
+}
+.db-pos-group-count {
+    font-size: 0.68em;
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+.db-pos-group-note {
+    font-size: 0.72em;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    margin-bottom: 5px;
+}
+.db-pos-group-players {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    font-size: 0.68em;
+}
+.db-analysis-player {
+    color: var(--white);
+    font-weight: 600;
+}
+.db-analysis-sep {
+    color: var(--medium-gray);
+}
+
+.db-trade-suggestions {
+    box-sizing: border-box;
+    padding: 8px 12px;
+    background: rgba(212,175,55,0.06);
+    border: 1px solid rgba(212,175,55,0.3);
+    border-left: 2px solid var(--gold);
+    border-radius: 4px;
+}
+
+.db-trade-tip {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    padding: 3px 0;
+    line-height: 1.4;
+}
+
+.db-alert-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.76em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.db-alert-pill.high   { background: rgba(231,76,60,0.18); border: 1px solid rgba(231,76,60,0.5); color: #e74c3c; }
+.db-alert-pill.medium { background: rgba(212,175,55,0.12); border: 1px solid var(--gold); color: var(--gold); }
+
+.db-ai-placeholder {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* ── Player picker modal ─────────────────────────────────────── */
+.db-picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.db-picker-modal {
+    background: var(--black);
+    border: 1px solid var(--gold);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    width: 100%;
+    max-width: 420px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+}
+
+.db-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.db-picker-title {
+    font-size: 0.9em;
+    font-weight: 700;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.db-picker-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+}
+
+.db-picker-close:hover { color: var(--white); }
+
+.db-picker-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    color: var(--white);
+    font-size: 0.9em;
+    outline: none;
+    margin-bottom: 8px;
+}
+
+.db-picker-search:focus { border-color: var(--gold); }
+
+.db-picker-list {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+}
+
+.db-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(42,42,42,0.6);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.db-picker-row:hover { background: var(--dark-gray); }
+.db-picker-row:last-child { border-bottom: none; }
+
+.db-picker-rank { font-size: 0.72em; color: var(--text-secondary); min-width: 22px; }
+.db-picker-name { flex: 1; font-size: 0.88em; color: var(--white); font-weight: 500; }
+.db-picker-nfl  { font-size: 0.72em; color: var(--text-secondary); }
+
+/* Team selector in picker */
+.db-picker-team-select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    background: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    color: var(--white);
+    font-size: 0.88em;
+    margin-top: 8px;
+    outline: none;
+}
+.db-picker-team-select:focus { border-color: var(--gold); }
+
+.db-picker-confirm-btn {
+    width: 100%;
+    padding: 0.7rem;
+    margin-top: 10px;
+    background: var(--gold);
+    color: var(--black);
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.db-picker-confirm-btn:hover { background: var(--gold-dim); }
+
+/* ── Current pick indicator ──────────────────────────────────── */
+.db-current-pick-bar {
+    padding: 5px 16px;
+    background: rgba(212,175,55,0.08);
+    border-bottom: 1px solid rgba(212,175,55,0.2);
+    font-size: 0.8em;
+    color: var(--gold);
+    font-weight: 600;
+    flex-shrink: 0;
+    display: none;
+}
+
+.db-current-pick-bar.visible { display: block; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE LAYOUT
+═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+    .db-page { height: auto; overflow: visible; }
+
+    .db-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+        overflow: visible;
+    }
+
+    /* Board center takes full width on mobile */
+    .db-board-center { order: 1; }
+
+    /* Hide side panels — replaced by drawer */
+    .db-available { display: none; position: static; height: auto; }
+    .db-your-team { display: none; position: static; height: auto; }
+
+    .db-other-teams { height: 200px; }
+    .db-ai-bar { gap: 10px; height: 70px; }
+
+    /* Mobile drawer trigger button */
+    .db-mobile-fab {
+        display: flex;
+    }
+
+    /* Topbar compact — not sticky on mobile, page flows naturally */
+    .db-topbar { padding: 6px 12px; gap: 8px; position: static; }
+    .db-topbar-title { font-size: 0.9em; }
+    .db-sync-badge { margin-left: 0; }
+
+    /* Setup card */
+    .db-setup-card { padding: 1.5rem 1.25rem; }
+    .db-form-row { grid-template-columns: 1fr; }
+    .db-team-names-grid { grid-template-columns: 1fr; }
+}
+
+/* Mobile FAB (floating action button) to open drawer */
+.db-mobile-fab {
+    display: none;
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    z-index: 1500;
+    background: var(--gold);
+    color: var(--black);
+    border: none;
+    border-radius: 28px;
+    padding: 12px 18px;
+    font-size: 0.85em;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    gap: 6px;
+    align-items: center;
+}
+
+/* Mobile bottom drawer */
+.db-drawer {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 2000;
+    background: var(--black);
+    border-top: 2px solid var(--gold);
+    border-radius: 14px 14px 0 0;
+    max-height: 75vh;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.32s ease;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.8);
+}
+
+.db-drawer.open { transform: translateY(0); }
+
+.db-drawer-handle {
+    text-align: center;
+    padding: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.db-drawer-handle::before {
+    content: '';
+    display: inline-block;
+    width: 40px;
+    height: 4px;
+    background: var(--medium-gray);
+    border-radius: 2px;
+}
+
+.db-drawer-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--medium-gray);
+    flex-shrink: 0;
+}
+
+.db-drawer-tab {
+    flex: 1;
+    padding: 10px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.db-drawer-tab.active {
+    color: var(--gold);
+    border-bottom-color: var(--gold);
+}
+
+.db-drawer-body {
+    flex: 1;
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    .db-drawer { display: flex; }
+    .db-mobile-fab { display: flex; }
+}
+
+@media (max-width: 480px) {
+    .db-board-table thead th { font-size: 0.65em; padding: 6px 4px; }
+    .db-cell { min-width: 72px; max-width: 90px; font-size: 0.7em; padding: 3px 4px; }
+    .db-round-cell { width: 28px; font-size: 0.65em; }
+    .db-ai-bar { padding: 6px 10px; gap: 8px; }
+    .db-ai-label { font-size: 0.6em; }
+    .db-target-chip { font-size: 0.7em; padding: 2px 6px; }
+    .db-alert-pill { font-size: 0.7em; }
+}

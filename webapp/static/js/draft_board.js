@@ -1,0 +1,2130 @@
+/* ═══════════════════════════════════════════════════════════════
+   DRAFT BOARD — draft_board.js
+   Real-time live draft tracker with Sleeper sync + AI suggestions
+═══════════════════════════════════════════════════════════════ */
+
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────
+const DB = {
+    // Session settings
+    source:        'manual',
+    leagueId:      null,
+    draftId:       null,
+    leagueName:    'Draft Board',
+    numTeams:      12,
+    numRounds:     15,
+    userSlot:      1,          // 1-indexed
+    teamNames:     [],
+    scoringFormat: 'ppr',
+    rosterSlots:   { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DST: 1, bench: 6 },
+
+    // Sleeper user info (stored so polls know who the user is)
+    sleeperUserId: null,
+
+    // Live draft state
+    players:        [],        // Full ranked list [{Rank, Name, Position, Team, ADP}]
+    drafted:        new Set(), // Set of player Names that are drafted
+    board:          [],        // board[r][t] = pick obj | null  (0-indexed round & team)
+    userRoster:     [],        // user's picks in order
+    otherRosters:   {},        // teamIdx (0-indexed) → [pick]
+    currentPickNo:  0,         // last overall pick number that has been filled
+
+    // Pending picker state (manual mode)
+    pendingRound:   null,
+    pendingTeamIdx: null,
+
+    // Full league roster data — structured per Sleeper sections
+    // fullRosters[teamIdx] = { starters:[{slot,player}], bench:[], reserve:[], taxi:[] }
+    fullRosters:       null,
+    starterSlotLabels: [],   // e.g. ['QB','RB','RB','WR','WR','TE','FLEX']
+    draftComplete:     false,
+    leagueType:        'redraft',   // 'redraft' | 'dynasty' | 'keeper'
+
+    // Polling
+    syncInterval:   null,
+    lastSyncAt:     null,
+    syncErrorCount: 0,
+
+    // UI
+    posFilter:       'ALL',
+    searchQuery:     '',
+    showAvailOnly:   false,    // when true, hide drafted players from the left panel
+    activeOtTab:     -999,     // teamIdx shown in other-teams panel; -999 = My Team
+    saveDebounce:    null,
+    aiDebounce:      null,
+};
+
+// ── Snake draft math ──────────────────────────────────────────
+
+/** pick_no (1-indexed) → {round, teamIdx} (both 0-indexed internally, round is 1-indexed) */
+function pickToSlot(pickNo, numTeams) {
+    const round        = Math.ceil(pickNo / numTeams);
+    const posInRound   = pickNo - (round - 1) * numTeams;
+    const teamIdx      = (round % 2 === 1) ? posInRound - 1 : numTeams - posInRound;
+    return { round, teamIdx };
+}
+
+/** round (1-indexed) + teamIdx (0-indexed) → pick_no (1-indexed) */
+function slotToPickNo(round, teamIdx, numTeams) {
+    const posInRound = (round % 2 === 1) ? teamIdx + 1 : numTeams - teamIdx;
+    return (round - 1) * numTeams + posInRound;
+}
+
+/** Returns the next overall pick_no where the user drafts, after currentPickNo */
+function userNextPickNo() {
+    const userIdx = DB.userSlot - 1;
+    for (let p = DB.currentPickNo + 1; p <= DB.numTeams * DB.numRounds; p++) {
+        if (pickToSlot(p, DB.numTeams).teamIdx === userIdx) return p;
+    }
+    return -1;
+}
+
+/** Picks until user's next turn */
+function picksUntilUser() {
+    const next = userNextPickNo();
+    if (next < 0) return 99;
+    return next - DB.currentPickNo - 1;
+}
+
+// ── Player name helpers ───────────────────────────────────────
+function shortName(name) {
+    if (!name) return '';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length < 2) return name;
+    return parts[0][0] + '. ' + parts.slice(1).join(' ');
+}
+
+/** Convert Sleeper slot labels to readable form: SUPER_FLEX → "Super Flex", IDP_FLEX → "IDP", etc. */
+function formatSlotLabel(label) {
+    if (!label) return '?';
+    const map = {
+        'SUPER_FLEX': 'Super Flex',
+        'IDP_FLEX':   'IDP',
+        'FLEX':       'Flex',
+        'DST':        'D/ST',
+        'QB':         'QB',
+        'RB':         'RB',
+        'WR':         'WR',
+        'TE':         'TE',
+        'K':          'K',
+        'BN':         'BN',
+        'IR':         'IR',
+        'TAXI':       'TAXI',
+    };
+    return map[label.toUpperCase()] || label;
+}
+
+function normalizeName(name) {
+    return (name || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, '')           // strip punctuation
+        .replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '') // strip name suffixes
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/** Build a link to the player profile page. */
+function profileUrl(name, pos, nflTeam) {
+    return `/player/${encodeURIComponent(name)}?pos=${encodeURIComponent(pos || '')}&team=${encodeURIComponent(nflTeam || '')}&back=/draft-board`;
+}
+
+function posClass(pos) {
+    const p = (pos || '').toUpperCase();
+    const map = { QB: 'pos-QB', RB: 'pos-RB', WR: 'pos-WR', TE: 'pos-TE', K: 'pos-K', DST: 'pos-DST', DEF: 'pos-DST' };
+    return map[p] || '';
+}
+
+function badge(pos) {
+    return `<span class="db-pos-badge ${posClass(pos)}">${pos || '?'}</span>`;
+}
+
+// ── Setup panel logic ─────────────────────────────────────────
+
+function initSetupPanel() {
+    // Source tab switching
+    document.querySelectorAll('.db-source-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            document.querySelectorAll('.db-source-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const src = btn.dataset.source;
+            document.getElementById('setup-sleeper').style.display = (src === 'sleeper') ? '' : 'none';
+            document.getElementById('setup-manual').style.display  = (src === 'manual')  ? '' : 'none';
+        });
+    });
+
+    // Sleeper lookup
+    document.getElementById('sleeper-lookup-btn').addEventListener('click', sleeperLookup);
+    document.getElementById('sleeper-username').addEventListener('keydown', e => {
+        if (e.key === 'Enter') sleeperLookup();
+    });
+
+    // Sleeper league selection → show connect button
+    document.getElementById('sleeper-league-select').addEventListener('change', function () {
+        const has = this.value !== '';
+        document.getElementById('sleeper-connect-btn').style.display = has ? '' : 'none';
+        document.getElementById('sleeper-scoring-group').style.display = has ? '' : 'none';
+    });
+
+    document.getElementById('sleeper-connect-btn').addEventListener('click', sleeperConnect);
+
+    // Manual: populate slot selects + team names
+    const numTeamsSel = document.getElementById('manual-num-teams');
+    numTeamsSel.addEventListener('change', buildManualTeamUI);
+    buildManualTeamUI();
+
+    document.getElementById('manual-start-btn').addEventListener('click', manualStart);
+}
+
+async function sleeperLookup() {
+    const username = document.getElementById('sleeper-username').value.trim();
+    if (!username) return;
+    const errEl = document.getElementById('sleeper-error');
+    errEl.style.display = 'none';
+    const btn = document.getElementById('sleeper-lookup-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="db-spinner"></span>Searching…';
+
+    try {
+        const res = await fetch('/draft-board/sleeper/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            showSetupError('sleeper', data.error || 'Could not find Sleeper user.');
+            return;
+        }
+
+        DB.sleeperUserId = data.user_id;
+
+        const sel = document.getElementById('sleeper-league-select');
+        sel.innerHTML = '<option value="">Choose a league…</option>';
+        (data.leagues || []).forEach(lg => {
+            const opt = document.createElement('option');
+            opt.value = lg.league_id;
+            opt.textContent = `${lg.name} (${lg.num_teams} teams, ${lg.scoring.toUpperCase()})`;
+            opt.dataset.scoring = lg.scoring;
+            sel.appendChild(opt);
+        });
+
+        document.getElementById('sleeper-league-group').style.display = '';
+        document.getElementById('sleeper-connect-btn').style.display   = 'none';
+        document.getElementById('sleeper-scoring-group').style.display  = 'none';
+    } catch (e) {
+        showSetupError('sleeper', 'Network error. Please try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Find Leagues';
+    }
+}
+
+async function sleeperConnect() {
+    const leagueId = document.getElementById('sleeper-league-select').value;
+    if (!leagueId) return;
+
+    const selectedOpt = document.querySelector('#sleeper-league-select option:checked');
+    const detectedScoring = selectedOpt?.dataset?.scoring || 'ppr';
+    document.getElementById('sleeper-scoring-select').value = detectedScoring;
+
+    const scoringFormat = document.getElementById('sleeper-scoring-select').value;
+    const errEl = document.getElementById('sleeper-error');
+    errEl.style.display = 'none';
+    const btn = document.getElementById('sleeper-connect-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="db-spinner"></span>Connecting…';
+
+    try {
+        const res = await fetch('/draft-board/sleeper/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league_id: leagueId, sleeper_user_id: DB.sleeperUserId }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            showSetupError('sleeper', data.error || 'Could not connect to league.');
+            return;
+        }
+
+        // Auto-save this league to the user's account
+        fetch('/draft-board/leagues/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                league_id:        leagueId,
+                league_name:      data.league_name,
+                source:           'sleeper',
+                num_teams:        data.num_teams,
+                scoring:          scoringFormat,
+                league_type:      data.league_type || 'redraft',
+                sleeper_user_id:  DB.sleeperUserId,
+                user_slot:        data.user_slot,
+            }),
+        }).catch(() => {});   // non-blocking
+
+        await initBoard({
+            source:             'sleeper',
+            leagueId:           leagueId,
+            draftId:            data.draft_id,
+            leagueName:         data.league_name,
+            numTeams:           data.num_teams,
+            numRounds:          data.num_rounds,
+            userSlot:           data.user_slot,
+            teamNames:          data.team_names,
+            scoringFormat:      scoringFormat,
+            rosterSlots:        data.roster_slots,
+            starterSlotLabels:  data.starter_slot_labels || [],
+            existingPicks:      data.picks || [],
+            teamRosters:        data.team_rosters || null,
+            rosterPlayerNames:  data.roster_player_names || [],
+            draftStatus:        data.draft_status || 'pre_draft',
+            leagueType:         data.league_type  || 'redraft',
+        });
+    } catch (e) {
+        showSetupError('sleeper', 'Network error. Please try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect to League';
+    }
+}
+
+function buildManualTeamUI() {
+    const n   = parseInt(document.getElementById('manual-num-teams').value, 10);
+    const sel = document.getElementById('manual-user-slot');
+    const grid = document.getElementById('manual-team-names');
+
+    sel.innerHTML = '';
+    for (let i = 1; i <= n; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `Slot ${i}`;
+        sel.appendChild(opt);
+    }
+
+    grid.innerHTML = '';
+    for (let i = 1; i <= n; i++) {
+        const wrap = document.createElement('div');
+        wrap.className = 'db-team-name-entry';
+        wrap.id = `team-entry-${i}`;
+        wrap.innerHTML = `
+            <span class="slot-label">${i}</span>
+            <input class="db-form-input" id="team-name-${i}" type="text"
+                   value="Team ${i}" style="font-size:0.82em;padding:5px 8px">
+        `;
+        grid.appendChild(wrap);
+    }
+
+    // Highlight user slot when it changes
+    sel.addEventListener('change', highlightUserSlot);
+    highlightUserSlot();
+}
+
+function highlightUserSlot() {
+    const n    = parseInt(document.getElementById('manual-num-teams').value, 10);
+    const slot = parseInt(document.getElementById('manual-user-slot').value, 10);
+    for (let i = 1; i <= n; i++) {
+        const entry = document.getElementById(`team-entry-${i}`);
+        if (entry) entry.classList.toggle('user-slot', i === slot);
+    }
+}
+
+function manualStart() {
+    const n       = parseInt(document.getElementById('manual-num-teams').value, 10);
+    const slot    = parseInt(document.getElementById('manual-user-slot').value, 10);
+    const scoring = document.getElementById('manual-scoring').value;
+    const rounds  = parseInt(document.getElementById('manual-num-rounds').value, 10);
+
+    const rosterSlots = {
+        QB:    parseInt(document.getElementById('slot-QB').value, 10) || 1,
+        RB:    parseInt(document.getElementById('slot-RB').value, 10) || 2,
+        WR:    parseInt(document.getElementById('slot-WR').value, 10) || 2,
+        TE:    parseInt(document.getElementById('slot-TE').value, 10) || 1,
+        FLEX:  parseInt(document.getElementById('slot-FLEX').value, 10) || 1,
+        K:     1,
+        DST:   1,
+        bench: parseInt(document.getElementById('slot-bench').value, 10) || 6,
+    };
+
+    const teamNames = [];
+    for (let i = 1; i <= n; i++) {
+        teamNames.push(document.getElementById(`team-name-${i}`)?.value.trim() || `Team ${i}`);
+    }
+
+    initBoard({
+        source:        'manual',
+        leagueId:      null,
+        draftId:       null,
+        leagueName:    'My Draft',
+        numTeams:      n,
+        numRounds:     rounds,
+        userSlot:      slot,
+        teamNames,
+        scoringFormat: scoring,
+        rosterSlots,
+        existingPicks: [],
+    });
+}
+
+function showSetupError(panel, msg) {
+    const el = document.getElementById(`${panel}-error`);
+    if (el) { el.textContent = msg; el.style.display = ''; }
+}
+
+// ── Board initialisation ──────────────────────────────────────
+
+async function initBoard(cfg) {
+    DB.source        = cfg.source;
+    DB.leagueId      = cfg.leagueId;
+    DB.draftId       = cfg.draftId;
+    DB.leagueName    = cfg.leagueName || 'Draft Board';
+    DB.numTeams      = cfg.numTeams;
+    DB.numRounds     = cfg.numRounds;
+    DB.userSlot      = cfg.userSlot;
+    DB.teamNames     = cfg.teamNames;
+    DB.scoringFormat = cfg.scoringFormat;
+    DB.rosterSlots   = cfg.rosterSlots;
+
+    DB.draftComplete      = cfg.draftStatus === 'complete';
+    DB.leagueType         = cfg.leagueType || 'redraft';
+    DB.fullRosters        = cfg.teamRosters || null;
+    DB._analysisCache     = {};
+    DB.starterSlotLabels  = cfg.starterSlotLabels || [];
+
+    // Reset live state
+    DB.drafted       = new Set();
+    DB.board         = Array.from({ length: DB.numRounds }, () => Array(DB.numTeams).fill(null));
+    DB.userRoster    = [];
+    DB.otherRosters  = {};
+    DB.currentPickNo = 0;
+    for (let t = 0; t < DB.numTeams; t++) DB.otherRosters[t] = [];
+
+    // Pre-populate drafted set from all roster players.
+    // Primary: flat list of names resolved via Sleeper's own player map (most reliable).
+    // Fallback: structured fullRosters data.
+    if (cfg.rosterPlayerNames && cfg.rosterPlayerNames.length) {
+        cfg.rosterPlayerNames.forEach(n => DB.drafted.add(normalizeName(n)));
+    } else if (DB.fullRosters) {
+        DB.fullRosters.forEach(roster => {
+            if (!roster) return;
+            const allPlayers = [
+                ...(roster.starters || []).map(s => s.player).filter(Boolean),
+                ...(roster.bench    || []),
+                ...(roster.reserve  || []),
+                ...(roster.taxi     || []),
+            ];
+            allPlayers.forEach(p => { if (p && p.name) DB.drafted.add(normalizeName(p.name)); });
+        });
+    }
+
+    // Show board UI
+    document.getElementById('db-setup-wrap').style.display  = 'none';
+    document.getElementById('db-topbar').style.display      = '';
+    document.getElementById('db-active').style.display             = '';
+    document.getElementById('db-bottom-row').style.display         = '';
+    document.getElementById('db-bottom-resize-handle').style.display = '';
+    requestAnimationFrame(() => {
+        const active = document.getElementById('db-active');
+        if (!active) return;
+        try {
+            const saved = localStorage.getItem('db_active_panel_height');
+            if (saved) active.style.height = Math.max(80, parseInt(saved)) + 'px';
+            else if (!active.style.height) active.style.height = active.offsetHeight + 'px';
+        } catch {
+            if (!active.style.height) active.style.height = active.offsetHeight + 'px';
+        }
+    });
+    document.getElementById('db-league-name').textContent    = DB.leagueName;
+    document.getElementById('db-topbar-meta').textContent   =
+        `${DB.numTeams} teams · ${DB.scoringFormat.toUpperCase()} · ${DB.numRounds} rounds`;
+
+    if (DB.source === 'sleeper') {
+        document.getElementById('db-sync-badge').style.display   = '';
+        document.getElementById('db-sync-now-btn').style.display = '';
+    }
+
+    // Render skeleton board and your-team slots
+    renderBoard();
+    renderRosterSlots();
+    renderOtherTeamTabs();
+
+    // Fetch player list
+    DB.players = await fetchPlayers(DB.scoringFormat);
+    renderAvailable();
+
+    // Apply any existing picks (from Sleeper connect or saved session)
+    for (const pick of (cfg.existingPicks || [])) {
+        applyPick(pick, false);
+    }
+
+    updateCurrentPickBar();
+    scheduleSaveState();
+
+    // Start live polling for Sleeper (only if draft is still in progress)
+    if (DB.source === 'sleeper' && DB.draftId && !DB.draftComplete) {
+        startPolling();
+    } else if (DB.draftComplete) {
+        setSyncStatus('paused', 'Draft complete');
+    }
+
+    // Trigger analysis now that all picks are loaded (runs for any draft state)
+    renderDraftCompleteAnalysis(DB.activeOtTab);
+
+    // Mobile FAB
+    if (window.innerWidth <= 768) {
+        document.getElementById('db-mobile-fab').style.display = 'flex';
+    }
+}
+
+async function fetchPlayers(scoring) {
+    try {
+        const res = await fetch(`/mockdraft/players?scoring=${scoring}&source=darkhorse`);
+        return res.ok ? await res.json() : [];
+    } catch {
+        return [];
+    }
+}
+
+// ── Apply a pick ──────────────────────────────────────────────
+
+/**
+ * pick = { name, position, nfl_team, round, pick_no, draft_slot }
+ *   OR  { name, position, nfl_team, round, teamIdx }  (manual)
+ */
+function applyPick(pick, animate) {
+    animate = (animate !== false);
+
+    const name     = pick.name || '';
+    const pos      = (pick.position || '').toUpperCase();
+    const nflTeam  = pick.nfl_team || pick.Team || '';
+    let   round    = pick.round;
+    let   teamIdx;
+
+    if (pick.pick_no != null) {
+        const slot = pickToSlot(pick.pick_no, DB.numTeams);
+        round   = slot.round;
+        teamIdx = slot.teamIdx;
+    } else if (pick.draft_slot != null) {
+        teamIdx = parseInt(pick.draft_slot, 10) - 1;
+    } else if (pick.teamIdx != null) {
+        teamIdx = pick.teamIdx;
+    } else {
+        return;
+    }
+
+    if (round < 1 || round > DB.numRounds) return;
+    if (teamIdx < 0 || teamIdx >= DB.numTeams) return;
+    if (DB.board[round - 1][teamIdx]) return; // already filled
+
+    const pickObj = { name, position: pos, nfl_team: nflTeam, round, teamIdx };
+    DB.board[round - 1][teamIdx] = pickObj;
+
+    // Track drafted
+    if (name) DB.drafted.add(normalizeName(name));
+
+    // Update rosters
+    if (teamIdx === DB.userSlot - 1) {
+        DB.userRoster.push(pickObj);
+    } else {
+        DB.otherRosters[teamIdx].push(pickObj);
+    }
+
+    // Track current pick
+    const pickNo = slotToPickNo(round, teamIdx, DB.numTeams);
+    if (pickNo > DB.currentPickNo) DB.currentPickNo = pickNo;
+
+    // Update DOM
+    updateBoardCell(round, teamIdx, pickObj, animate);
+    renderAvailable();
+    renderYourTeam();
+    if (DB.activeOtTab === teamIdx) renderOtherTeamBody(teamIdx);
+    updateCurrentPickBar();
+
+    // Invalidate analysis cache for the affected team so next view re-fetches
+    const tabKey = (teamIdx === DB.userSlot - 1) ? MY_TEAM_TAB : teamIdx;
+    if (DB._analysisCache) delete DB._analysisCache[tabKey];
+
+    // Trigger AI (debounced)
+    clearTimeout(DB.aiDebounce);
+    DB.aiDebounce = setTimeout(fetchAISuggestions, 400);
+
+    // Auto-save (debounced)
+    scheduleSaveState();
+}
+
+// ── Board rendering ───────────────────────────────────────────
+
+function renderBoard() {
+    const header = document.getElementById('db-board-header');
+    const body   = document.getElementById('db-board-body');
+
+    // Header — no explicit widths; table-layout:fixed + width:100% distributes equally
+    header.innerHTML = '<th class="db-round-col">Rd</th>';
+    DB.teamNames.forEach((name, i) => {
+        const th = document.createElement('th');
+        th.className = 'db-team-col' + (i === DB.userSlot - 1 ? ' db-user-col' : '');
+        th.textContent = name;
+        header.appendChild(th);
+    });
+    // Scale font size down for large leagues so everything fits
+    const table = document.getElementById('db-board-table');
+    if (table) {
+        const scale = DB.numTeams <= 10 ? 1 : DB.numTeams <= 12 ? 0.88 : DB.numTeams <= 14 ? 0.80 : 0.74;
+        table.style.fontSize = scale + 'em';
+    }
+
+    // Rows
+    body.innerHTML = '';
+    for (let r = 1; r <= DB.numRounds; r++) {
+        const tr = document.createElement('tr');
+        tr.id = `db-row-${r}`;
+
+        const rdTd = document.createElement('td');
+        rdTd.className = 'db-round-cell';
+        rdTd.textContent = r;
+        tr.appendChild(rdTd);
+
+        for (let t = 0; t < DB.numTeams; t++) {
+            const td = buildEmptyCell(r, t);
+            tr.appendChild(td);
+        }
+        body.appendChild(tr);
+    }
+}
+
+function buildEmptyCell(round, teamIdx) {
+    const pickNo   = slotToPickNo(round, teamIdx, DB.numTeams);
+    const isUser   = teamIdx === DB.userSlot - 1;
+    const td       = document.createElement('td');
+    td.id          = `db-cell-${round}-${teamIdx}`;
+    td.className   = `db-cell db-cell-empty${isUser ? ' db-user-cell' : ''}`;
+    td.dataset.round   = round;
+    td.dataset.team    = teamIdx;
+    td.dataset.pick    = pickNo;
+    const pickInRound  = pickNo - (round - 1) * DB.numTeams;
+    td.innerHTML       = `<span class="db-pick-label">${round}.${String(pickInRound).padStart(2,'0')}</span>`;
+    td.addEventListener('click', () => openPicker(round, teamIdx));
+    return td;
+}
+
+function updateBoardCell(round, teamIdx, pickObj, animate) {
+    const td = document.getElementById(`db-cell-${round}-${teamIdx}`);
+    if (!td) return;
+
+    const isUser = teamIdx === DB.userSlot - 1;
+    td.className = `db-cell db-cell-filled${isUser ? ' db-user-cell' : ''}`;
+    td.removeEventListener('click', openPicker);
+
+    // Compute pick notation: round.pickWithinRound  (e.g. "2.01")
+    const pickNo      = slotToPickNo(round, teamIdx, DB.numTeams);
+    const pickInRound = pickNo - (round - 1) * DB.numTeams;
+    const pickLabel   = `${round}.${String(pickInRound).padStart(2, '0')}`;
+
+    td.innerHTML = `
+        <div class="db-cell-inner">
+            <span class="db-pick-label db-pick-label-filled">${pickLabel}</span>
+            <div class="db-cell-player-row">
+                ${badge(pickObj.position)}
+                <a class="db-cell-name db-profile-link" href="${profileUrl(pickObj.name, pickObj.position, pickObj.nfl_team)}">${shortName(pickObj.name)}</a>
+            </div>
+            <span class="db-cell-nfl">${pickObj.nfl_team || ''}</span>
+        </div>
+    `;
+
+    if (animate) {
+        td.style.animation = 'none';
+        td.style.background = 'rgba(212,175,55,0.18)';
+        setTimeout(() => { td.style.background = ''; }, 800);
+    }
+}
+
+// ── Available players list ────────────────────────────────────
+
+function renderAvailable() {
+    const list    = document.getElementById('db-player-list');
+    const countEl = document.getElementById('db-avail-count');
+    if (!list) return;
+
+    const query    = DB.searchQuery.toLowerCase();
+    const posF     = DB.posFilter;
+    let   availCnt = 0;
+
+    const rows = DB.players.map((p, idx) => {
+        const name    = p.Name || '';
+        const pos     = (p.Position || '').toUpperCase();
+        const team    = p.Team || '';
+        const drafted = DB.drafted.has(normalizeName(name));
+
+        if (!drafted) availCnt++;
+
+        // Available-only filter: skip drafted players entirely when toggle is on
+        if (DB.showAvailOnly && drafted) return null;
+
+        if (posF !== 'ALL' && pos !== posF) return null;
+        if (query && !name.toLowerCase().includes(query)) return null;
+
+        const div = document.createElement('div');
+        div.className = `db-player-row${drafted ? ' db-player-drafted' : ''}`;
+        div.dataset.idx = idx;
+        div.innerHTML = `
+            <span class="db-player-rank">${p.Rank || idx + 1}</span>
+            ${badge(pos)}
+            <a class="db-player-name db-profile-link" href="${profileUrl(name, pos, team)}">${name}</a>
+            <span class="db-player-nfl">${team}</span>
+        `;
+        if (!drafted) {
+            // Non-name area click = pick action; name link navigates to profile
+            div.addEventListener('click', e => {
+                if (e.target.closest('.db-profile-link')) return; // let link navigate
+                if (DB.source === 'manual') {
+                    quickAssignPlayer(p);
+                } else {
+                    toggleManualCrossOff(p, div);
+                }
+            });
+        }
+        return div;
+    }).filter(Boolean);
+
+    list.innerHTML = '';
+    rows.forEach(r => list.appendChild(r));
+    if (countEl) countEl.textContent = availCnt;
+
+    // Mirror into mobile drawer if available tab is active
+    syncDrawerAvailable();
+}
+
+function toggleManualCrossOff(player, div) {
+    // In Sleeper mode, let the user manually cross off a pick if Sleeper sync missed it
+    const key = normalizeName(player.Name);
+    if (DB.drafted.has(key)) {
+        DB.drafted.delete(key);
+        div.classList.remove('db-player-drafted');
+    } else {
+        DB.drafted.add(key);
+        div.classList.add('db-player-drafted');
+        scheduleSaveState();
+    }
+}
+
+function quickAssignPlayer(player) {
+    // Determine the next un-filled pick slot in draft order
+    for (let p = DB.currentPickNo + 1; p <= DB.numTeams * DB.numRounds; p++) {
+        const { round, teamIdx } = pickToSlot(p, DB.numTeams);
+        if (!DB.board[round - 1][teamIdx]) {
+            applyPick({
+                name:      player.Name,
+                position:  player.Position,
+                nfl_team:  player.Team,
+                round,
+                teamIdx,
+                pick_no:   p,
+            }, true);
+            return;
+        }
+    }
+}
+
+// ── Position filter & search ──────────────────────────────────
+
+function initFilterTabs() {
+    document.querySelectorAll('.db-pos-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.db-pos-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            DB.posFilter = btn.dataset.pos;
+            renderAvailable();
+        });
+    });
+
+    const search = document.getElementById('db-search');
+    if (search) {
+        search.addEventListener('input', () => {
+            DB.searchQuery = search.value;
+            renderAvailable();
+        });
+    }
+}
+
+// ── Your team roster panel ────────────────────────────────────
+
+function renderRosterSlots() {
+    const container = document.getElementById('db-roster-slots');
+    if (!container) return;
+
+    const slotOrder = ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DST'];
+    const benchN    = DB.rosterSlots.bench || 6;
+
+    // Build slot definitions matching roster config
+    const slotDefs = [];
+    const addSlots = (pos, n) => { for (let i = 0; i < n; i++) slotDefs.push(pos); };
+    addSlots('QB',   DB.rosterSlots.QB   || 1);
+    addSlots('RB',   DB.rosterSlots.RB   || 2);
+    addSlots('WR',   DB.rosterSlots.WR   || 2);
+    addSlots('TE',   DB.rosterSlots.TE   || 1);
+    addSlots('FLEX', DB.rosterSlots.FLEX || 1);
+    addSlots('K',    DB.rosterSlots.K    || 1);
+    addSlots('DST',  DB.rosterSlots.DST  || 1);
+    addSlots('BN',   benchN);
+
+    container.innerHTML = '';
+    slotDefs.forEach((pos, i) => {
+        const div = document.createElement('div');
+        div.className = 'db-slot-row';
+        div.id = `db-slot-row-${i}`;
+        div.innerHTML = `
+            <span class="db-slot-label">${pos}</span>
+            <span class="db-slot-value" id="db-slot-val-${i}">—</span>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function renderRosterSections(container, rosterObj) {
+    /**
+     * Renders starters / bench / IR / taxi sections into `container` using
+     * the structured rosterObj returned by the backend.
+     * rosterObj = { starters:[{slot,player}], bench:[], reserve:[], taxi:[] }
+     */
+    container.innerHTML = '';
+
+    function section(title, rows, emptyMsg) {
+        if (!rows || rows.length === 0) return;
+        const hdr = document.createElement('div');
+        hdr.className = 'db-roster-section-hdr';
+        hdr.textContent = title;
+        container.appendChild(hdr);
+        rows.forEach(row => container.appendChild(row));
+    }
+
+    function makeSlotRow(slotLabel, player) {
+        const div = document.createElement('div');
+        const fmtLabel = formatSlotLabel(slotLabel);
+        div.className = 'db-slot-row';
+        if (player) {
+            div.innerHTML = `
+                <span class="db-slot-label">${fmtLabel}</span>
+                <span class="db-slot-value filled">${badge(player.position)} <a class="db-profile-link" href="${profileUrl(player.name, player.position, player.team)}">${player.name}</a></span>
+            `;
+        } else {
+            div.innerHTML = `
+                <span class="db-slot-label">${fmtLabel}</span>
+                <span class="db-slot-value" style="color:var(--medium-gray);font-style:italic">Empty</span>
+            `;
+        }
+        return div;
+    }
+
+    function makePlayerRow(player, slotLabel) {
+        const div = document.createElement('div');
+        div.className = 'db-slot-row';
+        div.innerHTML = `
+            <span class="db-slot-label">${slotLabel || badge(player.position)}</span>
+            <span class="db-slot-value filled"><a class="db-profile-link" href="${profileUrl(player.name, player.position, player.team)}">${shortName(player.name)}</a></span>
+            <span class="db-player-nfl" style="font-size:0.7em;color:var(--text-secondary);margin-left:4px">${player.team || ''}</span>
+        `;
+        return div;
+    }
+
+    // STARTERS
+    const starterRows = (rosterObj.starters || []).map(s =>
+        makeSlotRow(s.slot || '?', s.player)
+    );
+    section('STARTERS', starterRows);
+
+    // BENCH
+    const benchRows = (rosterObj.bench || []).map(p => makePlayerRow(p, 'BN'));
+    section('BENCH', benchRows);
+
+    // IR / RESERVE
+    const irRows = (rosterObj.reserve || []).map(p => makePlayerRow(p, 'IR'));
+    section('IR', irRows);
+
+    // TAXI
+    const taxiRows = (rosterObj.taxi || []).map(p => makePlayerRow(p, 'TAXI'));
+    section('TAXI', taxiRows);
+
+    if (container.children.length === 0) {
+        container.innerHTML = '<div style="padding:10px;font-size:0.8em;color:var(--text-secondary)">No players yet.</div>';
+    }
+}
+
+function renderYourTeam() {
+    // If My Team tab is active in the bottom row, refresh it
+    if (DB.activeOtTab === MY_TEAM_TAB) renderOtherTeamBody(MY_TEAM_TAB);
+    syncDrawerYourTeam();
+    const container = document.getElementById('db-roster-slots');
+    if (!container) return;
+
+    const userIdx  = DB.userSlot - 1;
+    const fullData = DB.fullRosters && DB.fullRosters[userIdx];
+
+    if (fullData) {
+        // Use structured Sleeper sections
+        renderRosterSections(container, fullData);
+        syncDrawerYourTeam();
+        return;
+    }
+
+    // Fallback: slot-based layout for in-progress manual / pre-roster-load drafts
+    container.innerHTML = '';
+    const slotDefs = [];
+    const addSlots = (pos, n) => { for (let i = 0; i < n; i++) slotDefs.push(pos); };
+    addSlots('QB',   DB.rosterSlots.QB   || 1);
+    addSlots('RB',   DB.rosterSlots.RB   || 2);
+    addSlots('WR',   DB.rosterSlots.WR   || 2);
+    addSlots('TE',   DB.rosterSlots.TE   || 1);
+    addSlots('FLEX', DB.rosterSlots.FLEX || 1);
+    addSlots('K',    DB.rosterSlots.K    || 1);
+    addSlots('DST',  DB.rosterSlots.DST  || 1);
+    addSlots('BN',   DB.rosterSlots.bench || 6);
+
+    const assigned  = new Array(slotDefs.length).fill(null);
+    const remaining = [...DB.userRoster];
+
+    slotDefs.forEach((slot, i) => {
+        if (slot === 'BN') return;
+        const pos = slot === 'FLEX' ? ['RB', 'WR', 'TE'] : [slot];
+        const idx = remaining.findIndex(p => pos.includes((p.position || '').toUpperCase()));
+        if (idx >= 0) assigned[i] = remaining.splice(idx, 1)[0];
+    });
+    slotDefs.forEach((slot, i) => {
+        if (slot !== 'BN') return;
+        if (remaining.length > 0) assigned[i] = remaining.shift();
+    });
+
+    // Re-render slot rows (they were created by renderRosterSlots initially,
+    // but fullRosters mode rebuilds the container so we rebuild here too)
+    slotDefs.forEach((slotLabel, i) => {
+        const pick = assigned[i];
+        const div = document.createElement('div');
+        div.className = 'db-slot-row';
+        div.id = `db-slot-row-${i}`;
+        if (pick) {
+            div.innerHTML = `
+                <span class="db-slot-label">${slotLabel}</span>
+                <span class="db-slot-value filled" id="db-slot-val-${i}">${badge(pick.position)} ${shortName(pick.name)}</span>
+            `;
+        } else {
+            div.innerHTML = `
+                <span class="db-slot-label">${slotLabel}</span>
+                <span class="db-slot-value" id="db-slot-val-${i}">—</span>
+            `;
+        }
+        container.appendChild(div);
+    });
+
+    syncDrawerYourTeam();
+}
+
+// ── Other teams panel ─────────────────────────────────────────
+
+const MY_TEAM_TAB = -999; // sentinel for "My Team" tab
+
+function renderOtherTeamTabs() {
+    const tabs = document.getElementById('db-ot-tabs');
+    if (!tabs) return;
+    tabs.innerHTML = '';
+
+    // "My Team" tab — always first, selected by default
+    const myBtn = document.createElement('button');
+    myBtn.className = `db-ot-tab${DB.activeOtTab === MY_TEAM_TAB ? ' active' : ''}`;
+    myBtn.dataset.team = MY_TEAM_TAB;
+    myBtn.textContent  = 'My Team';
+    myBtn.addEventListener('click', () => {
+        document.querySelectorAll('.db-ot-tab').forEach(b => b.classList.remove('active'));
+        myBtn.classList.add('active');
+        DB.activeOtTab = MY_TEAM_TAB;
+        renderOtherTeamBody(MY_TEAM_TAB);
+        renderDraftCompleteAnalysis(MY_TEAM_TAB);
+    });
+    tabs.appendChild(myBtn);
+
+    DB.teamNames.forEach((name, i) => {
+        if (i === DB.userSlot - 1) return; // skip user's own team
+        const btn = document.createElement('button');
+        btn.className = `db-ot-tab${DB.activeOtTab === i ? ' active' : ''}`;
+        btn.dataset.team = i;
+        btn.textContent  = name;
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.db-ot-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            DB.activeOtTab = i;
+            renderOtherTeamBody(i);
+            renderDraftCompleteAnalysis(i);
+        });
+        tabs.appendChild(btn);
+    });
+
+    // Default to My Team
+    if (DB.activeOtTab < 0 || DB.activeOtTab === MY_TEAM_TAB) {
+        DB.activeOtTab = MY_TEAM_TAB;
+        myBtn.classList.add('active');
+    }
+
+    // Scale tab font size so all tabs fit without scroll (My Team + all other teams)
+    const totalTabs = DB.teamNames.length + 1; // +1 for My Team
+    const tabScale  = totalTabs <= 10 ? 0.78 : totalTabs <= 12 ? 0.68 : totalTabs <= 14 ? 0.60 : 0.54;
+    tabs.style.fontSize = tabScale + 'em';
+
+    renderOtherTeamBody(DB.activeOtTab);
+    // Analysis is deferred until after picks are loaded (called from activateDraft)
+}
+
+function renderTwoColRoster(container, fullData) {
+    const wrap = document.createElement('div');
+    wrap.className = 'db-ot-two-col';
+
+    const leftCol  = document.createElement('div');
+    const rightCol = document.createElement('div');
+    leftCol.className  = 'db-ot-col';
+    rightCol.className = 'db-ot-col';
+
+    function hdr(text) {
+        const d = document.createElement('div');
+        d.className = 'db-roster-section-hdr';
+        d.textContent = text;
+        return d;
+    }
+    function makeSlotRow(slotLabel, player) {
+        const div = document.createElement('div');
+        div.className = 'db-slot-row';
+        const fmtLabel = formatSlotLabel(slotLabel);
+        if (player) {
+            div.innerHTML = `<span class="db-slot-label">${fmtLabel}</span><span class="db-slot-value filled">${badge(player.position)} <a class="db-profile-link" href="${profileUrl(player.name, player.position, player.team)}">${shortName(player.name)}</a></span>`;
+        } else {
+            div.innerHTML = `<span class="db-slot-label">${fmtLabel}</span><span class="db-slot-value" style="color:var(--medium-gray);font-style:italic">Empty</span>`;
+        }
+        return div;
+    }
+    function makePlayerRow(player, slotLabel) {
+        const div = document.createElement('div');
+        div.className = 'db-slot-row';
+        div.innerHTML = `<span class="db-slot-label">${slotLabel}</span><span class="db-slot-value filled">${badge(player.position)} <a class="db-profile-link" href="${profileUrl(player.name, player.position, player.team)}">${shortName(player.name)}</a></span>`;
+        return div;
+    }
+
+    if ((fullData.starters || []).length > 0) {
+        leftCol.appendChild(hdr('STARTERS'));
+        fullData.starters.forEach(s => leftCol.appendChild(makeSlotRow(s.slot || '?', s.player)));
+    }
+
+    const hasBench = (fullData.bench   || []).length > 0;
+    const hasIR    = (fullData.reserve || []).length > 0;
+    const hasTaxi  = (fullData.taxi    || []).length > 0;
+    if (hasBench) { rightCol.appendChild(hdr('BENCH')); fullData.bench.forEach(p => rightCol.appendChild(makePlayerRow(p, 'BN'))); }
+    if (hasIR)    { rightCol.appendChild(hdr('IR'));    fullData.reserve.forEach(p => rightCol.appendChild(makePlayerRow(p, 'IR'))); }
+    if (hasTaxi)  { rightCol.appendChild(hdr('TAXI')); fullData.taxi.forEach(p => rightCol.appendChild(makePlayerRow(p, 'TAXI'))); }
+    if (!hasBench && !hasIR && !hasTaxi) {
+        rightCol.innerHTML = '<div style="padding:10px;font-size:0.8em;color:var(--text-secondary)">No bench.</div>';
+    }
+
+    wrap.appendChild(leftCol);
+    wrap.appendChild(rightCol);
+    container.appendChild(wrap);
+
+    // Cap right col height to match left col so the panel ends at the last starter row
+    requestAnimationFrame(() => {
+        const h = leftCol.offsetHeight;
+        if (h > 0) rightCol.style.maxHeight = h + 'px';
+    });
+}
+
+function renderOtherTeamBody(teamIdx) {
+    const body = document.getElementById('db-ot-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    // My Team tab — render user's roster using the same two-column layout
+    if (teamIdx === MY_TEAM_TAB) {
+        renderTwoColRoster(body, buildRosterData(DB.userSlot - 1));
+        return;
+    }
+
+    const fullData = buildRosterData(teamIdx);
+    if ((fullData.starters || []).length > 0 || (fullData.bench || []).length > 0) {
+        renderTwoColRoster(body, fullData);
+        return;
+    }
+
+    // Fallback: flat pick list for in-progress drafts without roster data
+    const picks = DB.otherRosters[teamIdx] || [];
+    if (picks.length === 0) {
+        body.innerHTML = '<span style="font-size:0.8em;color:var(--text-secondary);padding:8px">No picks yet.</span>';
+        return;
+    }
+
+    picks.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'db-ot-pick';
+        div.innerHTML = `${badge(p.position)} <span style="font-size:0.82em;color:var(--white)">${shortName(p.name)}</span>`;
+        body.appendChild(div);
+    });
+}
+
+// ── Current pick indicator ────────────────────────────────────
+
+function updateCurrentPickBar() {
+    const bar = document.getElementById('db-current-pick-bar');
+    if (!bar) return;
+
+    // Draft explicitly marked complete by Sleeper
+    if (DB.draftComplete) {
+        bar.textContent = '✓ Draft complete';
+        bar.style.color = 'var(--text-secondary)';
+        bar.classList.add('visible');
+        return;
+    }
+
+    const nextPick = DB.currentPickNo + 1;
+    if (nextPick > DB.numTeams * DB.numRounds) {
+        bar.textContent = '✓ Draft complete';
+        bar.style.color = 'var(--text-secondary)';
+        bar.classList.add('visible');
+        DB.draftComplete = true;
+        return;
+    }
+
+    const { round, teamIdx } = pickToSlot(nextPick, DB.numTeams);
+    const teamName  = DB.teamNames[teamIdx] || `Team ${teamIdx + 1}`;
+    const isUser    = teamIdx === DB.userSlot - 1;
+    const pickInRnd = nextPick - (round - 1) * DB.numTeams;
+
+    bar.textContent = isUser
+        ? `⭐ YOUR PICK — Round ${round}, Pick ${round}.${String(pickInRnd).padStart(2,'0')}`
+        : `On the clock: ${teamName} — Round ${round}, Pick ${round}.${String(pickInRnd).padStart(2,'0')}`;
+    bar.classList.add('visible');
+    bar.style.color = isUser ? 'var(--gold)' : 'var(--text-secondary)';
+
+    const row = document.getElementById(`db-row-${round}`);
+    if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// ── Player picker modal ───────────────────────────────────────
+
+let _pickerPendingRound   = null;
+let _pickerPendingTeamIdx = null;
+let _pickerSelectedPlayer = null;
+
+function openPicker(round, teamIdx) {
+    // Don't open picker for already-filled cells
+    if (DB.board[round - 1][teamIdx]) return;
+
+    _pickerPendingRound   = round;
+    _pickerPendingTeamIdx = teamIdx;
+    _pickerSelectedPlayer = null;
+
+    const title = document.getElementById('db-picker-title');
+    const pickNo = slotToPickNo(round, teamIdx, DB.numTeams);
+    const pickInRnd = pickNo - (round - 1) * DB.numTeams;
+    const teamName = DB.teamNames[teamIdx] || `Team ${teamIdx + 1}`;
+    title.textContent = `Pick ${round}.${String(pickInRnd).padStart(2,'0')} — ${teamName}`;
+
+    // Populate team select
+    const sel = document.getElementById('db-picker-team-select');
+    sel.innerHTML = '';
+    DB.teamNames.forEach((name, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = name + (i === DB.userSlot - 1 ? ' (You)' : '');
+        if (i === teamIdx) opt.selected = true;
+        sel.appendChild(opt);
+    });
+
+    // Populate picker list
+    renderPickerList('');
+
+    document.getElementById('db-picker-search').value = '';
+    document.getElementById('db-picker-overlay').style.display = '';
+    document.getElementById('db-picker-search').focus();
+}
+
+function renderPickerList(query) {
+    const list = document.getElementById('db-picker-list');
+    list.innerHTML = '';
+    const q = query.toLowerCase();
+
+    DB.players.forEach(p => {
+        const name    = p.Name || '';
+        const pos     = (p.Position || '').toUpperCase();
+        if (DB.drafted.has(normalizeName(name))) return;
+        if (q && !name.toLowerCase().includes(q)) return;
+
+        const row = document.createElement('div');
+        row.className = 'db-picker-row';
+        row.innerHTML = `
+            <span class="db-picker-rank">${p.Rank || ''}</span>
+            ${badge(pos)}
+            <span class="db-picker-name">${name}</span>
+            <span class="db-picker-nfl">${p.Team || ''}</span>
+        `;
+        row.addEventListener('click', () => {
+            _pickerSelectedPlayer = p;
+            document.querySelectorAll('.db-picker-row').forEach(r => r.style.background = '');
+            row.style.background = 'rgba(212,175,55,0.15)';
+        });
+        list.appendChild(row);
+    });
+}
+
+function closePicker() {
+    document.getElementById('db-picker-overlay').style.display = 'none';
+    _pickerPendingRound   = null;
+    _pickerPendingTeamIdx = null;
+    _pickerSelectedPlayer = null;
+}
+
+function confirmPick() {
+    if (!_pickerSelectedPlayer) return;
+    const teamIdx = parseInt(document.getElementById('db-picker-team-select').value, 10);
+    const round   = _pickerPendingRound;
+    if (round == null || teamIdx == null || isNaN(teamIdx)) return;
+
+    applyPick({
+        name:     _pickerSelectedPlayer.Name,
+        position: _pickerSelectedPlayer.Position,
+        nfl_team: _pickerSelectedPlayer.Team,
+        round,
+        teamIdx,
+        pick_no:  slotToPickNo(round, teamIdx, DB.numTeams),
+    }, true);
+
+    closePicker();
+}
+
+// ── Sleeper live polling ──────────────────────────────────────
+
+const POLL_INTERVAL_MS = 30000;   // 30 seconds
+let   _countdownTimer  = null;
+let   _secondsLeft     = 0;
+
+function startPolling() {
+    if (DB.syncInterval) clearInterval(DB.syncInterval);
+    if (_countdownTimer)  clearInterval(_countdownTimer);
+
+    syncFromSleeper();   // immediate first fetch
+    DB.syncInterval = setInterval(syncFromSleeper, POLL_INTERVAL_MS);
+    _startCountdown();
+}
+
+function stopPolling() {
+    clearInterval(DB.syncInterval);
+    clearInterval(_countdownTimer);
+    DB.syncInterval = null;
+    _countdownTimer  = null;
+}
+
+function _startCountdown() {
+    _secondsLeft = POLL_INTERVAL_MS / 1000;
+    clearInterval(_countdownTimer);
+    _countdownTimer = setInterval(() => {
+        _secondsLeft--;
+        if (_secondsLeft <= 0) {
+            _secondsLeft = POLL_INTERVAL_MS / 1000;
+        }
+        // Update label if currently live
+        if (DB.syncErrorCount === 0 && DB.lastSyncAt) {
+            const lbl = document.getElementById('db-sync-label');
+            if (lbl) lbl.textContent = `Live · next sync in ${_secondsLeft}s`;
+        }
+    }, 1000);
+}
+
+async function syncFromSleeper() {
+    if (!DB.draftId || !DB.leagueId) return;
+    try {
+        const url = `/draft-board/sleeper/sync?draft_id=${DB.draftId}&league_id=${DB.leagueId}`;
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'sync error');
+
+        DB.syncErrorCount = 0;
+        DB.lastSyncAt     = new Date();
+        _secondsLeft      = POLL_INTERVAL_MS / 1000;
+
+        // ── Apply roster changes first ──────────────────────────
+        if (data.team_rosters) {
+            DB.fullRosters = data.team_rosters;
+
+            // Rebuild drafted set.
+            // Primary: flat list of Sleeper-resolved player names (handles suffix mismatches).
+            // Fallback: names from structured roster objects.
+            DB.drafted = new Set();
+            if (data.roster_player_names && data.roster_player_names.length) {
+                data.roster_player_names.forEach(n => DB.drafted.add(normalizeName(n)));
+            } else {
+                DB.fullRosters.forEach(roster => {
+                    if (!roster) return;
+                    const all = [
+                        ...(roster.starters || []).map(s => s.player).filter(Boolean),
+                        ...(roster.bench    || []),
+                        ...(roster.reserve  || []),
+                        ...(roster.taxi     || []),
+                    ];
+                    all.forEach(p => { if (p && p.name) DB.drafted.add(normalizeName(p.name)); });
+                });
+            }
+
+            renderYourTeam();
+            if (DB.activeOtTab >= 0) renderOtherTeamBody(DB.activeOtTab);
+            renderAvailable();
+        }
+
+        // ── Apply new draft picks ───────────────────────────────
+        const newPicks = (data.picks || []).filter(p => {
+            if (!p.name || !p.pick_no) return false;
+            const { round, teamIdx } = pickToSlot(p.pick_no, DB.numTeams);
+            if (round < 1 || round > DB.numRounds) return false;
+            return !DB.board[round - 1]?.[teamIdx];
+        });
+
+        for (const pick of newPicks) {
+            applyPick(pick, true);
+        }
+
+        // ── Draft complete? ─────────────────────────────────────
+        if (data.draft_status === 'complete' || DB.currentPickNo >= DB.numTeams * DB.numRounds) {
+            stopPolling();
+            DB.draftComplete = true;
+            setSyncStatus('paused', 'Draft complete');
+            updateCurrentPickBar();
+            renderDraftCompleteAnalysis();
+        } else {
+            setSyncStatus('live', `Live · next sync in ${_secondsLeft}s`);
+        }
+
+        scheduleSaveState();
+
+    } catch (e) {
+        DB.syncErrorCount++;
+        const msg = DB.syncErrorCount >= 3 ? '⚠ Sync paused — retrying' : `Retrying… (${DB.syncErrorCount})`;
+        setSyncStatus(DB.syncErrorCount >= 3 ? 'error' : 'paused', msg);
+    }
+}
+
+function setSyncStatus(state, label) {
+    const dot = document.getElementById('db-sync-dot');
+    const lbl = document.getElementById('db-sync-label');
+    if (dot) dot.className = `db-sync-dot ${state}`;
+    if (lbl) lbl.textContent = label;
+}
+
+function formatTime(date) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ── AI suggestions ────────────────────────────────────────────
+
+async function fetchAISuggestions() {
+    if (DB.draftComplete) {
+        await renderDraftCompleteAnalysis();
+        return;
+    }
+
+    const available = DB.players
+        .filter(p => !DB.drafted.has(normalizeName(p.Name || '')))
+        .slice(0, 80);
+
+    const otherTeams = Object.entries(DB.otherRosters)
+        .filter(([i]) => parseInt(i) !== DB.userSlot - 1)
+        .map(([, picks]) => ({ picks }));
+
+    const payload = {
+        user_roster:      DB.userRoster.map(p => ({ name: p.name, position: p.position })),
+        roster_slots:     DB.rosterSlots,
+        available_players: available,
+        other_teams:      otherTeams,
+        pick_number:      DB.currentPickNo,
+        picks_until_next: picksUntilUser(),
+        num_teams:        DB.numTeams,
+    };
+
+    try {
+        const res  = await fetch('/draft-board/ai-suggest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok) renderAISuggestions(data);
+    } catch {}
+}
+
+// Returns the same {starters, bench, reserve, taxi} object the roster panel renders,
+// so the analysis always sees exactly the players shown in the STARTERS section.
+const _FLEX_POSITIONS = {
+    FLEX:       ['RB', 'WR', 'TE'],
+    SUPER_FLEX: ['QB', 'RB', 'WR', 'TE'],
+    REC_FLEX:   ['WR', 'TE'],
+    WRRB_FLEX:  ['WR', 'RB'],
+    IDP_FLEX:   ['QB', 'RB', 'WR', 'TE'],
+};
+
+function buildRosterData(actualIdx) {
+    // Sleeper / structured mode — use slot assignments IF the lineup has been set.
+    // Sleeper often has empty starters[] during/after a draft (owners haven't set lineups yet).
+    // Only trust fullRosters if at least one starter slot is actually filled.
+    const fullData = DB.fullRosters && DB.fullRosters[actualIdx];
+    if (fullData && (fullData.starters || []).some(s => s && s.player && s.player.name)) {
+        return fullData;
+    }
+
+    // Slot-based inference: replicate the same greedy assignment renderYourTeam uses.
+    // Player pool: use fullData.bench (all Sleeper picks) if available, otherwise draft board picks.
+    const fallbackPicks = fullData
+        ? [...(fullData.bench || []), ...(fullData.reserve || []), ...(fullData.taxi || [])]
+              .filter(p => p && p.name)
+              .map(p => ({ name: p.name, position: p.position, nfl_team: p.team }))
+        : (actualIdx === DB.userSlot - 1 ? DB.userRoster : (DB.otherRosters[actualIdx] || []));
+    const rawPicks = fallbackPicks;
+
+    const slots    = DB.rosterSlots || {};
+    const slotDefs = [];
+    const addSlots = (label, n) => { for (let i = 0; i < n; i++) slotDefs.push(label); };
+
+    // Build slot list in the same order renderYourTeam does
+    addSlots('QB',         parseInt(slots.QB         || 0));
+    addSlots('RB',         parseInt(slots.RB         || 0));
+    addSlots('WR',         parseInt(slots.WR         || 0));
+    addSlots('TE',         parseInt(slots.TE         || 0));
+    addSlots('FLEX',       parseInt(slots.FLEX        || 0));
+    addSlots('SUPER_FLEX', parseInt(slots.SUPER_FLEX  || 0));
+    addSlots('REC_FLEX',   parseInt(slots.REC_FLEX    || 0));
+    addSlots('WRRB_FLEX',  parseInt(slots.WRRB_FLEX   || 0));
+    addSlots('K',          parseInt(slots.K           || 0));
+    addSlots('DST',        parseInt(slots.DST         || 0));
+    addSlots('BN',         parseInt(slots.bench       || 6));
+
+    const assigned  = new Array(slotDefs.length).fill(null);
+    const remaining = [...rawPicks];
+
+    // Fill non-bench slots first (same greedy first-match as renderYourTeam)
+    slotDefs.forEach((slot, i) => {
+        if (slot === 'BN') return;
+        const positions = _FLEX_POSITIONS[slot] || [slot];
+        const idx = remaining.findIndex(p => positions.includes((p.position || '').toUpperCase()));
+        if (idx >= 0) assigned[i] = remaining.splice(idx, 1)[0];
+    });
+    // Fill bench with leftovers
+    slotDefs.forEach((slot, i) => {
+        if (slot !== 'BN') return;
+        if (remaining.length > 0) assigned[i] = remaining.shift();
+    });
+
+    const starters = [];
+    const bench    = [];
+    slotDefs.forEach((slot, i) => {
+        const pick = assigned[i];
+        if (!pick) return;
+        const playerObj = { name: pick.name, position: pick.position, team: pick.nfl_team };
+        if (slot === 'BN') bench.push(playerObj);
+        else starters.push({ slot, player: playerObj });
+    });
+
+    return { starters, bench, reserve: [], taxi: [] };
+}
+
+async function renderDraftCompleteAnalysis(forTeamTab) {
+    // Default to whichever tab is currently active
+    if (forTeamTab === undefined) forTeamTab = DB.activeOtTab;
+    if (!DB._analysisCache) DB._analysisCache = {};
+
+    // Return cached result immediately
+    if (DB._analysisCache[forTeamTab]) {
+        _showCompleteAnalysis(DB._analysisCache[forTeamTab]);
+        return;
+    }
+
+    // Show loading state
+    ['db-ai-need-section', 'db-ai-targets-section', 'db-ai-bav-section'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    const placeholder = document.getElementById('db-ai-placeholder');
+    if (placeholder) {
+        placeholder.style.display = '';
+        placeholder.textContent = 'Analyzing roster…';
+    }
+    const alertsEl = document.getElementById('db-ai-alerts');
+    if (alertsEl) alertsEl.innerHTML = '';
+
+    const isMyTeam  = (forTeamTab === MY_TEAM_TAB);
+    const actualIdx = isMyTeam ? DB.userSlot - 1 : forTeamTab;
+    const teamLabel = isMyTeam ? 'you' : (DB.teamNames[forTeamTab] || `Team ${forTeamTab + 1}`);
+
+    // Use the exact same roster data the panel renders — starters shown on screen
+    const rosterData = buildRosterData(actualIdx);
+
+    // Build a rank lookup to enrich players with rank for quality grading
+    const rankLookup = {};
+    (DB.players || []).forEach(p => {
+        if (p.Name) rankLookup[normalizeName(p.Name)] = { rank: p.Rank, adp: p.ADP };
+    });
+    function enrichPlayer(p) {
+        if (!p || !p.name) return p;
+        const info = rankLookup[normalizeName(p.name)] || {};
+        return { ...p, rank: info.rank, adp: info.adp };
+    }
+
+    const actualStarters = (rosterData.starters || [])
+        .filter(s => s && s.player && s.player.name)
+        .map(s => enrichPlayer(s.player));
+    const benchPlayers = [
+        ...(rosterData.bench   || []),
+        ...(rosterData.reserve || []),
+        ...(rosterData.taxi    || []),
+    ].filter(p => p && p.name).map(enrichPlayer);
+
+    const enrichedRoster = { starters: actualStarters, bench: benchPlayers };
+
+    try {
+        const res  = await fetch('/draft-board/ai-suggest', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+                mode:                'complete',
+                roster:              enrichedRoster,
+                team_label:          teamLabel,
+                league_type:         DB.leagueType,
+                scoring:             DB.scoringFormat,
+                roster_slots:        DB.rosterSlots,
+                starter_slot_labels: DB.starterSlotLabels,
+            }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.mode !== 'complete') throw new Error('bad response');
+        if (data.empty) {
+            if (placeholder) { placeholder.style.display = ''; placeholder.textContent = 'No picks recorded for this team yet.'; }
+            return; // don't cache — re-check next click
+        }
+        data._teamLabel = teamLabel; // stash for header display
+        DB._analysisCache[forTeamTab] = data;
+        _showCompleteAnalysis(data);
+    } catch {
+        if (placeholder) { placeholder.style.display = ''; placeholder.textContent = 'Could not load analysis.'; }
+    }
+}
+
+function _showCompleteAnalysis(data) {
+    const placeholder = document.getElementById('db-ai-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+
+    const alertsEl = document.getElementById('db-ai-alerts');
+    if (!alertsEl) return;
+    alertsEl.innerHTML = '';
+
+    const gradeColor = { A: '#50c878', 'A-': '#50c878', 'B+': '#8fbc44', B: '#8fbc44', 'B-': '#c9a227',
+                         'C+': '#c9a227', C: '#e07b39', D: '#e15759', F: '#e15759' };
+
+    // ── Header bar ───────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.className = 'db-analysis-header';
+    const ov        = data.overall_grade || 'B';
+    const teamLabel = data._teamLabel || 'you';
+    const headerTitle = teamLabel === 'you' ? 'Roster Analysis' : `${teamLabel} — Analysis`;
+    header.innerHTML = `
+        <span class="db-ai-label" style="margin:0">${headerTitle}</span>
+        <span class="db-overall-grade" style="color:${gradeColor[ov] || '#d4af37'}">${ov}</span>
+        ${data.strengths?.length ? `<span class="db-analysis-tag strength">✓ ${data.strengths.join(', ')}</span>` : ''}
+        ${data.needs?.length    ? `<span class="db-analysis-tag need">↑ Need ${data.needs.join(', ')}</span>` : ''}
+    `;
+    alertsEl.appendChild(header);
+
+    // ── Position group cards ─────────────────────────────────────
+    const grid = document.createElement('div');
+    grid.className = 'db-pos-group-grid';
+    grid.id = 'db-analysis-wrap';
+
+    (data.position_groups || []).forEach(group => {
+        const g    = group.grade || 'C';
+        const col  = gradeColor[g] || '#888';
+        const card = document.createElement('div');
+        card.className = 'db-pos-group-card';
+        card.style.borderTopColor = col;
+
+        const playerLinks = (group.players || []).map(p =>
+            p.name ? `<a class="db-profile-link db-analysis-player" href="${profileUrl(p.name, group.position, p.team)}">${shortName(p.name)}</a>` : ''
+        ).filter(Boolean).join('<span class="db-analysis-sep">·</span>');
+
+        card.innerHTML = `
+            <div class="db-pos-group-top">
+                <span class="db-pos-group-label">${group.position}</span>
+                <span class="db-pos-group-grade" style="color:${col}">${g}</span>
+                <span class="db-pos-group-count">${group.count}</span>
+            </div>
+            <div class="db-pos-group-note">${group.note}</div>
+            ${playerLinks ? `<div class="db-pos-group-players">${playerLinks}</div>` : ''}
+        `;
+        grid.appendChild(card);
+    });
+
+    alertsEl.appendChild(grid);
+
+    // ── Trade suggestions ─────────────────────────────────────
+    if (data.trade_suggestions?.length) {
+        const tradeWrap = document.createElement('div');
+        tradeWrap.className = 'db-trade-suggestions';
+        tradeWrap.innerHTML = `<span class="db-ai-label" style="margin:0;display:block;margin-bottom:6px">Trade Radar</span>` +
+            data.trade_suggestions.map(s =>
+                `<div class="db-trade-tip">⇄ ${s}</div>`
+            ).join('');
+        alertsEl.appendChild(tradeWrap);
+    }
+}
+
+function renderAISuggestions(data) {
+    const placeholder = document.getElementById('db-ai-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+
+    // Needs
+    const needSection = document.getElementById('db-ai-need-section');
+    const needsEl     = document.getElementById('db-ai-needs');
+    if (needsEl && data.needs?.length) {
+        needsEl.innerHTML = '';
+        needSection.style.display = '';
+        data.needs.forEach(n => {
+            const urgency = n.score > 0.6 ? 'urgent' : n.score > 0.25 ? 'medium' : 'low';
+            const pill = document.createElement('div');
+            pill.className = `db-need-pill ${urgency}`;
+            pill.innerHTML = `
+                <span style="font-size:0.76em;color:var(--white)">${n.position}</span>
+                <div class="db-need-bar-wrap">
+                    <div class="db-need-bar-fill" style="width:${Math.round(n.score * 100)}%"></div>
+                </div>
+            `;
+            needsEl.appendChild(pill);
+        });
+    }
+
+    // Top targets
+    const targetsSection = document.getElementById('db-ai-targets-section');
+    const targetsEl      = document.getElementById('db-ai-targets');
+    if (targetsEl && data.targets?.length) {
+        targetsEl.innerHTML = '';
+        targetsSection.style.display = '';
+        data.targets.forEach(p => {
+            const chip = document.createElement('div');
+            chip.className = 'db-target-chip';
+            chip.innerHTML = `${badge(p.Position)} <span>${shortName(p.Name)}</span>`;
+            targetsEl.appendChild(chip);
+        });
+    }
+
+    // Best available
+    const bavSection = document.getElementById('db-ai-bav-section');
+    const bavEl      = document.getElementById('db-ai-bav');
+    if (bavEl && data.best_available?.length) {
+        bavEl.innerHTML = '';
+        bavSection.style.display = '';
+        data.best_available.forEach(p => {
+            const chip = document.createElement('div');
+            chip.className = 'db-target-chip';
+            chip.innerHTML = `${badge(p.Position)} <span>${shortName(p.Name)}</span>`;
+            bavEl.appendChild(chip);
+        });
+    }
+
+    // Alerts
+    const alertsEl = document.getElementById('db-ai-alerts');
+    if (alertsEl) {
+        alertsEl.innerHTML = '';
+        (data.alerts || []).forEach(a => {
+            const pill = document.createElement('div');
+            pill.className = `db-alert-pill ${a.urgency || 'medium'}`;
+            const teamText = a.teams_needing >= 2 ? ` · ${a.teams_needing} teams need ${a.position}` : '';
+            pill.textContent = `⚠ ${a.name} (ADP ${a.adp})${teamText}`;
+            alertsEl.appendChild(pill);
+        });
+    }
+}
+
+// ── Session save / load ───────────────────────────────────────
+
+function scheduleSaveState() {
+    clearTimeout(DB.saveDebounce);
+    DB.saveDebounce = setTimeout(saveState, 2000);
+}
+
+async function saveState() {
+    const settings = {
+        source:        DB.source,
+        leagueId:      DB.leagueId,
+        draftId:       DB.draftId,
+        leagueName:    DB.leagueName,
+        numTeams:      DB.numTeams,
+        numRounds:     DB.numRounds,
+        userSlot:      DB.userSlot,
+        teamNames:     DB.teamNames,
+        scoringFormat: DB.scoringFormat,
+        rosterSlots:   DB.rosterSlots,
+        sleeperUserId: DB.sleeperUserId,
+        draftComplete:      DB.draftComplete,
+        leagueType:         DB.leagueType,
+        fullRosters:        DB.fullRosters,
+        starterSlotLabels:  DB.starterSlotLabels,
+    };
+
+    // Convert board to serialisable form
+    const boardFlat = DB.board.map(row => row.map(cell => cell || null));
+
+    const state = {
+        board:          boardFlat,
+        drafted:        Array.from(DB.drafted),
+        userRoster:     DB.userRoster,
+        otherRosters:   DB.otherRosters,
+        currentPickNo:  DB.currentPickNo,
+    };
+
+    try {
+        await fetch('/draft-board/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source:    DB.source,
+                league_id: DB.leagueId,
+                draft_id:  DB.draftId,
+                settings,
+                state,
+                last_pick: DB.currentPickNo,
+            }),
+        });
+    } catch {}
+}
+
+async function loadSavedSession() {
+    try {
+        const res  = await fetch('/draft-board/load');
+        const data = await res.json();
+        if (!data.found) return false;
+
+        const cfg      = data.settings || {};
+        const st       = data.state    || {};
+
+        // Restore settings
+        DB.source        = data.source        || 'manual';
+        DB.leagueId      = data.league_id;
+        DB.draftId       = data.draft_id;
+        DB.leagueName    = cfg.leagueName     || 'Draft Board';
+        DB.numTeams      = cfg.numTeams       || 12;
+        DB.numRounds     = cfg.numRounds      || 15;
+        DB.userSlot      = cfg.userSlot       || 1;
+        DB.teamNames     = cfg.teamNames      || [];
+        DB.scoringFormat = cfg.scoringFormat  || 'ppr';
+        DB.rosterSlots   = cfg.rosterSlots    || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DST:1, bench:6 };
+        DB.sleeperUserId = cfg.sleeperUserId  || null;
+        DB.draftComplete      = cfg.draftComplete      || false;
+        DB.leagueType         = cfg.leagueType         || 'redraft';
+        DB.fullRosters        = cfg.fullRosters        || null;
+        DB.starterSlotLabels  = cfg.starterSlotLabels  || [];
+
+        // Restore state
+        DB.board         = (st.board || []).map(row => row.map(c => c || null));
+        DB.drafted       = new Set(st.drafted || []);
+        DB.userRoster    = st.userRoster    || [];
+        DB.otherRosters  = st.otherRosters  || {};
+        DB.currentPickNo = st.currentPickNo || 0;
+
+        // Pad board if necessary
+        while (DB.board.length < DB.numRounds)
+            DB.board.push(Array(DB.numTeams).fill(null));
+
+        for (let r = 0; r < DB.board.length; r++) {
+            while (DB.board[r].length < DB.numTeams) DB.board[r].push(null);
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function resumeSession() {
+    // Show board UI
+    document.getElementById('db-setup-wrap').style.display  = 'none';
+    document.getElementById('db-topbar').style.display      = '';
+    document.getElementById('db-active').style.display             = '';
+    document.getElementById('db-bottom-row').style.display         = '';
+    document.getElementById('db-bottom-resize-handle').style.display = '';
+    requestAnimationFrame(() => {
+        const active = document.getElementById('db-active');
+        if (!active) return;
+        try {
+            const saved = localStorage.getItem('db_active_panel_height');
+            if (saved) active.style.height = Math.max(80, parseInt(saved)) + 'px';
+            else if (!active.style.height) active.style.height = active.offsetHeight + 'px';
+        } catch {
+            if (!active.style.height) active.style.height = active.offsetHeight + 'px';
+        }
+    });
+    document.getElementById('db-league-name').textContent    = DB.leagueName;
+    document.getElementById('db-topbar-meta').textContent   =
+        `${DB.numTeams} teams · ${DB.scoringFormat.toUpperCase()} · ${DB.numRounds} rounds`;
+
+    if (DB.source === 'sleeper') {
+        document.getElementById('db-sync-badge').style.display   = '';
+        document.getElementById('db-sync-now-btn').style.display = '';
+    }
+
+    renderBoard();
+    renderRosterSlots();
+    renderOtherTeamTabs();
+
+    // Re-fill board DOM from saved state
+    for (let r = 0; r < DB.numRounds; r++) {
+        for (let t = 0; t < DB.numTeams; t++) {
+            const pick = DB.board[r][t];
+            if (pick) updateBoardCell(r + 1, t, pick, false);
+        }
+    }
+
+    DB.players = await fetchPlayers(DB.scoringFormat);
+    renderAvailable();
+    renderYourTeam();
+    updateCurrentPickBar();
+
+    // If Sleeper: re-sync only if draft is still in progress
+    if (DB.source === 'sleeper' && DB.draftId && !DB.draftComplete) {
+        setSyncStatus('live', 'Syncing…');
+        await syncFromSleeper();
+        startPolling();
+    } else if (DB.draftComplete) {
+        setSyncStatus('paused', 'Draft complete');
+        renderDraftCompleteAnalysis();
+    }
+
+    if (window.innerWidth <= 768) {
+        document.getElementById('db-mobile-fab').style.display = 'flex';
+    }
+}
+
+// ── Reset ─────────────────────────────────────────────────────
+
+async function resetBoard() {
+    stopPolling();
+    try {
+        await fetch('/draft-board/reset', { method: 'POST' });
+    } catch {}
+
+    // Reset all state
+    Object.assign(DB, {
+        source: 'manual', leagueId: null, draftId: null, leagueName: 'Draft Board',
+        numTeams: 12, numRounds: 15, userSlot: 1, teamNames: [], scoringFormat: 'ppr',
+        rosterSlots: { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DST:1, bench:6 },
+        players: [], drafted: new Set(), board: [], userRoster: [],
+        otherRosters: {}, currentPickNo: 0, activeOtTab: -1,
+    });
+
+    document.getElementById('db-topbar').style.display             = 'none';
+    document.getElementById('db-active').style.display             = 'none';
+    document.getElementById('db-bottom-row').style.display         = 'none';
+    document.getElementById('db-bottom-resize-handle').style.display = 'none';
+    document.getElementById('db-setup-wrap').style.display         = '';
+    document.getElementById('db-current-pick-bar').classList.remove('visible');
+    document.getElementById('db-sync-badge').style.display  = 'none';
+    document.getElementById('db-sync-now-btn').style.display = 'none';
+    document.getElementById('db-mobile-fab').style.display   = 'none';
+    document.getElementById('db-drawer').classList.remove('open');
+}
+
+// ── Mobile drawer ─────────────────────────────────────────────
+
+function initDrawer() {
+    const fab    = document.getElementById('db-mobile-fab');
+    const drawer = document.getElementById('db-drawer');
+    const handle = document.getElementById('db-drawer-handle');
+
+    if (fab) fab.addEventListener('click', () => drawer.classList.toggle('open'));
+    if (handle) handle.addEventListener('click', () => drawer.classList.remove('open'));
+
+    document.querySelectorAll('.db-drawer-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.db-drawer-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.dtab;
+            const body = document.getElementById('db-drawer-body');
+            if (tab === 'available') {
+                body.innerHTML = '';
+                const panel = document.getElementById('db-available-panel');
+                if (panel) body.appendChild(panel.cloneNode(true));
+            } else {
+                body.innerHTML = '';
+                const panel = document.getElementById('db-your-team-panel');
+                if (panel) body.appendChild(panel.cloneNode(true));
+            }
+        });
+    });
+}
+
+function syncDrawerAvailable() {
+    const body = document.getElementById('db-drawer-body');
+    if (!body) return;
+    const activeTab = document.querySelector('.db-drawer-tab.active');
+    if (activeTab?.dataset?.dtab === 'available') {
+        body.innerHTML = '';
+        const panel = document.getElementById('db-available-panel');
+        if (panel) body.appendChild(panel.cloneNode(true));
+    }
+}
+
+function syncDrawerYourTeam() {
+    const body = document.getElementById('db-drawer-body');
+    if (!body) return;
+    const activeTab = document.querySelector('.db-drawer-tab.active');
+    if (activeTab?.dataset?.dtab === 'your-team') {
+        body.innerHTML = '';
+        const panel = document.getElementById('db-your-team-panel');
+        if (panel) body.appendChild(panel.cloneNode(true));
+    }
+}
+
+// ── Picker modal events ───────────────────────────────────────
+
+function initPicker() {
+    document.getElementById('db-picker-close').addEventListener('click', closePicker);
+    document.getElementById('db-picker-confirm-btn').addEventListener('click', confirmPick);
+    document.getElementById('db-picker-overlay').addEventListener('click', e => {
+        if (e.target === document.getElementById('db-picker-overlay')) closePicker();
+    });
+    document.getElementById('db-picker-search').addEventListener('input', function () {
+        renderPickerList(this.value);
+    });
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────
+
+// ── Saved leagues ─────────────────────────────────────────────
+
+async function loadSavedLeagues() {
+    try {
+        const res  = await fetch('/draft-board/leagues');
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+    } catch {
+        return [];
+    }
+}
+
+function renderSavedLeagues(leagues) {
+    const wrap = document.getElementById('db-saved-leagues-wrap');
+    const list = document.getElementById('db-saved-leagues-list');
+    if (!wrap || !list) return;
+
+    if (!leagues || leagues.length === 0) {
+        wrap.style.display = 'none';
+        return;
+    }
+
+    wrap.style.display = '';
+    list.innerHTML = '';
+
+    leagues.forEach(lg => {
+        const typeLabel = lg.league_type === 'dynasty' ? 'Dynasty'
+                        : lg.league_type === 'keeper'  ? 'Keeper'
+                        : 'Redraft';
+        const scoring   = (lg.scoring || 'ppr').toUpperCase().replace('_', ' ');
+
+        const row = document.createElement('div');
+        row.className = 'db-saved-league-row';
+        row.innerHTML = `
+            <div class="db-saved-league-info">
+                <span class="db-saved-league-name">${lg.league_name || 'My League'}</span>
+                <span class="db-saved-league-meta">${typeLabel} · ${lg.num_teams || '?'} teams · ${scoring}</span>
+            </div>
+            <div class="db-saved-league-actions">
+                <button class="db-topbar-btn db-open-league-btn" data-league-id="${lg.league_id}"
+                        data-sleeper-user-id="${lg.sleeper_user_id || ''}"
+                        data-scoring="${lg.scoring || 'ppr'}">Open</button>
+                <button class="db-topbar-btn danger db-remove-league-btn" data-league-id="${lg.league_id}">✕</button>
+            </div>
+        `;
+        list.appendChild(row);
+    });
+
+    // Open button
+    list.querySelectorAll('.db-open-league-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const leagueId      = btn.dataset.leagueId;
+            const sleeperUserId = btn.dataset.sleeperUserId;
+            const scoring       = btn.dataset.scoring || 'ppr';
+
+            DB.sleeperUserId = sleeperUserId || null;
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="db-spinner"></span>';
+
+            const errEl = document.getElementById('sleeper-error');
+            if (errEl) errEl.style.display = 'none';
+
+            try {
+                const res = await fetch('/draft-board/sleeper/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ league_id: leagueId, sleeper_user_id: sleeperUserId }),
+                });
+                const data = await res.json();
+                if (!res.ok || data.error) {
+                    if (errEl) { errEl.textContent = data.error || 'Failed to connect.'; errEl.style.display = ''; }
+                    btn.disabled = false;
+                    btn.textContent = 'Open';
+                    return;
+                }
+
+                // Update last_accessed
+                fetch('/draft-board/leagues/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ league_id: leagueId, league_name: data.league_name }),
+                }).catch(() => {});
+
+                await initBoard({
+                    source:             'sleeper',
+                    leagueId,
+                    draftId:            data.draft_id,
+                    leagueName:         data.league_name,
+                    numTeams:           data.num_teams,
+                    numRounds:          data.num_rounds,
+                    userSlot:           data.user_slot,
+                    teamNames:          data.team_names,
+                    scoringFormat:      scoring,
+                    rosterSlots:        data.roster_slots,
+                    starterSlotLabels:  data.starter_slot_labels || [],
+                    existingPicks:      data.picks || [],
+                    teamRosters:        data.team_rosters || null,
+                    rosterPlayerNames:  data.roster_player_names || [],
+                    draftStatus:        data.draft_status || 'pre_draft',
+                    leagueType:         data.league_type  || 'redraft',
+                });
+            } catch (e) {
+                if (errEl) { errEl.textContent = 'Network error.'; errEl.style.display = ''; }
+                btn.disabled = false;
+                btn.textContent = 'Open';
+            }
+        });
+    });
+
+    // Remove button
+    list.querySelectorAll('.db-remove-league-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const leagueId = btn.dataset.leagueId;
+            await fetch(`/draft-board/leagues/${leagueId}`, { method: 'DELETE' });
+            // Re-fetch and re-render
+            const updated = await loadSavedLeagues();
+            renderSavedLeagues(updated);
+        });
+    });
+}
+
+async function boot() {
+    initSetupPanel();
+    initFilterTabs();
+    initDrawer();
+    initPicker();
+
+    document.getElementById('db-reset-btn').addEventListener('click', resetBoard);
+
+    // Available-only toggle
+    document.getElementById('db-avail-toggle')?.addEventListener('click', function () {
+        DB.showAvailOnly = !DB.showAvailOnly;
+        this.classList.toggle('active', DB.showAvailOnly);
+        renderAvailable();
+    });
+
+    // ── Other Teams: collapse / expand toggle ─────────────────
+    document.getElementById('db-ot-toggle')?.addEventListener('click', () => {
+        const panel = document.getElementById('db-other-teams');
+        panel.classList.toggle('ot-collapsed');
+    });
+
+    // ── Generic drag-to-resize helper ────────────────────────
+    const PANEL_HEIGHT_KEY = 'db_active_panel_height';
+
+    function makeResizeHandle(handleId, targetId, { min = 60, max = 500, direction = 'up', storageKey = null } = {}) {
+        const handle = document.getElementById(handleId);
+        const target = document.getElementById(targetId);
+        if (!handle || !target) return;
+
+        function applyDrag(startY, startH, currentY) {
+            const delta = direction === 'up'
+                ? startY - currentY
+                : currentY - startY;
+            target.style.height = Math.max(min, Math.min(max, startH + delta)) + 'px';
+        }
+
+        function savePanelHeight() {
+            if (storageKey) {
+                try { localStorage.setItem(storageKey, target.offsetHeight); } catch {}
+            }
+        }
+
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault();
+            const startY = e.clientY;
+            const startH = target.offsetHeight;
+            handle.classList.add('dragging');
+            document.body.style.userSelect = 'none';
+
+            const onMove = e => { e.preventDefault(); applyDrag(startY, startH, e.clientY); };
+            const onUp   = () => {
+                handle.classList.remove('dragging');
+                document.body.style.userSelect = '';
+                savePanelHeight();
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        handle.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const startY = e.touches[0].clientY;
+            const startH = target.offsetHeight;
+
+            const onMove = e => { e.preventDefault(); applyDrag(startY, startH, e.touches[0].clientY); };
+            const onEnd  = () => {
+                savePanelHeight();
+                handle.removeEventListener('touchmove', onMove);
+                handle.removeEventListener('touchend', onEnd);
+            };
+            handle.addEventListener('touchmove', onMove, { passive: false });
+            handle.addEventListener('touchend', onEnd);
+        }, { passive: false });
+    }
+
+    // Bottom row handle: drag down = grows, drag up = shrinks — persisted in localStorage
+    makeResizeHandle('db-bottom-resize-handle', 'db-active', { min: 80, max: 2000, direction: 'down', storageKey: PANEL_HEIGHT_KEY });
+
+    // Sync Now — show brief spinner then success indicator
+    document.getElementById('db-sync-now-btn')?.addEventListener('click', async function () {
+        const btn = this;
+        const prev = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '↻ Syncing…';
+        try {
+            await syncFromSleeper();
+            btn.textContent = '✓ Synced';
+            btn.classList.add('db-sync-ok');
+        } catch (_) {
+            btn.textContent = '⚠ Error';
+        } finally {
+            setTimeout(() => {
+                btn.textContent  = prev;
+                btn.disabled     = false;
+                btn.classList.remove('db-sync-ok');
+            }, 2000);
+        }
+    });
+
+    // Load + show saved leagues on setup panel
+    const savedLeagues = await loadSavedLeagues();
+    renderSavedLeagues(savedLeagues);
+
+    // Try to restore a saved session
+    const hasSaved = await loadSavedSession();
+    if (hasSaved) {
+        await resumeSession();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', boot);

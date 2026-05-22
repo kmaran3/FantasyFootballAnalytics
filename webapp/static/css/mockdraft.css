@@ -550,3 +550,80 @@
 }
 
 #finalBoardWrap { overflow-x: auto; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOCK DRAFT — MOBILE RESPONSIVE
+═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* Lobby: single column instead of 3-column grid */
+  .lobby-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .lobby-card {
+    padding: 20px 16px;
+    margin: 0;
+  }
+
+  #lobby {
+    padding: 16px 8px 40px;
+    margin-top: 0;
+    align-items: flex-start;
+  }
+
+  .lobby-title { font-size: 1.4rem; }
+
+  /* Draft layout: stack vertically */
+  #draft-layout {
+    flex-direction: column;
+    height: auto;
+  }
+
+  #available-panel {
+    width: 100%;
+    height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid #2A2A2A;
+  }
+
+  #board-panel {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  #team-panel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #2A2A2A;
+  }
+
+  /* Board table: sticky round column */
+  #draft-board th:first-child,
+  #draft-board td:first-child {
+    position: sticky;
+    left: 0;
+    background: #0B0B0B;
+    z-index: 2;
+  }
+
+  /* Roster grid: 2 columns on mobile */
+  .roster-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .lobby-title { font-size: 1.2rem; }
+  .lobby-card { padding: 16px 12px; }
+
+  .toggle-btn { padding: 5px 10px; font-size: 0.8em; }
+
+  /* Draft board cells: narrower */
+  #draft-board td, #draft-board th {
+    min-width: 70px;
+    font-size: 0.72em;
+    padding: 4px 4px;
+  }
+}
