@@ -53,6 +53,8 @@ class SavedLeague(db.Model):
     scoring        = db.Column(db.String(20))
     league_type    = db.Column(db.String(20))
     sleeper_user_id = db.Column(db.String(100))
+    espn_s2        = db.Column(db.Text, nullable=True)
+    espn_swid      = db.Column(db.String(50), nullable=True)
     user_slot      = db.Column(db.Integer)
     last_accessed  = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('user_id', 'league_id', name='uq_user_league'),)
@@ -167,6 +169,7 @@ def create_app():
             "style-src 'self' 'unsafe-inline' https://code.jquery.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
+            "connect-src 'self' https://api.sleeper.app; "
         )
         # Force HTTPS in production
         if _is_production():

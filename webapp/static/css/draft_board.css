@@ -374,7 +374,7 @@
     color: var(--gold);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border-bottom: 1px solid var(--medium-gray);
+    border-bottom: 2px solid var(--gold);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -575,9 +575,8 @@
     letter-spacing: 0.04em;
     padding: 8px 4px;
     border-bottom: 2px solid var(--gold);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
     text-align: center;
     position: sticky;
     top: 0;
@@ -819,9 +818,7 @@
 .db-ot-tab {
     flex: 1;
     padding: 6px 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -832,6 +829,7 @@
     transition: all 0.15s;
     text-align: center;
     min-width: 0;
+    line-height: 1.2;
 }
 
 .db-ot-tab:hover  { color: var(--white); }

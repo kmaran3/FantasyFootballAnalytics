@@ -1944,6 +1944,154 @@ def _format_sleeper_pick(pick, roster_id_to_slot=None):
     }
 
 
+# ── ESPN draft-board helpers ───────────────────────────────────────
+
+_ESPN_POS_MAP = {1: 'QB', 2: 'RB', 3: 'WR', 4: 'TE', 5: 'K', 16: 'DST'}
+_ESPN_SLOT_MAP = {
+    0: 'QB', 2: 'RB', 4: 'WR', 6: 'TE', 23: 'FLEX',
+    17: 'K', 16: 'DST', 20: 'Bench', 21: 'IR',
+}
+_ESPN_TEAM_ID_MAP = {
+    1:'ATL',2:'BUF',3:'CHI',4:'CIN',5:'CLE',6:'DAL',7:'DEN',8:'DET',
+    9:'GB',10:'TEN',11:'IND',12:'KC',13:'LV',14:'LAR',15:'MIA',
+    16:'MIN',17:'NE',18:'NO',19:'NYG',20:'NYJ',21:'PHI',22:'ARI',
+    23:'PIT',24:'LAC',25:'SF',26:'SEA',27:'TB',28:'WAS',29:'CAR',
+    30:'JAX',33:'BAL',34:'HOU',
+}
+
+
+def _espn_api_fetch(league_id, year, views, cookies=None):
+    """Make an ESPN fantasy API call.  Returns (data, error_key)."""
+    url = (f'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl'
+           f'/seasons/{year}/segments/0/leagues/{league_id}')
+    params = [('view', v) for v in views]
+    jar = {}
+    if cookies:
+        s2 = cookies.get('espn_s2') or ''
+        swid = cookies.get('swid') or ''
+        if s2 and swid:
+            jar = {'espn_s2': s2, 'SWID': swid}
+    resp = requests.get(url, params=params, cookies=jar, timeout=15)
+    if resp.status_code == 401:
+        return None, 'private'
+    if resp.status_code == 404:
+        return None, 'not_found'
+    resp.raise_for_status()
+    return resp.json(), None
+
+
+# In-memory cache for ESPN player map (espn_id → {name, position, team})
+_espn_player_cache = {'ts': 0, 'data': {}}
+_ESPN_PLAYER_CACHE_TTL = 3600  # 1 hour
+
+
+def _get_espn_player_map(year=None):
+    """Fetch + cache ESPN NFL player dict.  Returns {player_id: {name, position, team}}."""
+    import time as _time, json as _json
+    now = _time.time()
+    if now - _espn_player_cache['ts'] < _ESPN_PLAYER_CACHE_TTL and _espn_player_cache['data']:
+        return _espn_player_cache['data']
+    if year is None:
+        year = datetime.utcnow().year
+    try:
+        fantasy_filter = _json.dumps({
+            'players': {'limit': 2000, 'filterActive': {'value': True}}
+        })
+        url = (f'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl'
+               f'/seasons/{year}/players?view=kona_player_info')
+        resp = requests.get(url,
+                            headers={'X-Fantasy-Filter': fantasy_filter,
+                                     'Accept': 'application/json'},
+                            timeout=20)
+        if resp.status_code == 200:
+            slim = {}
+            for entry in resp.json():
+                p = entry.get('player') if isinstance(entry, dict) else entry
+                if not p:
+                    p = entry
+                pid = p.get('id') or entry.get('id')
+                name = p.get('fullName', '')
+                if not name or not pid:
+                    continue
+                pos = _ESPN_POS_MAP.get(p.get('defaultPositionId', 0), '')
+                team = _ESPN_TEAM_ID_MAP.get(p.get('proTeamId', 0), '')
+                slim[int(pid)] = {'name': name, 'position': pos, 'team': team}
+            _espn_player_cache['ts'] = now
+            _espn_player_cache['data'] = slim
+            return slim
+    except Exception:
+        pass
+    return _espn_player_cache['data']
+
+
+def _detect_espn_scoring(settings):
+    """Infer PPR / half_ppr / standard from ESPN league settings."""
+    scoring_items = (settings.get('scoringSettings') or {}).get('scoringItems') or []
+    for item in scoring_items:
+        # statId 53 = receivingReceptions
+        if item.get('statId') == 53:
+            val = float(item.get('pointsOverrides', {}).get('53', item.get('points', 0)))
+            if val >= 1.0:
+                return 'ppr'
+            if val >= 0.5:
+                return 'half_ppr'
+            return 'standard'
+    return 'standard'
+
+
+def _parse_espn_roster_slots(settings):
+    """Convert ESPN lineupSlotCounts to our unified slot-count dict."""
+    counts = (settings.get('rosterSettings') or {}).get('lineupSlotCounts') or {}
+    # ESPN uses string keys in JSON
+    slot_mapping = {
+        '0': 'QB', '2': 'RB', '4': 'WR', '6': 'TE', '23': 'FLEX',
+        '17': 'K', '16': 'DST', '20': 'bench',
+    }
+    slots = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0, 'FLEX': 0, 'K': 0, 'DST': 0, 'bench': 0}
+    for slot_id, our_key in slot_mapping.items():
+        slots[our_key] = int(counts.get(slot_id, counts.get(int(slot_id), 0)))
+    return slots
+
+
+def _espn_starter_slot_labels(settings):
+    """Build a flat list of starter slot labels like ['QB','RB','RB','WR','WR','TE','FLEX','K','DST']."""
+    slots = _parse_espn_roster_slots(settings)
+    labels = []
+    for pos in ('QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DST'):
+        labels.extend([pos] * slots.get(pos, 0))
+    return labels
+
+
+def _format_espn_pick(pick, team_id_to_slot, player_map, num_teams=12):
+    """Normalise an ESPN draft pick into our unified format.
+
+    pick_no must be the OVERALL pick number (1-indexed, continuous) because
+    the frontend's applyPick() feeds it to pickToSlot() which expects that.
+    """
+    pid = pick.get('playerId', 0)
+    p = player_map.get(int(pid), {})
+    team_id = pick.get('teamId', 0)
+    overall = pick.get('overallPickNumber', 0)
+    slot = team_id_to_slot.get(team_id, team_id)
+
+    # ESPN may not always return roundId — calculate from overallPickNumber
+    round_id = pick.get('roundId', 0)
+    if not round_id and overall and num_teams:
+        round_id = ((overall - 1) // num_teams) + 1
+
+    return {
+        'player_id':     str(pid),
+        'name':          p.get('name', f'Player {pid}'),
+        'position':      p.get('position', '??'),
+        'nfl_team':      p.get('team', ''),
+        'round':         round_id or 1,
+        'pick_no':       overall,    # OVERALL pick number — frontend expects this
+        'draft_slot':    slot,
+        'roster_id':     team_id,
+        'original_slot': slot,
+    }
+
+
 # ══════════════════════════════════════════════════════════════════
 #  DRAFT BOARD — routes
 # ══════════════════════════════════════════════════════════════════
@@ -2118,10 +2266,10 @@ def draft_board_sleeper_connect():
             except (ValueError, TypeError):
                 pass
 
-        # Determine user's draft slot (1-indexed)
-        user_slot = 1
+        # Determine user's draft slot (1-indexed), or 0 if user not in this league
+        user_slot = 0
         if sleeper_user_id:
-            # Try slot_to_roster first (roster_id_to_slot is the inverse but we need user→slot)
+            # Try draft_order first
             for uid, slot in draft_order.items():
                 if str(uid) == str(sleeper_user_id):
                     try:
@@ -2130,13 +2278,17 @@ def draft_board_sleeper_connect():
                         pass
                     break
             # Also check roster owner_id
-            if user_slot == 1:
+            if user_slot == 0:
                 for roster in (rosters_data or []):
                     if str(roster.get('owner_id') or '') == str(sleeper_user_id):
                         rid  = int(roster.get('roster_id') or 1)
-                        slot = roster_id_to_slot.get(rid, 1)
-                        user_slot = slot
+                        slot = roster_id_to_slot.get(rid)
+                        if slot:
+                            user_slot = slot
                         break
+        # If no sleeper_user_id provided at all, default to slot 1
+        if not sleeper_user_id:
+            user_slot = 1
 
         # Fetch existing draft picks — pass roster_id_to_slot so traded picks are attributed correctly
         picks_resp = requests.get(f'https://api.sleeper.app/v1/draft/{draft_id}/picks', timeout=8)
@@ -2228,6 +2380,26 @@ def draft_board_sleeper_connect():
                 if p and p.get('name'):
                     roster_player_names.append(p['name'])
 
+        # Build standings from roster records
+        standings = []
+        for roster in (rosters_data or []):
+            rid       = int(roster.get('roster_id') or 0)
+            r_settings = roster.get('settings') or {}
+            slot      = roster_id_to_slot.get(rid, rid)
+            idx       = max(0, min(slot - 1, num_teams - 1))
+            name      = team_names[idx] if 0 <= idx < len(team_names) else f'Team {idx + 1}'
+            standings.append({
+                'slot':     slot,
+                'name':     name,
+                'wins':     r_settings.get('wins', 0),
+                'losses':   r_settings.get('losses', 0),
+                'ties':     r_settings.get('ties', 0),
+                'pts_for':  round(r_settings.get('fpts', 0) + r_settings.get('fpts_decimal', 0) / 100, 1),
+                'seed':     0,
+                'rank':     0,
+            })
+        standings.sort(key=lambda s: (-s['wins'], -s['pts_for']))
+
         return jsonify({
             'draft_id':            draft_id,
             'league_name':         league.get('name', 'My League'),
@@ -2243,6 +2415,9 @@ def draft_board_sleeper_connect():
             'picks':               picks,
             'team_rosters':        team_rosters,
             'roster_player_names': roster_player_names,
+            'season':              league.get('season') or datetime.utcnow().year,
+            'previous_league_id':  league.get('previous_league_id'),
+            'standings':           standings,
         })
     except requests.RequestException:
         return jsonify({'error': 'Failed to connect to Sleeper API'}), 503
@@ -2384,6 +2559,388 @@ def draft_board_sleeper_sync():
         return jsonify({'error': 'Sleeper API unavailable'}), 503
 
 
+# ── ESPN draft-board routes ───────────────────────────────────────
+
+@main.route('/draft-board/espn/lookup', methods=['POST'])
+@login_required
+def draft_board_espn_lookup():
+    """Validate an ESPN league ID and return league info for confirmation."""
+    data = request.get_json(silent=True) or {}
+    league_id = (data.get('league_id') or '').strip()
+    if not league_id:
+        return jsonify({'error': 'League ID required'}), 400
+
+    cookies = {}
+    if data.get('espn_s2') and data.get('swid'):
+        cookies = {'espn_s2': data['espn_s2'], 'swid': data['swid']}
+
+    year = datetime.utcnow().year
+    try:
+        resp_data, err = _espn_api_fetch(league_id, year, ['mSettings', 'mTeam'], cookies or None)
+        if err == 'private':
+            return jsonify({
+                'error': 'private',
+                'message': 'This league is private. Please provide your ESPN cookies (SWID and espn_s2).',
+            }), 401
+        if err == 'not_found':
+            return jsonify({'error': 'not_found', 'message': 'League not found. Check your league ID.'}), 404
+
+        settings = resp_data.get('settings') or {}
+        teams = resp_data.get('teams') or []
+
+        scoring = _detect_espn_scoring(settings)
+
+        team_list = []
+        for t in teams:
+            owners = t.get('owners') or []
+            owner_name = owners[0] if owners else ''
+            # ESPN sometimes provides member objects in a different view
+            team_list.append({
+                'id':     t.get('id'),
+                'name':   t.get('name', t.get('location', '') + ' ' + t.get('nickname', '')).strip(),
+                'abbrev': t.get('abbrev', ''),
+            })
+
+        return jsonify({
+            'league_id':   league_id,
+            'league_name': settings.get('name', 'ESPN League'),
+            'num_teams':   settings.get('size', len(teams)),
+            'scoring':     scoring,
+            'season':      year,
+            'teams':       team_list,
+        })
+    except requests.RequestException:
+        return jsonify({'error': 'Failed to connect to ESPN API'}), 503
+
+
+@main.route('/draft-board/espn/connect', methods=['POST'])
+@login_required
+def draft_board_espn_connect():
+    """Connect to an ESPN league: return draft metadata + existing picks + rosters."""
+    data = request.get_json(silent=True) or {}
+    league_id    = (data.get('league_id') or '').strip()
+    user_team_id = data.get('user_team_id')
+    if not league_id:
+        return jsonify({'error': 'league_id required'}), 400
+
+    cookies = {}
+    if data.get('espn_s2') and data.get('swid'):
+        cookies = {'espn_s2': data['espn_s2'], 'swid': data['swid']}
+
+    year = int(data.get('year', 0)) or datetime.utcnow().year
+    try:
+        resp_data, err = _espn_api_fetch(
+            league_id, year,
+            ['mDraftDetail', 'mSettings', 'mTeam', 'mRoster'],
+            cookies or None,
+        )
+        if err == 'private':
+            return jsonify({'error': 'This league is private. Provide ESPN cookies.'}), 401
+        if err == 'not_found':
+            return jsonify({'error': f'No data found for the {year} season. The league may not have existed yet.'}), 404
+
+        settings       = resp_data.get('settings') or {}
+        teams          = resp_data.get('teams') or []
+        draft_detail   = resp_data.get('draftDetail') or {}
+
+        num_teams      = settings.get('size', len(teams))
+        scoring        = _detect_espn_scoring(settings)
+        roster_slots   = _parse_espn_roster_slots(settings)
+        starter_labels = _espn_starter_slot_labels(settings)
+
+        # Draft settings
+        draft_settings = settings.get('draftSettings') or {}
+        num_rounds     = int(draft_settings.get('rounds', 0))
+        if num_rounds <= 0:
+            num_rounds = sum(roster_slots.values())
+
+        # Draft status
+        in_progress = draft_detail.get('inProgress', False)
+        drafted     = draft_detail.get('drafted', False)
+        if in_progress:
+            draft_status = 'in_progress'
+        elif drafted:
+            draft_status = 'complete'
+        else:
+            draft_status = 'pre_draft'
+
+        # Build team_id → slot mapping from draft pick order or team index
+        # ESPN teams have an 'id' field; draft slot order comes from draftSettings.pickOrder
+        pick_order = draft_settings.get('pickOrder') or []
+        team_id_to_slot = {}
+        if pick_order:
+            for slot_idx, tid in enumerate(pick_order):
+                team_id_to_slot[tid] = slot_idx + 1  # 1-indexed
+        else:
+            # Fallback: use team list order
+            for slot_idx, t in enumerate(sorted(teams, key=lambda x: x.get('id', 0))):
+                team_id_to_slot[t.get('id')] = slot_idx + 1
+
+        # Build team_names (0-indexed by slot)
+        team_names = [f'Team {i + 1}' for i in range(num_teams)]
+        for t in teams:
+            tid  = t.get('id')
+            slot = team_id_to_slot.get(tid)
+            name = t.get('name', '').strip()
+            if not name:
+                name = (t.get('location', '') + ' ' + t.get('nickname', '')).strip()
+            if slot and name:
+                idx = slot - 1
+                if 0 <= idx < num_teams:
+                    team_names[idx] = name
+
+        # Determine user's slot — None if the user's team doesn't exist in this season
+        user_slot = None
+        if user_team_id is not None:
+            tid = int(user_team_id)
+            # Check if this team ID actually exists in the league for this season
+            team_ids_this_season = {t.get('id') for t in teams}
+            if tid in team_ids_this_season:
+                user_slot = team_id_to_slot.get(tid)
+        if user_slot is None:
+            user_slot = 0  # 0 signals "no user team" to the frontend
+
+        # Format existing picks — skip unfilled placeholder slots (playerId <= 0)
+        player_map = _get_espn_player_map(year)
+        picks_raw  = draft_detail.get('picks') or []
+        picks      = [
+            _format_espn_pick(p, team_id_to_slot, player_map, num_teams)
+            for p in picks_raw
+            if (p.get('playerId') or 0) > 0
+        ]
+
+        # Build team_rosters from teams[].roster.entries
+        team_rosters = [None] * num_teams
+        roster_player_names = []
+
+        for t in teams:
+            tid  = t.get('id')
+            slot = team_id_to_slot.get(tid, tid)
+            idx  = max(0, min(slot - 1, num_teams - 1))
+
+            entries = []
+            roster_obj = t.get('roster') or {}
+            entries = roster_obj.get('entries') or []
+
+            starters_out = []
+            bench_out    = []
+            reserve_out  = []
+
+            for entry in entries:
+                lineup_slot_id = entry.get('lineupSlotId', 20)  # default to Bench
+                ppe = entry.get('playerPoolEntry') or {}
+                player_info = ppe.get('player') or {}
+                pid  = player_info.get('id') or ppe.get('id', 0)
+                name = player_info.get('fullName', '')
+                pos  = _ESPN_POS_MAP.get(player_info.get('defaultPositionId', 0), '')
+                team_abbr = _ESPN_TEAM_ID_MAP.get(player_info.get('proTeamId', 0), '')
+
+                player_obj = {'id': str(pid), 'name': name, 'position': pos, 'team': team_abbr}
+                if name:
+                    roster_player_names.append(name)
+
+                slot_label = _ESPN_SLOT_MAP.get(lineup_slot_id, 'Bench')
+                if slot_label == 'IR':
+                    reserve_out.append(player_obj)
+                elif slot_label == 'Bench':
+                    bench_out.append(player_obj)
+                else:
+                    starters_out.append({'slot': slot_label, 'player': player_obj})
+
+            team_rosters[idx] = {
+                'starters':      starters_out,
+                'starter_slots': starter_labels,
+                'bench':         bench_out,
+                'reserve':       reserve_out,
+                'taxi':          [],
+            }
+
+        team_rosters = [
+            r if r is not None
+            else {'starters': [], 'starter_slots': starter_labels, 'bench': [], 'reserve': [], 'taxi': []}
+            for r in team_rosters
+        ]
+
+        # Build standings from team records (useful for historical seasons)
+        standings = []
+        for t in teams:
+            tid  = t.get('id')
+            slot = team_id_to_slot.get(tid, tid)
+            idx  = max(0, min(slot - 1, num_teams - 1))
+            rec  = (t.get('record') or {}).get('overall') or {}
+            name = team_names[idx] if 0 <= idx < len(team_names) else f'Team {idx + 1}'
+            standings.append({
+                'slot':     slot,
+                'name':     name,
+                'wins':     rec.get('wins', 0),
+                'losses':   rec.get('losses', 0),
+                'ties':     rec.get('ties', 0),
+                'pts_for':  round(rec.get('pointsFor', 0), 1),
+                'seed':     t.get('playoffSeed', 0),
+                'rank':     t.get('rankCalculatedFinal', 0),
+            })
+        # Sort by wins desc, then points for desc
+        standings.sort(key=lambda s: (-s['wins'], -s['pts_for']))
+
+        # Determine the earliest year the league existed
+        # Probe backwards until we hit a 404 (max 10 years back for speed)
+        league_start_year = year
+        for probe_y in range(year - 1, max(year - 11, 2001), -1):
+            try:
+                _, probe_err = _espn_api_fetch(league_id, probe_y, ['mSettings'], cookies or None)
+                if probe_err:
+                    break
+                league_start_year = probe_y
+            except Exception:
+                break
+
+        return jsonify({
+            'draft_id':            None,
+            'league_name':         settings.get('name', 'ESPN League'),
+            'num_teams':           num_teams,
+            'num_rounds':          num_rounds,
+            'scoring':             scoring,
+            'roster_slots':        roster_slots,
+            'starter_slot_labels': starter_labels,
+            'team_names':          team_names,
+            'user_slot':           user_slot,
+            'draft_status':        draft_status,
+            'league_type':         'redraft',
+            'picks':               picks,
+            'team_rosters':        team_rosters,
+            'roster_player_names': roster_player_names,
+            'season':              year,
+            'standings':           standings,
+            'league_start_year':   league_start_year,
+        })
+    except requests.RequestException:
+        return jsonify({'error': 'Failed to connect to ESPN API'}), 503
+
+
+@main.route('/draft-board/espn/sync')
+@login_required
+def draft_board_espn_sync():
+    """Poll ESPN for live draft updates — mirrors sleeper/sync."""
+    league_id = request.args.get('league_id', '').strip()
+    if not league_id:
+        return jsonify({'error': 'league_id required'}), 400
+
+    cookies = {}
+    espn_s2 = request.args.get('espn_s2', '').strip()
+    swid    = request.args.get('swid', '').strip()
+    if espn_s2 and swid:
+        cookies = {'espn_s2': espn_s2, 'swid': swid}
+
+    year = datetime.utcnow().year
+    try:
+        resp_data, err = _espn_api_fetch(
+            league_id, year,
+            ['mDraftDetail', 'mTeam', 'mRoster', 'mSettings'],
+            cookies or None,
+        )
+        if err == 'private':
+            return jsonify({'error': 'ESPN auth expired. Please re-enter your cookies.'}), 401
+        if err == 'not_found':
+            return jsonify({'error': 'League not found'}), 404
+
+        settings     = resp_data.get('settings') or {}
+        teams        = resp_data.get('teams') or []
+        draft_detail = resp_data.get('draftDetail') or {}
+
+        # Draft status
+        in_progress = draft_detail.get('inProgress', False)
+        drafted     = draft_detail.get('drafted', False)
+        if in_progress:
+            draft_status = 'in_progress'
+        elif drafted:
+            draft_status = 'complete'
+        else:
+            draft_status = 'pre_draft'
+
+        # Build team_id → slot mapping
+        draft_settings = settings.get('draftSettings') or {}
+        pick_order = draft_settings.get('pickOrder') or []
+        team_id_to_slot = {}
+        if pick_order:
+            for slot_idx, tid in enumerate(pick_order):
+                team_id_to_slot[tid] = slot_idx + 1
+        else:
+            for slot_idx, t in enumerate(sorted(teams, key=lambda x: x.get('id', 0))):
+                team_id_to_slot[t.get('id')] = slot_idx + 1
+
+        num_teams      = settings.get('size', len(teams))
+        starter_labels = _espn_starter_slot_labels(settings)
+
+        # Format picks — skip unfilled placeholder slots (playerId <= 0)
+        player_map = _get_espn_player_map(year)
+        picks_raw  = draft_detail.get('picks') or []
+        picks      = [
+            _format_espn_pick(p, team_id_to_slot, player_map, num_teams)
+            for p in picks_raw
+            if (p.get('playerId') or 0) > 0
+        ]
+
+        # Rebuild rosters
+        team_rosters = [None] * num_teams
+        roster_player_names = []
+
+        for t in teams:
+            tid  = t.get('id')
+            slot = team_id_to_slot.get(tid, tid)
+            idx  = max(0, min(slot - 1, num_teams - 1))
+
+            roster_obj = t.get('roster') or {}
+            entries = roster_obj.get('entries') or []
+
+            starters_out = []
+            bench_out    = []
+            reserve_out  = []
+
+            for entry in entries:
+                lineup_slot_id = entry.get('lineupSlotId', 20)
+                ppe = entry.get('playerPoolEntry') or {}
+                player_info = ppe.get('player') or {}
+                pid  = player_info.get('id') or ppe.get('id', 0)
+                name = player_info.get('fullName', '')
+                pos  = _ESPN_POS_MAP.get(player_info.get('defaultPositionId', 0), '')
+                team_abbr = _ESPN_TEAM_ID_MAP.get(player_info.get('proTeamId', 0), '')
+
+                player_obj = {'id': str(pid), 'name': name, 'position': pos, 'team': team_abbr}
+                if name:
+                    roster_player_names.append(name)
+
+                slot_label = _ESPN_SLOT_MAP.get(lineup_slot_id, 'Bench')
+                if slot_label == 'IR':
+                    reserve_out.append(player_obj)
+                elif slot_label == 'Bench':
+                    bench_out.append(player_obj)
+                else:
+                    starters_out.append({'slot': slot_label, 'player': player_obj})
+
+            team_rosters[idx] = {
+                'starters': starters_out,
+                'bench':    bench_out,
+                'reserve':  reserve_out,
+                'taxi':     [],
+            }
+
+        team_rosters = [
+            r if r is not None
+            else {'starters': [], 'bench': [], 'reserve': [], 'taxi': []}
+            for r in team_rosters
+        ]
+
+        return jsonify({
+            'picks':               picks,
+            'team_rosters':        team_rosters,
+            'draft_status':        draft_status,
+            'roster_player_names': roster_player_names,
+        })
+
+    except requests.RequestException:
+        return jsonify({'error': 'ESPN API unavailable'}), 503
+
+
 @main.route('/draft-board/save', methods=['POST'])
 @login_required
 def draft_board_save():
@@ -2460,6 +3017,8 @@ def draft_board_leagues_list():
         'scoring':         lg.scoring,
         'league_type':     lg.league_type,
         'sleeper_user_id': lg.sleeper_user_id,
+        'espn_s2':         lg.espn_s2 if lg.source == 'espn' else None,
+        'espn_swid':       lg.espn_swid if lg.source == 'espn' else None,
         'user_slot':       lg.user_slot,
         'last_accessed':   lg.last_accessed.isoformat() if lg.last_accessed else None,
     } for lg in leagues])
@@ -2481,6 +3040,8 @@ def draft_board_leagues_save():
         existing.scoring        = data.get('scoring', existing.scoring)
         existing.league_type    = data.get('league_type', existing.league_type)
         existing.sleeper_user_id = data.get('sleeper_user_id', existing.sleeper_user_id)
+        existing.espn_s2        = data.get('espn_s2', existing.espn_s2)
+        existing.espn_swid      = data.get('espn_swid', existing.espn_swid)
         existing.user_slot      = data.get('user_slot', existing.user_slot)
         existing.last_accessed  = datetime.utcnow()
     else:
@@ -2493,6 +3054,8 @@ def draft_board_leagues_save():
             scoring        = data.get('scoring', 'ppr'),
             league_type    = data.get('league_type', 'redraft'),
             sleeper_user_id = data.get('sleeper_user_id'),
+            espn_s2        = data.get('espn_s2'),
+            espn_swid      = data.get('espn_swid'),
             user_slot      = data.get('user_slot'),
         ))
     db.session.commit()
