@@ -71,7 +71,18 @@
       "Bash(curl -s \"https://api.sleeper.app/v1/league/1204128519873888256/drafts\")",
       "Bash(/opt/homebrew/bin/python3.11 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''num drafts:'''', len\\(d\\)\\); [print\\(f''''  draft_id={x.get\\(\"\"draft_id\"\"\\)}, status={x.get\\(\"\"status\"\"\\)}''''\\) for x in d]\")",
       "Bash(curl -s \"https://api.sleeper.app/v1/league/1048393227302281216/drafts\")",
-      "Bash(git fsck:*)"
+      "Bash(git fsck:*)",
+      "Bash(ls /Users/kmaran3/Dropbox/StepByStepToolKit/venv/bin/python*)",
+      "Bash(ls /Users/kmaran3/Dropbox/StepByStepToolKit/.venv/bin/python*)",
+      "Bash(find /Users/kmaran3/Dropbox/StepByStepToolKit -name python* -path */bin/*)",
+      "WebFetch(domain:www.fantasypros.com)",
+      "WebFetch(domain:fantasyfootballcalculator.com)",
+      "WebFetch(domain:jayzheng.com)",
+      "Bash(curl -sL \"https://fantasyfootballcalculator.com/api/v1/adp/ppr?teams=12&year=2025\")",
+      "Bash(curl -sL \"https://api.sleeper.app/v1/stats/nfl/regular/2024\")",
+      "Bash(find /Users/kmaran3/Dropbox/StepByStepToolKit/Models/PickleFiles -name *.pkl)",
+      "Bash(wc -l /Users/kmaran3/Dropbox/StepByStepToolKit/webapp/templates/*.html)",
+      "Bash(grep -r \"from sklearn\\\\|import.*KMeans\\\\|import.*DBSCAN\" /Users/kmaran3/Dropbox/StepByStepToolKit --include=*.py --include=*.ipynb)"
     ]
   }
 }
