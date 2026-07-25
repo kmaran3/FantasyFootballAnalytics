@@ -175,8 +175,24 @@ def train_final_and_predict(df, feature_cols, strategy, predict_season=2025):
 
     strategy_preds = {'ridge': ridge_preds, 'xgb': xgb_preds, 'blend': blend_preds}[strategy]
 
+    # Confidence-weighted blending: anchor low-experience players toward weighted_ppg
+    # confidence = min(seasons_played / 3, 1.0)
+    # final = confidence * model_pred + (1 - confidence) * weighted_ppg
+    if 'seasons_played' in df.columns:
+        seasons_played = pred['seasons_played'].values
+    else:
+        # Compute from full df: count how many prior seasons each player appears in
+        season_counts  = df.groupby('player_name')['season'].count().to_dict()
+        seasons_played = pred['player_name'].map(season_counts).fillna(1).values
+    confidence     = np.minimum(seasons_played / 3.0, 1.0)
+    raw_preds      = np.maximum(strategy_preds, 0)
+    anchored_preds = confidence * raw_preds + (1 - confidence) * pred['weighted_ppg'].values
+
     pred = pred[['player_name', 'team', 'season', 'age', 'weighted_ppg', 'ppg', 'games']].copy()
-    pred['predicted_ppg_2026'] = np.maximum(strategy_preds, 0)  # clip negatives
+    pred['predicted_ppg_2026'] = np.maximum(anchored_preds, 0)
+    pred['model_pred_raw']     = raw_preds
+    pred['confidence']         = confidence
+    pred['seasons_played']     = seasons_played
     pred['ridge_pred']         = np.maximum(ridge_preds, 0)
     pred['xgb_pred']           = np.maximum(xgb_preds, 0)
     pred['strategy']           = strategy

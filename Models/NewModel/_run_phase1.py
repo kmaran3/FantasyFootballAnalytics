@@ -82,7 +82,7 @@ def red_zone_stats(pbp, player_id_col, yardline_threshold=20):
         .reset_index(name='rz_plays')
     )
 
-def filter_garbage_time(df, threshold=21):
+def filter_garbage_time(df, threshold=35):
     """Remove plays where score differential is beyond threshold."""
     return df[df['score_differential'].abs() <= threshold]
 
