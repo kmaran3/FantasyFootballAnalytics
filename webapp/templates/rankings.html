@@ -97,7 +97,14 @@
                                 {% else %}
                                     <td class="flag-cell" data-save-value="{{ cell | map(attribute='label') | join(' | ') }}">
                                         {% for flag in cell %}
-                                            <span class="rank-flag rank-flag-{{ flag.tone }}" title="{{ flag.title }}">{{ flag.label }}</span>
+                                            <span class="rank-flag rank-flag-{{ flag.tone }}">
+                                                {{ flag.label }}
+                                                <span class="rank-flag-tooltip">
+                                                    <strong>{{ flag.label }}</strong>
+                                                    {% if flag.description %}<span>{{ flag.description }}</span>{% endif %}
+                                                    <span>Expected time missed: {{ flag.expected_time_missed or 'Unknown' }}</span>
+                                                </span>
+                                            </span>
                                         {% endfor %}
                                     </td>
                                 {% endif %}
@@ -158,7 +165,39 @@
     letter-spacing: 0.03em;
     margin: 2px 6px 2px 0;
     white-space: nowrap;
+    position: relative;
 }
+.rank-flag-tooltip {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 220px;
+    max-width: 320px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--black);
+    border: 1px solid var(--gold);
+    color: var(--white);
+    white-space: normal;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    font-size: 0.82rem;
+    line-height: 1.4;
+    font-weight: 500;
+    text-transform: none;
+}
+.rank-flag-tooltip strong {
+    display: block;
+    color: var(--gold);
+    margin-bottom: 4px;
+}
+.rank-flag-tooltip span {
+    display: block;
+    margin-top: 4px;
+}
+.rank-flag:hover .rank-flag-tooltip { display: block; }
 .rank-flag-warning {
     background: rgba(242,142,43,0.18);
     color: #f0b870;
@@ -317,7 +356,9 @@ $(document).ready(function() {
         'ADP':            'Average Draft Position from Sleeper — where the fantasy community is drafting this player on average.',
         'vs ADP':         'Difference between our model rank and Sleeper ADP. Positive (+) means we rank the player higher than consensus. Negative (−) means we are lower on them.',
         'Weighted PPG':   'Average fantasy points per game across recent seasons, weighted to give stronger emphasis to more recent performance.',
-        '2025 PPG':       'Actual fantasy points per game scored during the 2025 NFL season, adjusted for the selected scoring format (PPR / Half PPR / Standard).'
+        '2025 PPG':       'Actual fantasy points per game scored during the 2025 NFL season, adjusted for the selected scoring format (PPR / Half PPR / Standard).',
+        'Depth':          'Current Sleeper depth-chart slot for the player, such as WR1 or RB2.',
+        'Flags':          'Quick context badges for injuries, suspensions, off-field news, and team changes.'
     };
 
     $('#sortable-table thead th').each(function() {

@@ -396,6 +396,8 @@ _sleeper_player_cache = {'ts': 0, 'by_id': {}, 'by_name': {}}
 _SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
 _player_move_news_cache = {'ts': 0, 'data': {}}
 _PLAYER_MOVE_NEWS_CACHE_TTL = 21600  # 6 hours
+_player_watch_news_cache = {'ts': 0, 'data': {}}
+_PLAYER_WATCH_NEWS_CACHE_TTL = 3600  # 1 hour
 
 
 def _refresh_sleeper_player_cache():
@@ -510,6 +512,142 @@ def _fetch_player_move_news(name, team='', prior_team=''):
 
     _player_move_news_cache['data'][cache_key] = article
     return article
+
+
+def _extract_expected_time_missed(text):
+    body = _clean_text(text)
+    if not body:
+        return 'Unknown'
+
+    lower = body.lower()
+    if 'no suspension' in lower or 'not suspended' in lower:
+        return 'None announced'
+    if 'indefinite' in lower or 'indefinitely' in lower:
+        return 'Indefinite'
+    if 'commissioner exempt' in lower or 'exempt list' in lower:
+        return 'Until league review ends'
+
+    word_to_num = {
+        'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+        'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
+    }
+
+    patterns = [
+        (r'(\d+)\s*-\s*game suspension', '{0} games'),
+        (r'suspended\s+for\s+(\d+)\s+games?', '{0} games'),
+        (r'(\d+)\s+games?\s+suspension', '{0} games'),
+        (r'suspended\s+(\d+)\s+games?', '{0} games'),
+        (r'(\d+)\s*-\s*week', '{0} weeks'),
+        (r'(\d+)\s+weeks?', '{0} weeks'),
+    ]
+    for pattern, fmt in patterns:
+        match = _re.search(pattern, lower)
+        if match:
+            return fmt.format(match.group(1))
+    for word, num in word_to_num.items():
+        word_patterns = [
+            rf'suspended\s+{word}\s+games?',
+            rf'{word}\s+games?\s+suspension',
+            rf'{word}\s+weeks?',
+        ]
+        for pattern in word_patterns:
+            if _re.search(pattern, lower):
+                unit = 'games' if 'game' in pattern else 'weeks'
+                return f'{num} {unit}'
+    return 'Unknown'
+
+
+def _compose_flag_tooltip(tag, description, expected_time):
+    parts = [tag]
+    if description:
+        parts.append(f'Description: {description}')
+    if expected_time:
+        parts.append(f'Expected time missed: {expected_time}')
+    return ' | '.join(parts)
+
+
+def _fetch_player_watch_news(player_names):
+    import time
+
+    now = time.time()
+    if now - _player_watch_news_cache['ts'] < _PLAYER_WATCH_NEWS_CACHE_TTL and _player_watch_news_cache['data']:
+        return _player_watch_news_cache['data']
+
+    name_map = {_normalize_name(name): name for name in player_names if _clean_text(name)}
+    if not name_map:
+        return {}
+
+    queries = [
+        '"NFL" (suspension OR suspended OR "commissioner exempt" OR "exempt list")',
+        '"NFL" (arrest OR arrested OR charges OR charged OR jail OR lawsuit OR investigation OR "domestic violence")',
+    ]
+
+    watch_map = {}
+    for query in queries:
+        url = f'https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en'
+        try:
+            resp = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+        except Exception:
+            continue
+
+        for item in root.findall('./channel/item'):
+            title = _clean_text(item.findtext('title'))
+            raw_description = _clean_text(item.findtext('description'))
+            description = BeautifulSoup(raw_description, 'html.parser').get_text(' ', strip=True) if raw_description else ''
+            article_text = ' '.join(part for part in [title, description] if part)
+            normalized_text = _normalize_name(article_text)
+            normalized_title = _normalize_name(title)
+            lower_title = title.lower()
+            if not normalized_text:
+                continue
+
+            matched_name = None
+            for name_key, original_name in name_map.items():
+                if name_key and name_key in normalized_title:
+                    matched_name = (name_key, original_name)
+                    break
+            if not matched_name or matched_name[0] in watch_map:
+                continue
+
+            lower_text = article_text.lower()
+            name_index = normalized_title.find(matched_name[0])
+            suspension_index = min(
+                [idx for idx in [lower_title.find(token) for token in ('suspension', 'suspended', 'commissioner exempt', 'exempt list')] if idx >= 0] or [-1]
+            )
+            is_suspension = suspension_index >= 0 and name_index >= 0 and name_index <= suspension_index
+            is_offfield = any(token in lower_text for token in ('arrest', 'arrested', 'charges', 'charged', 'jail', 'lawsuit', 'investigation', 'domestic violence'))
+            if not (is_suspension or is_offfield):
+                continue
+
+            published = _clean_text(item.findtext('pubDate'))
+            published_label = ''
+            if published:
+                try:
+                    published_dt = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
+                    published_label = published_dt.strftime('%b %d')
+                except ValueError:
+                    published_label = ''
+
+            source = _clean_text(item.findtext('source'))
+            desc = description or title
+            expected_time = _extract_expected_time_missed(article_text)
+            label = 'Suspension' if is_suspension else 'Off-field'
+            watch_map[matched_name[0]] = {
+                'label': label,
+                'tone': 'danger' if is_suspension else 'warning',
+                'description': desc,
+                'expected_time_missed': expected_time,
+                'headline': title,
+                'source': source,
+                'published_label': published_label,
+                'title': _compose_flag_tooltip(label, desc, expected_time),
+            }
+
+    _player_watch_news_cache['ts'] = now
+    _player_watch_news_cache['data'] = watch_map
+    return watch_map
 
 # ── Sleeper ADP (scoring-format-specific) ─────────────────────────────
 # Sleeper projections endpoint returns per-scoring-type projected points
@@ -764,17 +902,34 @@ def _latest_player_team_map():
     }
 
 
-def _build_rankings_flags(name, pos, team, prior_team_map):
+def _build_rankings_flags(name, pos, team, prior_team_map, watch_news_map):
     flags = []
     update = _get_sleeper_player_update(name, team, pos)
     status_key = (update.get('status') or '').upper()
     summary_key = (update.get('summary') or '').upper()
+    name_key = _normalize_name(name)
+    watch_news = watch_news_map.get(name_key, {})
+
+    if watch_news:
+        flags.append({
+            'label': watch_news.get('label', 'Off-field'),
+            'tone': watch_news.get('tone', 'warning'),
+            'title': watch_news.get('title', ''),
+            'description': watch_news.get('description', ''),
+            'expected_time_missed': watch_news.get('expected_time_missed', 'Unknown'),
+        })
 
     if 'SUSP' in status_key or 'SUSP' in summary_key:
         flags.append({
             'label': 'Suspension',
             'tone': 'danger',
-            'title': update.get('title') or update.get('summary') or 'Suspension status',
+            'title': _compose_flag_tooltip(
+                'Suspension',
+                update.get('title') or update.get('summary') or 'Official status flag',
+                _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+            ),
+            'description': update.get('title') or update.get('summary') or 'Official status flag',
+            'expected_time_missed': _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
         })
     elif (
         update.get('injury_status')
@@ -784,25 +939,34 @@ def _build_rankings_flags(name, pos, team, prior_team_map):
         flags.append({
             'label': 'Injury',
             'tone': 'warning',
-            'title': update.get('title') or update.get('summary') or 'Injury update',
+            'title': _compose_flag_tooltip(
+                'Injury',
+                update.get('title') or update.get('summary') or 'Injury update',
+                _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+            ),
+            'description': update.get('title') or update.get('summary') or 'Injury update',
+            'expected_time_missed': _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
         })
 
     prior_team = prior_team_map.get(_normalize_name(name))
     if prior_team and team and prior_team != team:
         move_news = _fetch_player_move_news(name, team, prior_team)
-        new_team_title = f'{prior_team} -> {team}'
+        move_desc_parts = [f'{prior_team} -> {team}']
         if update.get('depth_chart_label'):
-            new_team_title = f'{new_team_title} | Depth: {update["depth_chart_label"]}'
+            move_desc_parts.append(f'Depth: {update["depth_chart_label"]}')
         if move_news.get('headline'):
-            new_team_title = f'{new_team_title} | News: {move_news["headline"]}'
+            move_desc_parts.append(f'News: {move_news["headline"]}')
             if move_news.get('source'):
-                new_team_title = f'{new_team_title} ({move_news["source"]})'
+                move_desc_parts.append(f'Source: {move_news["source"]}')
             if move_news.get('published_label'):
-                new_team_title = f'{new_team_title} - {move_news["published_label"]}'
+                move_desc_parts.append(f'Updated {move_news["published_label"]}')
+        move_description = ' | '.join(move_desc_parts)
         flags.append({
             'label': 'New Team',
             'tone': 'info',
-            'title': new_team_title,
+            'title': _compose_flag_tooltip('New Team', move_description, 'Unknown'),
+            'description': move_description,
+            'expected_time_missed': 'Unknown',
         })
 
     return flags
@@ -917,20 +1081,30 @@ def _inject_rankings_flags(rows):
         return rows
 
     prior_team_map = _latest_player_team_map()
+    watch_news_map = _fetch_player_watch_news([row.get('Name', '') for row in rows])
 
     enriched = []
     for row in rows:
+        update = _get_sleeper_player_update(
+            row.get('Name', ''),
+            row.get('Team', ''),
+            row.get('Position', ''),
+        )
         flags = _build_rankings_flags(
             row.get('Name', ''),
             row.get('Position', ''),
             row.get('Team', ''),
             prior_team_map,
+            watch_news_map,
         )
         ordered = {}
         for key, value in row.items():
             ordered[key] = value
             if key == 'Team':
+                ordered['Depth'] = update.get('depth_chart_label', '')
                 ordered['Flags'] = flags
+        if 'Depth' not in ordered:
+            ordered['Depth'] = update.get('depth_chart_label', '')
         if 'Flags' not in ordered:
             ordered['Flags'] = flags
         enriched.append(ordered)
