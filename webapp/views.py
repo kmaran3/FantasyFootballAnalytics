@@ -11,6 +11,8 @@ import json
 import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
+from urllib.parse import quote_plus
+from xml.etree import ElementTree as ET
 
 
 def _enable_numpy_pickle_compat():
@@ -49,6 +51,41 @@ _TEAM_ABBR_MAP = {
     'BLT': 'BAL', # Baltimore Ravens
     'CLV': 'CLE', # Cleveland Browns
     'HST': 'HOU', # Houston Texans
+}
+
+_TEAM_NAME_MAP = {
+    'ARI': 'Arizona Cardinals',
+    'ATL': 'Atlanta Falcons',
+    'BAL': 'Baltimore Ravens',
+    'BUF': 'Buffalo Bills',
+    'CAR': 'Carolina Panthers',
+    'CHI': 'Chicago Bears',
+    'CIN': 'Cincinnati Bengals',
+    'CLE': 'Cleveland Browns',
+    'DAL': 'Dallas Cowboys',
+    'DEN': 'Denver Broncos',
+    'DET': 'Detroit Lions',
+    'GB': 'Green Bay Packers',
+    'HOU': 'Houston Texans',
+    'IND': 'Indianapolis Colts',
+    'JAX': 'Jacksonville Jaguars',
+    'KC': 'Kansas City Chiefs',
+    'LAC': 'Los Angeles Chargers',
+    'LAR': 'Los Angeles Rams',
+    'LV': 'Las Vegas Raiders',
+    'MIA': 'Miami Dolphins',
+    'MIN': 'Minnesota Vikings',
+    'NE': 'New England Patriots',
+    'NO': 'New Orleans Saints',
+    'NYG': 'New York Giants',
+    'NYJ': 'New York Jets',
+    'PHI': 'Philadelphia Eagles',
+    'PIT': 'Pittsburgh Steelers',
+    'SEA': 'Seattle Seahawks',
+    'SF': 'San Francisco 49ers',
+    'TB': 'Tampa Bay Buccaneers',
+    'TEN': 'Tennessee Titans',
+    'WAS': 'Washington Commanders',
 }
 
 _player_details_cache = None
@@ -275,11 +312,34 @@ def _clean_text(value):
     return '' if text.lower() in ('', 'none', 'nan', 'null', 'na') else text
 
 
+def _format_depth_chart_label(position, order):
+    pos = _clean_text(position).upper()
+    if not pos:
+        return ''
+
+    base_pos = pos
+    if pos.endswith('WR'):
+        base_pos = 'WR'
+    elif pos in ('HB', 'FB'):
+        base_pos = 'RB'
+    elif pos in ('PK',):
+        base_pos = 'K'
+
+    try:
+        if order not in (None, ''):
+            return f'{base_pos}{int(order)}'
+    except (TypeError, ValueError):
+        pass
+    return base_pos
+
+
 def _format_sleeper_injury_news(player):
     status = _clean_text(player.get('status'))
     injury_status = _clean_text(player.get('injury_status'))
     injury_body_part = _clean_text(player.get('injury_body_part'))
     injury_notes = _clean_text(player.get('injury_notes'))
+    depth_chart_position = _clean_text(player.get('depth_chart_position'))
+    depth_chart_order = player.get('depth_chart_order')
 
     updated_label = ''
     raw_updated = player.get('news_updated')
@@ -307,6 +367,8 @@ def _format_sleeper_injury_news(player):
     elif status_key in ('QUESTIONABLE', 'PROBABLE') or summary:
         tone = 'warning'
 
+    depth_chart_label = _format_depth_chart_label(depth_chart_position, depth_chart_order)
+
     title_parts = [summary]
     if detail:
         title_parts.append(detail)
@@ -324,11 +386,16 @@ def _format_sleeper_injury_news(player):
         'tone': tone,
         'has_update': bool(summary),
         'title': ' | '.join(p for p in title_parts if p),
+        'depth_chart_position': depth_chart_position,
+        'depth_chart_order': depth_chart_order,
+        'depth_chart_label': depth_chart_label,
     }
 
 
 _sleeper_player_cache = {'ts': 0, 'by_id': {}, 'by_name': {}}
 _SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
+_player_move_news_cache = {'ts': 0, 'data': {}}
+_PLAYER_MOVE_NEWS_CACHE_TTL = 21600  # 6 hours
 
 
 def _refresh_sleeper_player_cache():
@@ -387,6 +454,62 @@ def _get_sleeper_player_update(name, team='', pos=''):
         if pos and candidate.get('position') == pos:
             return candidate.get('update', {})
     return candidates[0].get('update', {})
+
+
+def _fetch_player_move_news(name, team='', prior_team=''):
+    import time
+
+    cache_key = (_normalize_name(name), _norm_team(team), _norm_team(prior_team))
+    now = time.time()
+    if now - _player_move_news_cache['ts'] >= _PLAYER_MOVE_NEWS_CACHE_TTL:
+        _player_move_news_cache['ts'] = now
+        _player_move_news_cache['data'] = {}
+    if cache_key in _player_move_news_cache['data']:
+        return _player_move_news_cache['data'][cache_key]
+
+    team_name = _TEAM_NAME_MAP.get(_norm_team(team), _norm_team(team))
+    prior_team_name = _TEAM_NAME_MAP.get(_norm_team(prior_team), _norm_team(prior_team))
+    query_parts = [f'"{name}"', '"NFL"']
+    if team_name:
+        query_parts.append(f'"{team_name}"')
+    if prior_team_name:
+        query_parts.append(f'"{prior_team_name}"')
+    query_parts.append('(trade OR signs OR signed OR acquired)')
+    query = ' '.join(part for part in query_parts if part)
+    url = f'https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en'
+
+    article = {}
+    try:
+        resp = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        for item in root.findall('./channel/item'):
+            title = _clean_text(item.findtext('title'))
+            if not title:
+                continue
+            title_lower = title.lower()
+            if _normalize_name(name) not in _normalize_name(title):
+                continue
+            source = _clean_text(item.findtext('source'))
+            published = _clean_text(item.findtext('pubDate'))
+            published_label = ''
+            if published:
+                try:
+                    published_dt = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
+                    published_label = published_dt.strftime('%b %d')
+                except ValueError:
+                    published_label = ''
+            article = {
+                'headline': title,
+                'source': source,
+                'published_label': published_label,
+            }
+            break
+    except Exception:
+        article = {}
+
+    _player_move_news_cache['data'][cache_key] = article
+    return article
 
 # ── Sleeper ADP (scoring-format-specific) ─────────────────────────────
 # Sleeper projections endpoint returns per-scoring-type projected points
@@ -641,102 +764,7 @@ def _latest_player_team_map():
     }
 
 
-def _latest_team_qb_map():
-    def _team_col(df):
-        return next((c for c in ['recent_team', 'team', 'posteam', 'team_abbr', 'club', 'Tm', 'Team'] if c in df.columns), None)
-
-    if _nfl_seasonal.empty:
-        qb_df = _load('final_qb_data.pkl')
-        if qb_df.empty:
-            return {}
-        qb_df = qb_df[qb_df['season'] == qb_df['season'].max()].copy()
-        if 'season_type' in qb_df.columns:
-            qb_df = qb_df[qb_df['season_type'] == 'REG']
-        name_col = 'player_display_name' if 'player_display_name' in qb_df.columns else None
-        team_col = _team_col(qb_df)
-        games_col = next((c for c in ['games', 'GP'] if c in qb_df.columns), None)
-        points_col = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in qb_df.columns), None)
-        if not (name_col and team_col):
-            return {}
-        sort_cols = [team_col]
-        ascending = [True]
-        if games_col:
-            sort_cols.append(games_col)
-            ascending.append(False)
-        if points_col:
-            sort_cols.append(points_col)
-            ascending.append(False)
-        qb_df = qb_df.dropna(subset=[name_col, team_col]).sort_values(sort_cols, ascending=ascending).drop_duplicates(team_col)
-        return {
-            _norm_team(row[team_col]): {
-                'key': _normalize_name(row[name_col]),
-                'name': str(row[name_col]).strip(),
-            }
-            for _, row in qb_df.iterrows()
-            if _clean_text(row.get(name_col)) and _clean_text(row.get(team_col))
-        }
-
-    season_col = next((c for c in ['season'] if c in _nfl_seasonal.columns), None)
-    name_col = next((c for c in ['player_display_name', 'player_name'] if c in _nfl_seasonal.columns), None)
-    team_col = next((c for c in ['recent_team', 'team'] if c in _nfl_seasonal.columns), None)
-    pos_col = next((c for c in ['position'] if c in _nfl_seasonal.columns), None)
-    games_col = next((c for c in ['games', 'GP'] if c in _nfl_seasonal.columns), None)
-    points_col = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_seasonal.columns), None)
-    if not (season_col and name_col and team_col and pos_col):
-        return {}
-
-    latest_qbs = _nfl_seasonal[
-        (_nfl_seasonal[season_col] == _nfl_seasonal[season_col].max()) &
-        (_nfl_seasonal[pos_col] == 'QB')
-    ].copy()
-    if 'season_type' in latest_qbs.columns:
-        latest_qbs = latest_qbs[latest_qbs['season_type'] == 'REG']
-    latest_qbs = latest_qbs.dropna(subset=[name_col, team_col])
-    if latest_qbs.empty:
-        return {}
-
-    sort_cols = [team_col]
-    ascending = [True]
-    if games_col:
-        sort_cols.append(games_col)
-        ascending.append(False)
-    if points_col:
-        sort_cols.append(points_col)
-        ascending.append(False)
-    latest_qbs = latest_qbs.sort_values(sort_cols, ascending=ascending)
-    latest_qbs = latest_qbs.drop_duplicates(team_col)
-
-    return {
-        _norm_team(row[team_col]): {
-            'key': _normalize_name(row[name_col]),
-            'name': str(row[name_col]).strip(),
-        }
-        for _, row in latest_qbs.iterrows()
-        if _clean_text(row.get(name_col)) and _clean_text(row.get(team_col))
-    }
-
-
-def _current_team_qb_map(rankings_df):
-    if rankings_df.empty or 'position' not in rankings_df.columns or 'team' not in rankings_df.columns:
-        return {}
-
-    qbs = rankings_df[rankings_df['position'] == 'QB'].copy()
-    if qbs.empty:
-        return {}
-
-    qbs['team'] = qbs['team'].apply(_norm_team)
-    qbs = qbs.sort_values(['team', 'predicted_ppg_2026'], ascending=[True, False]).drop_duplicates('team')
-    return {
-        row['team']: {
-            'key': _normalize_name(row['player_name']),
-            'name': str(row['player_name']).strip(),
-        }
-        for _, row in qbs.iterrows()
-        if _clean_text(row.get('player_name')) and _clean_text(row.get('team'))
-    }
-
-
-def _build_rankings_flags(name, pos, team, prior_team_map, prior_qb_map, current_qb_map):
+def _build_rankings_flags(name, pos, team, prior_team_map):
     flags = []
     update = _get_sleeper_player_update(name, team, pos)
     status_key = (update.get('status') or '').upper()
@@ -761,21 +789,21 @@ def _build_rankings_flags(name, pos, team, prior_team_map, prior_qb_map, current
 
     prior_team = prior_team_map.get(_normalize_name(name))
     if prior_team and team and prior_team != team:
+        move_news = _fetch_player_move_news(name, team, prior_team)
+        new_team_title = f'{prior_team} -> {team}'
+        if update.get('depth_chart_label'):
+            new_team_title = f'{new_team_title} | Depth: {update["depth_chart_label"]}'
+        if move_news.get('headline'):
+            new_team_title = f'{new_team_title} | News: {move_news["headline"]}'
+            if move_news.get('source'):
+                new_team_title = f'{new_team_title} ({move_news["source"]})'
+            if move_news.get('published_label'):
+                new_team_title = f'{new_team_title} - {move_news["published_label"]}'
         flags.append({
             'label': 'New Team',
             'tone': 'info',
-            'title': f'{prior_team} -> {team}',
+            'title': new_team_title,
         })
-
-    if pos != 'QB' and team:
-        prior_qb = prior_qb_map.get(team)
-        current_qb = current_qb_map.get(team)
-        if prior_qb and current_qb and prior_qb.get('key') != current_qb.get('key'):
-            flags.append({
-                'label': 'New QB',
-                'tone': 'info',
-                'title': f"{prior_qb.get('name', 'Previous QB')} -> {current_qb.get('name', 'Current QB')}",
-            })
 
     return flags
 
@@ -889,15 +917,6 @@ def _inject_rankings_flags(rows):
         return rows
 
     prior_team_map = _latest_player_team_map()
-    prior_qb_map = _latest_team_qb_map()
-
-    current_qb_map = {}
-    for row in rows:
-        if row.get('Position') == 'QB' and row.get('Team') and row.get('Team') not in current_qb_map:
-            current_qb_map[row['Team']] = {
-                'key': _normalize_name(row.get('Name', '')),
-                'name': row.get('Name', ''),
-            }
 
     enriched = []
     for row in rows:
@@ -906,8 +925,6 @@ def _inject_rankings_flags(rows):
             row.get('Position', ''),
             row.get('Team', ''),
             prior_team_map,
-            prior_qb_map,
-            current_qb_map,
         )
         ordered = {}
         for key, value in row.items():
