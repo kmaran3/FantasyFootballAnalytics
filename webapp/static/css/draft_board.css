@@ -448,13 +448,13 @@
 
 .db-player-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
     padding: 6px 10px;
     border-bottom: 1px solid rgba(42,42,42,0.6);
     cursor: pointer;
     transition: background 0.12s;
-    min-height: 36px;
+    min-height: 44px;
 }
 
 .db-player-row:hover:not(.db-player-drafted) {
@@ -480,7 +480,6 @@
 }
 
 .db-player-name {
-    flex: 1;
     font-size: 0.84em;
     color: var(--white);
     white-space: nowrap;
@@ -489,11 +488,29 @@
     font-weight: 500;
 }
 
-.db-player-nfl {
+.db-player-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.db-player-sub {
+    margin-top: 1px;
     font-size: 0.72em;
     color: var(--text-secondary);
-    flex-shrink: 0;
 }
+
+.db-player-update {
+    margin-top: 2px;
+    font-size: 0.68em;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-player-update-warning { color: #f0b870; }
+.db-player-update-danger  { color: #e88a8a; }
+.db-player-update-info    { color: var(--light-gray); }
 
 /* ── Position badges ─────────────────────────────────────────── */
 .db-pos-badge {
