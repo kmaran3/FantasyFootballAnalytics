@@ -264,6 +264,130 @@ def _normalize_name(name):
     n = _re.sub(r'[^a-z\s]', '', n)
     return n.strip()
 
+
+def _clean_text(value):
+    try:
+        if pd.isna(value):
+            return ''
+    except TypeError:
+        pass
+    text = str(value).strip() if value is not None else ''
+    return '' if text.lower() in ('', 'none', 'nan', 'null', 'na') else text
+
+
+def _format_sleeper_injury_news(player):
+    status = _clean_text(player.get('status'))
+    injury_status = _clean_text(player.get('injury_status'))
+    injury_body_part = _clean_text(player.get('injury_body_part'))
+    injury_notes = _clean_text(player.get('injury_notes'))
+
+    updated_label = ''
+    raw_updated = player.get('news_updated')
+    if raw_updated not in (None, ''):
+        try:
+            updated_label = datetime.utcfromtimestamp(float(raw_updated) / 1000).strftime('%b %d')
+        except (TypeError, ValueError, OSError):
+            updated_label = ''
+
+    summary = ''
+    if injury_status:
+        summary = injury_status
+        if injury_body_part:
+            summary = f'{summary} - {injury_body_part}'
+    elif status and status.upper() not in ('ACTIVE', 'UNKNOWN'):
+        summary = status
+    elif injury_notes:
+        summary = injury_notes
+
+    detail = injury_notes if injury_notes and injury_notes != summary else ''
+    status_key = (injury_status or status).upper()
+    tone = 'info'
+    if any(token in status_key for token in ('OUT', 'DOUBTFUL', 'IR', 'PUP', 'SUSP', 'INACTIVE')):
+        tone = 'danger'
+    elif status_key in ('QUESTIONABLE', 'PROBABLE') or summary:
+        tone = 'warning'
+
+    title_parts = [summary]
+    if detail:
+        title_parts.append(detail)
+    if updated_label:
+        title_parts.append(f'Updated {updated_label}')
+
+    return {
+        'status': status,
+        'injury_status': injury_status,
+        'injury_body_part': injury_body_part,
+        'injury_notes': injury_notes,
+        'updated_label': updated_label,
+        'summary': summary,
+        'detail': detail,
+        'tone': tone,
+        'has_update': bool(summary),
+        'title': ' | '.join(p for p in title_parts if p),
+    }
+
+
+_sleeper_player_cache = {'ts': 0, 'by_id': {}, 'by_name': {}}
+_SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
+
+
+def _refresh_sleeper_player_cache():
+    import time
+    now = time.time()
+    if now - _sleeper_player_cache['ts'] < _SLEEPER_PLAYER_CACHE_TTL and _sleeper_player_cache['by_id']:
+        return
+    try:
+        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=20)
+        if resp.status_code == 200:
+            by_id = {}
+            by_name = defaultdict(list)
+            for pid, p in (resp.json() or {}).items():
+                first = p.get('first_name') or ''
+                last = p.get('last_name') or ''
+                name = (p.get('full_name') or f'{first} {last}').strip()
+                if not name:
+                    continue
+                slim = {
+                    'name': name,
+                    'position': (p.get('position') or '').upper(),
+                    'team': _norm_team(p.get('team') or ''),
+                    'update': _format_sleeper_injury_news(p),
+                }
+                by_id[str(pid)] = slim
+                by_name[_normalize_name(name)].append(slim)
+            _sleeper_player_cache['ts'] = now
+            _sleeper_player_cache['by_id'] = by_id
+            _sleeper_player_cache['by_name'] = by_name
+    except Exception:
+        pass
+
+
+def _get_sleeper_player_map():
+    """Fetch + cache the Sleeper NFL player dict. Returns {player_id: {name, position, team}}."""
+    _refresh_sleeper_player_cache()
+    return _sleeper_player_cache['by_id']  # return stale on failure
+
+
+def _get_sleeper_player_update(name, team='', pos=''):
+    _refresh_sleeper_player_cache()
+    candidates = _sleeper_player_cache['by_name'].get(_normalize_name(name), [])
+    if not candidates:
+        return {}
+
+    team = _norm_team(team)
+    pos = str(pos).strip().upper()
+
+    for candidate in candidates:
+        if team and candidate.get('team') == team and (not pos or candidate.get('position') == pos):
+            return candidate.get('update', {})
+    for candidate in candidates:
+        if team and candidate.get('team') == team:
+            return candidate.get('update', {})
+    for candidate in candidates:
+        if pos and candidate.get('position') == pos:
+            return candidate.get('update', {})
+    return candidates[0].get('update', {})
+
 # ── Sleeper ADP (scoring-format-specific) ─────────────────────────────
 # Sleeper projections endpoint returns per-scoring-type projected points
 # which we use to derive format-specific rank ordering.
@@ -448,6 +572,213 @@ def _norm_team(t):
     t = str(t).strip().upper()
     return _TEAM_ABBR_MAP.get(t, t)
 
+
+def _latest_player_team_map():
+    def _team_col(df):
+        return next((c for c in ['recent_team', 'team', 'posteam', 'team_abbr', 'club', 'Tm', 'Team'] if c in df.columns), None)
+
+    if _nfl_seasonal.empty:
+        frames = []
+        for filename, default_pos in [('final_qb_data.pkl', 'QB'), ('final_rb_data.pkl', 'RB'), ('final_wrte_data.pkl', None)]:
+            df = _load(filename)
+            if df.empty:
+                continue
+            df = df[df['season'] == df['season'].max()].copy()
+            if 'season_type' in df.columns:
+                df = df[df['season_type'] == 'REG']
+            name_col = 'player_display_name' if 'player_display_name' in df.columns else None
+            team_col = _team_col(df)
+            pos_col = 'position' if 'position' in df.columns else None
+            if not (name_col and team_col):
+                continue
+            use_cols = [name_col, team_col]
+            if pos_col:
+                use_cols.append(pos_col)
+            slim = df[use_cols].copy()
+            if not pos_col and default_pos:
+                slim['position'] = default_pos
+            frames.append(slim.rename(columns={name_col: 'name', team_col: 'team', pos_col or 'position': 'position'}))
+        if not frames:
+            return {}
+        latest_df = pd.concat(frames, ignore_index=True).dropna(subset=['name', 'team']).drop_duplicates('name')
+        return {
+            _normalize_name(row['name']): _norm_team(row['team'])
+            for _, row in latest_df.iterrows()
+            if _clean_text(row.get('name')) and _clean_text(row.get('team'))
+        }
+
+    season_col = next((c for c in ['season'] if c in _nfl_seasonal.columns), None)
+    name_col = next((c for c in ['player_display_name', 'player_name'] if c in _nfl_seasonal.columns), None)
+    team_col = next((c for c in ['recent_team', 'team'] if c in _nfl_seasonal.columns), None)
+    games_col = next((c for c in ['games', 'GP'] if c in _nfl_seasonal.columns), None)
+    points_col = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_seasonal.columns), None)
+    if not (season_col and name_col and team_col):
+        return {}
+
+    latest_df = _nfl_seasonal[_nfl_seasonal[season_col] == _nfl_seasonal[season_col].max()].copy()
+    if 'season_type' in latest_df.columns:
+        latest_df = latest_df[latest_df['season_type'] == 'REG']
+    latest_df = latest_df.dropna(subset=[name_col, team_col])
+    if latest_df.empty:
+        return {}
+
+    sort_cols = []
+    ascending = []
+    if games_col:
+        sort_cols.append(games_col)
+        ascending.append(False)
+    if points_col:
+        sort_cols.append(points_col)
+        ascending.append(False)
+    if sort_cols:
+        latest_df = latest_df.sort_values(sort_cols, ascending=ascending)
+
+    latest_df = latest_df.drop_duplicates(name_col)
+    return {
+        _normalize_name(row[name_col]): _norm_team(row[team_col])
+        for _, row in latest_df.iterrows()
+        if _clean_text(row.get(name_col)) and _clean_text(row.get(team_col))
+    }
+
+
+def _latest_team_qb_map():
+    def _team_col(df):
+        return next((c for c in ['recent_team', 'team', 'posteam', 'team_abbr', 'club', 'Tm', 'Team'] if c in df.columns), None)
+
+    if _nfl_seasonal.empty:
+        qb_df = _load('final_qb_data.pkl')
+        if qb_df.empty:
+            return {}
+        qb_df = qb_df[qb_df['season'] == qb_df['season'].max()].copy()
+        if 'season_type' in qb_df.columns:
+            qb_df = qb_df[qb_df['season_type'] == 'REG']
+        name_col = 'player_display_name' if 'player_display_name' in qb_df.columns else None
+        team_col = _team_col(qb_df)
+        games_col = next((c for c in ['games', 'GP'] if c in qb_df.columns), None)
+        points_col = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in qb_df.columns), None)
+        if not (name_col and team_col):
+            return {}
+        sort_cols = [team_col]
+        ascending = [True]
+        if games_col:
+            sort_cols.append(games_col)
+            ascending.append(False)
+        if points_col:
+            sort_cols.append(points_col)
+            ascending.append(False)
+        qb_df = qb_df.dropna(subset=[name_col, team_col]).sort_values(sort_cols, ascending=ascending).drop_duplicates(team_col)
+        return {
+            _norm_team(row[team_col]): {
+                'key': _normalize_name(row[name_col]),
+                'name': str(row[name_col]).strip(),
+            }
+            for _, row in qb_df.iterrows()
+            if _clean_text(row.get(name_col)) and _clean_text(row.get(team_col))
+        }
+
+    season_col = next((c for c in ['season'] if c in _nfl_seasonal.columns), None)
+    name_col = next((c for c in ['player_display_name', 'player_name'] if c in _nfl_seasonal.columns), None)
+    team_col = next((c for c in ['recent_team', 'team'] if c in _nfl_seasonal.columns), None)
+    pos_col = next((c for c in ['position'] if c in _nfl_seasonal.columns), None)
+    games_col = next((c for c in ['games', 'GP'] if c in _nfl_seasonal.columns), None)
+    points_col = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_seasonal.columns), None)
+    if not (season_col and name_col and team_col and pos_col):
+        return {}
+
+    latest_qbs = _nfl_seasonal[
+        (_nfl_seasonal[season_col] == _nfl_seasonal[season_col].max()) &
+        (_nfl_seasonal[pos_col] == 'QB')
+    ].copy()
+    if 'season_type' in latest_qbs.columns:
+        latest_qbs = latest_qbs[latest_qbs['season_type'] == 'REG']
+    latest_qbs = latest_qbs.dropna(subset=[name_col, team_col])
+    if latest_qbs.empty:
+        return {}
+
+    sort_cols = [team_col]
+    ascending = [True]
+    if games_col:
+        sort_cols.append(games_col)
+        ascending.append(False)
+    if points_col:
+        sort_cols.append(points_col)
+        ascending.append(False)
+    latest_qbs = latest_qbs.sort_values(sort_cols, ascending=ascending)
+    latest_qbs = latest_qbs.drop_duplicates(team_col)
+
+    return {
+        _norm_team(row[team_col]): {
+            'key': _normalize_name(row[name_col]),
+            'name': str(row[name_col]).strip(),
+        }
+        for _, row in latest_qbs.iterrows()
+        if _clean_text(row.get(name_col)) and _clean_text(row.get(team_col))
+    }
+
+
+def _current_team_qb_map(rankings_df):
+    if rankings_df.empty or 'position' not in rankings_df.columns or 'team' not in rankings_df.columns:
+        return {}
+
+    qbs = rankings_df[rankings_df['position'] == 'QB'].copy()
+    if qbs.empty:
+        return {}
+
+    qbs['team'] = qbs['team'].apply(_norm_team)
+    qbs = qbs.sort_values(['team', 'predicted_ppg_2026'], ascending=[True, False]).drop_duplicates('team')
+    return {
+        row['team']: {
+            'key': _normalize_name(row['player_name']),
+            'name': str(row['player_name']).strip(),
+        }
+        for _, row in qbs.iterrows()
+        if _clean_text(row.get('player_name')) and _clean_text(row.get('team'))
+    }
+
+
+def _build_rankings_flags(name, pos, team, prior_team_map, prior_qb_map, current_qb_map):
+    flags = []
+    update = _get_sleeper_player_update(name, team, pos)
+    status_key = (update.get('status') or '').upper()
+    summary_key = (update.get('summary') or '').upper()
+
+    if 'SUSP' in status_key or 'SUSP' in summary_key:
+        flags.append({
+            'label': 'Suspension',
+            'tone': 'danger',
+            'title': update.get('title') or update.get('summary') or 'Suspension status',
+        })
+    elif (
+        update.get('injury_status')
+        or update.get('injury_notes')
+        or any(token in status_key for token in ('OUT', 'DOUBTFUL', 'QUESTIONABLE', 'PUP', 'IR', 'INACTIVE'))
+    ):
+        flags.append({
+            'label': 'Injury',
+            'tone': 'warning',
+            'title': update.get('title') or update.get('summary') or 'Injury update',
+        })
+
+    prior_team = prior_team_map.get(_normalize_name(name))
+    if prior_team and team and prior_team != team:
+        flags.append({
+            'label': 'New Team',
+            'tone': 'info',
+            'title': f'{prior_team} -> {team}',
+        })
+
+    if pos != 'QB' and team:
+        prior_qb = prior_qb_map.get(team)
+        current_qb = current_qb_map.get(team)
+        if prior_qb and current_qb and prior_qb.get('key') != current_qb.get('key'):
+            flags.append({
+                'label': 'New QB',
+                'tone': 'info',
+                'title': f"{prior_qb.get('name', 'Previous QB')} -> {current_qb.get('name', 'Current QB')}",
+            })
+
+    return flags
+
 # ── New model predictions (Phase 3) ──────────────────────────────────
 _BASELINES = {'QB': 13, 'RB': 37, 'WR': 37, 'TE': 13}
 
@@ -551,6 +882,45 @@ _model_data = {
     'standard': _load_model_rankings('standard'),
 }
 _model_table = {k: v.to_dict(orient='records') if not v.empty else [] for k, v in _model_data.items()}
+
+
+def _inject_rankings_flags(rows):
+    if not rows:
+        return rows
+
+    prior_team_map = _latest_player_team_map()
+    prior_qb_map = _latest_team_qb_map()
+
+    current_qb_map = {}
+    for row in rows:
+        if row.get('Position') == 'QB' and row.get('Team') and row.get('Team') not in current_qb_map:
+            current_qb_map[row['Team']] = {
+                'key': _normalize_name(row.get('Name', '')),
+                'name': row.get('Name', ''),
+            }
+
+    enriched = []
+    for row in rows:
+        flags = _build_rankings_flags(
+            row.get('Name', ''),
+            row.get('Position', ''),
+            row.get('Team', ''),
+            prior_team_map,
+            prior_qb_map,
+            current_qb_map,
+        )
+        ordered = {}
+        for key, value in row.items():
+            ordered[key] = value
+            if key == 'Team':
+                ordered['Flags'] = flags
+        if 'Flags' not in ordered:
+            ordered['Flags'] = flags
+        enriched.append(ordered)
+    return enriched
+
+
+_model_table = {k: _inject_rankings_flags(v) for k, v in _model_table.items()}
 for k, v in _model_table.items():
     print(f'Model table ({k}): {len(v)} rows')
 
@@ -1149,12 +1519,16 @@ def view_saved_ranking(ranking_id):
         return redirect(url_for('main.rankings'))
     # Parse the saved JSON data back into table format
     rows = json.loads(ranking.ranking_data)
-    # Get column headers from the ranking type's original table
-    header_map = {'PPR': 'Full_PPR', 'Half PPR': 'Half_PPR', 'Standard': 'Non_PPR'}
-    table_name = header_map.get(ranking.ranking_type, 'Full_PPR')
-    with engine.connect() as connection:
-        df = pd.read_sql(text(f'SELECT * FROM {table_name} LIMIT 1'), con=connection)
-    headers = list(df.columns)
+    current_header_map = {'PPR': 'ppr', 'Half PPR': 'half_ppr', 'Standard': 'standard'}
+    current_table_key = current_header_map.get(ranking.ranking_type)
+    if current_table_key and _model_table.get(current_table_key):
+        headers = list(_model_table[current_table_key][0].keys())
+    else:
+        header_map = {'PPR': 'Full_PPR', 'Half PPR': 'Half_PPR', 'Standard': 'Non_PPR'}
+        table_name = header_map.get(ranking.ranking_type, 'Full_PPR')
+        with engine.connect() as connection:
+            df = pd.read_sql(text(f'SELECT * FROM {table_name} LIMIT 1'), con=connection)
+        headers = list(df.columns)
     # Convert rows back to list of dicts
     table_data = []
     for row in rows:
@@ -1322,20 +1696,11 @@ def player_stats():
         'team_grade': team_grade,
         'team_grade_ranks': team_grade_ranks,
         'comps': _similarity_comps.get(name, []),
+        'injury_news': _get_sleeper_player_update(name, team, pos),
     })
 
 
-@main.route('/player_quick_stats')
-@login_required
-def player_quick_stats():
-    name = request.args.get('name', '').strip()
-    pos  = request.args.get('pos', '').strip().upper()
-    team = request.args.get('team', '').strip().upper()
-
-    if not name:
-        return jsonify({})
-
-    # Look up espn_id and bio from teamsPastRoster.pkl
+def _get_player_roster_profile(name, team='', pos=''):
     espn_id = None
     bio = {}
     try:
@@ -1344,10 +1709,11 @@ def player_quick_stats():
             roster_df = pd.read_pickle(roster_path)
             match = roster_df[roster_df['Player'] == name]
             if not match.empty:
-                _r = match.iloc[0]
-                raw_id = _r['espn_id']
+                row = match.iloc[0]
+                raw_id = row.get('espn_id')
                 if raw_id is not None and str(raw_id) not in ('', 'nan', 'None'):
                     espn_id = str(raw_id)
+
                 def _sv(v):
                     return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
 
@@ -1377,7 +1743,6 @@ def player_quick_stats():
                         from datetime import date
                         import re as _re_age
                         s = str(birth_str).strip()
-                        # Try YYYY-MM-DD first, then MM/DD/YYYY
                         m = _re_age.match(r'(\d{4})-(\d{2})-(\d{2})', s)
                         if m:
                             born = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -1402,17 +1767,46 @@ def player_quick_stats():
                         return '—'
 
                 bio = {
-                    'Age':              _fmt_age(_r.get('BirthDate')),
-                    'Height':           _fmt_height(_r.get('height')),
-                    'Weight':           _fmt_weight(_r.get('weight')),
-                    'College':          _sv(_r.get('College')),
-                    'Draft Year':       _fmt_year(_r.get('DraftYear')),
-                    'Draft Team':       _sv(_r.get('DraftTeam')),
-                    'Pick':             _fmt_pick(_r.get('DraftRound'), _r.get('DraftPick')),
-                    'Seasons Played':   _fmt_year(_r.get('ExperienceYears')),
+                    'Age': _fmt_age(row.get('BirthDate')),
+                    'Height': _fmt_height(row.get('height')),
+                    'Weight': _fmt_weight(row.get('weight')),
+                    'College': _sv(row.get('College')),
+                    'Draft Year': _fmt_year(row.get('DraftYear')),
+                    'Draft Team': _sv(row.get('DraftTeam')),
+                    'Pick': _fmt_pick(row.get('DraftRound'), row.get('DraftPick')),
+                    'Seasons Played': _fmt_year(row.get('ExperienceYears')),
                 }
-    except Exception as _e:
-        print(f'Warning: could not look up espn_id: {_e}')
+    except Exception as exc:
+        print(f'Warning: could not look up player roster profile: {exc}')
+
+    injury_news = _get_sleeper_player_update(name, team, pos)
+    if injury_news.get('summary'):
+        bio['Status'] = injury_news['summary']
+        update_parts = []
+        if injury_news.get('detail'):
+            update_parts.append(injury_news['detail'])
+        if injury_news.get('updated_label'):
+            update_parts.append(f"Updated {injury_news['updated_label']}")
+        if update_parts:
+            bio['Update'] = ' | '.join(update_parts)
+
+    return {'espn_id': espn_id, 'bio': bio, 'injury_news': injury_news}
+
+
+@main.route('/player_quick_stats')
+@login_required
+def player_quick_stats():
+    name = request.args.get('name', '').strip()
+    pos  = request.args.get('pos', '').strip().upper()
+    team = request.args.get('team', '').strip().upper()
+
+    if not name:
+        return jsonify({})
+
+    roster_profile = _get_player_roster_profile(name, team, pos)
+    espn_id = roster_profile['espn_id']
+    bio = roster_profile['bio']
+    injury_news = roster_profile['injury_news']
 
     # Get 2025 stats from _nfl_seasonal
     stats = {}
@@ -1488,6 +1882,7 @@ def player_quick_stats():
         'stats': stats,
         'fantasy_points': fantasy_points,
         'ranking': ranking,
+        'injury_news': injury_news,
     })
 
 
@@ -1500,83 +1895,9 @@ def player_profile(name):
     compare = request.args.get('compare', 'false').lower() == 'true'
     back_url = request.args.get('back', '/rankings/ppr')
 
-    # Look up player bio from teamsPastRoster.pkl
-    espn_id = None
-    player_bio = {}
-    try:
-        roster_path = Path(app.root_path) / 'data' / 'teamsPastRoster.pkl'
-        if roster_path.exists():
-            roster_df = pd.read_pickle(roster_path)
-            match = roster_df[roster_df['Player'] == name]
-            if not match.empty:
-                row = match.iloc[0]
-                raw_id = row.get('espn_id')
-                if raw_id is not None and str(raw_id) not in ('', 'nan', 'None'):
-                    espn_id = str(raw_id)
-                def _sv(v):
-                    return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
-
-                def _fmt_height(v):
-                    try:
-                        inches = float(v)
-                        ft = int(inches // 12)
-                        rem = int(inches % 12)
-                        return f"{ft}'{rem}\""
-                    except (TypeError, ValueError):
-                        return '—'
-
-                def _fmt_weight(v):
-                    try:
-                        return f"{int(float(v))} lbs"
-                    except (TypeError, ValueError):
-                        return '—'
-
-                def _fmt_year(v):
-                    try:
-                        return str(int(float(v)))
-                    except (TypeError, ValueError):
-                        return '—'
-
-                def _fmt_age(birth_str):
-                    try:
-                        from datetime import date
-                        import re as _re_age
-                        s = str(birth_str).strip()
-                        m = _re_age.match(r'(\d{4})-(\d{2})-(\d{2})', s)
-                        if m:
-                            born = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-                        else:
-                            m2 = _re_age.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
-                            if m2:
-                                born = date(int(m2.group(3)), int(m2.group(1)), int(m2.group(2)))
-                            else:
-                                return '—'
-                        today = date.today()
-                        age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
-                        return str(age)
-                    except Exception:
-                        return '—'
-
-                def _fmt_pick(round_val, pick_val):
-                    try:
-                        r = int(float(round_val))
-                        p = int(float(pick_val))
-                        return f"Rd {r} Pk {p}"
-                    except (TypeError, ValueError):
-                        return '—'
-
-                player_bio = {
-                    'Age':            _fmt_age(row.get('BirthDate')),
-                    'Height':         _fmt_height(row.get('height')),
-                    'Weight':         _fmt_weight(row.get('weight')),
-                    'College':        _sv(row.get('College')),
-                    'Draft Year':     _fmt_year(row.get('DraftYear')),
-                    'Draft Team':     _sv(row.get('DraftTeam')),
-                    'Pick':           _fmt_pick(row.get('DraftRound'), row.get('DraftPick')),
-                    'Seasons Played': _fmt_year(row.get('ExperienceYears')),
-                }
-    except Exception as _e:
-        print(f'Warning: could not look up player bio: {_e}')
+    roster_profile = _get_player_roster_profile(name, team, pos)
+    espn_id = roster_profile['espn_id']
+    player_bio = roster_profile['bio']
 
     player_comps_data = _similarity_comps.get(name, [])
 
@@ -1607,14 +1928,25 @@ def mockdraft_players():
     scoring = request.args.get('scoring', 'ppr')
     source  = request.args.get('source', 'darkhorse').lower()
 
+    def _with_injury_news(row):
+        enriched = dict(row)
+        name = enriched.get('Name') or enriched.get('Player') or ''
+        pos = _re2.sub(r'\d+$', '', (enriched.get('Position') or '').strip()).upper()
+        team = enriched.get('Team') or ''
+        enriched['InjuryNews'] = _get_sleeper_player_update(name, team, pos)
+        return enriched
+
     def _clean(players_list):
         out = []
         for row in players_list:
             pos = _re2.sub(r'\d+$', '', (row.get('Position') or '')).strip().upper()
             if pos in ('K', 'DEF', 'DST', 'P'):
                 continue
-            out.append({k: (None if isinstance(v, float) and math.isnan(v) else v)
-                        for k, v in row.items()})
+            clean_row = {
+                k: (None if isinstance(v, float) and math.isnan(v) else v)
+                for k, v in row.items()
+            }
+            out.append(_with_injury_news(clean_row))
         return out
 
     if source == 'darkhorse':
@@ -1666,7 +1998,7 @@ def mockdraft_players():
             'Bye Week': bye_lookup.get(name_key, ''),
         })
 
-    return jsonify(players_out)
+    return jsonify([_with_injury_news(row) for row in players_out])
 
 
 @main.route('/mockdraft/save', methods=['POST'])
@@ -1873,39 +2205,6 @@ def _parse_sleeper_roster_positions(roster_positions):
             slots['bench'] += 1
         # IR slots are excluded from draft round count
     return slots
-
-
-# In-memory cache for Sleeper player map (player_id → {name, position, team})
-_sleeper_player_cache = {'ts': 0, 'data': {}}
-_SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
-
-
-def _get_sleeper_player_map():
-    """Fetch + cache the Sleeper NFL player dict. Returns {player_id: {name, position, team}}."""
-    import time
-    now = time.time()
-    if now - _sleeper_player_cache['ts'] < _SLEEPER_PLAYER_CACHE_TTL and _sleeper_player_cache['data']:
-        return _sleeper_player_cache['data']
-    try:
-        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=20)
-        if resp.status_code == 200:
-            slim = {}
-            for pid, p in (resp.json() or {}).items():
-                first = p.get('first_name') or ''
-                last  = p.get('last_name') or ''
-                name  = f'{first} {last}'.strip()
-                if name:
-                    slim[str(pid)] = {
-                        'name':     name,
-                        'position': (p.get('position') or '').upper(),
-                        'team':     p.get('team') or '',
-                    }
-            _sleeper_player_cache['ts']   = now
-            _sleeper_player_cache['data'] = slim
-            return slim
-    except Exception:
-        pass
-    return _sleeper_player_cache['data']  # return stale on failure
 
 
 def _format_sleeper_pick(pick, roster_id_to_slot=None):

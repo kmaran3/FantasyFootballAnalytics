@@ -89,8 +89,21 @@
             <tbody>
                 {% for row in table_data %}
                     <tr class="player-row" style="cursor: pointer;">
-                        {% for cell in row.values() %}
-                            <td>{{ cell }}</td>
+                        {% for header in table_data[0].keys() %}
+                            {% set cell = row[header] %}
+                            {% if header == 'Flags' %}
+                                {% if cell is string %}
+                                    <td class="flag-cell" data-save-value="{{ cell }}">{{ cell }}</td>
+                                {% else %}
+                                    <td class="flag-cell" data-save-value="{{ cell | map(attribute='label') | join(' | ') }}">
+                                        {% for flag in cell %}
+                                            <span class="rank-flag rank-flag-{{ flag.tone }}" title="{{ flag.title }}">{{ flag.label }}</span>
+                                        {% endfor %}
+                                    </td>
+                                {% endif %}
+                            {% else %}
+                                <td>{{ cell }}</td>
+                            {% endif %}
                         {% endfor %}
                     </tr>
                     <tr class="deep-dive-row" style="display: none;">
@@ -134,6 +147,33 @@
     vertical-align: super;
 }
 .col-info:hover .col-info-icon { opacity: 1; }
+.flag-cell { min-width: 160px; }
+.rank-flag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    margin: 2px 6px 2px 0;
+    white-space: nowrap;
+}
+.rank-flag-warning {
+    background: rgba(242,142,43,0.18);
+    color: #f0b870;
+    border: 1px solid rgba(242,142,43,0.32);
+}
+.rank-flag-danger {
+    background: rgba(225,87,89,0.16);
+    color: #e88a8a;
+    border: 1px solid rgba(225,87,89,0.3);
+}
+.rank-flag-info {
+    background: rgba(78,121,167,0.2);
+    color: #a9c9f5;
+    border: 1px solid rgba(78,121,167,0.32);
+}
 .col-tooltip {
     display: none;
     position: absolute;
@@ -239,6 +279,10 @@
 }
 .dd-metric-label { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
 .dd-metric-val { font-size: 1.5em; font-weight: 700; color: var(--gold); margin-top: 4px; line-height: 1; }
+.dd-update-text { margin-top: 6px; font-size: 0.78em; line-height: 1.35; }
+.dd-update-warning { color: #f0b870; }
+.dd-update-danger { color: #e88a8a; }
+.dd-update-info { color: var(--light-gray); }
 .dd-na { color: var(--text-secondary); font-size: 0.85em; font-style: italic; }
 .dd-action-row { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .dd-action-btn {
@@ -426,6 +470,14 @@ $(document).ready(function() {
         if (!num || !den || den === 0) return '—';
         return (num / den).toFixed(decimals || 1);
     }
+    function ddEsc(v) {
+        return String(v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     function buildStatCards(stats, pos, fp) {
         var cards = [];
@@ -500,6 +552,7 @@ $(document).ready(function() {
                 var stats    = data.stats || {};
                 var fp       = data.fantasy_points;
                 var ranking  = data.ranking || {};
+                var injuryNews = data.injury_news || {};
 
                 var profileUrl = '/player/' + encodedName + '?pos=' + encodedPos + '&team=' + encodedTeam + '&back=' + encodedBack;
                 var compareUrl = '/player/' + encodedName + '?pos=' + encodedPos + '&team=' + encodedTeam + '&compare=true&back=' + encodedBack;
@@ -541,6 +594,16 @@ $(document).ready(function() {
                 html += '<div class="dd-metric-card"><div class="dd-metric-label">Pred PPG</div><div class="dd-metric-val">' + (ranking.predicted_ppg != null ? ranking.predicted_ppg : '—') + '</div></div>';
                 html += '<div class="dd-metric-card"><div class="dd-metric-label">VBD</div><div class="dd-metric-val">' + (ranking.vbd != null ? ranking.vbd : '—') + '</div></div>';
                 html += '<div class="dd-metric-card"><div class="dd-metric-label">ADP</div><div class="dd-metric-val">' + (ranking.adp != null ? ranking.adp : '—') + '</div></div>';
+                if (injuryNews.has_update && injuryNews.summary) {
+                    var updateParts = [injuryNews.summary];
+                    if (injuryNews.detail) updateParts.push(injuryNews.detail);
+                    if (injuryNews.updated_label) updateParts.push('Updated ' + injuryNews.updated_label);
+                    html += '<div class="dd-metric-card">'
+                         + '<div class="dd-metric-label">Injury / News</div>'
+                         + '<div class="dd-update-text dd-update-' + (injuryNews.tone || 'info') + '" title="' + ddEsc(injuryNews.title || updateParts.join(' | ')) + '">'
+                         + ddEsc(updateParts.join(' | '))
+                         + '</div></div>';
+                }
                 html += '</div>'; // end dd-col-right
 
                 html += '</div>'; // end dd-content
@@ -634,7 +697,9 @@ $(document).ready(function() {
         var rows = [];
         $('#sortable-table tbody tr.player-row').each(function() {
             var row = [];
-            $(this).find('td').each(function() { row.push($(this).text()); });
+            $(this).find('td').each(function() {
+                row.push($(this).attr('data-save-value') || $(this).text().trim());
+            });
             rows.push(row);
         });
 
