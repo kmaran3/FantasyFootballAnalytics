@@ -16,7 +16,12 @@
             <span id="db-sync-label">Connecting…</span>
         </div>
         <button class="db-topbar-btn" id="db-sync-now-btn" style="display:none">Sync Now</button>
-        <button class="db-topbar-btn" id="db-reset-btn">+ Add League / Draft</button>
+        <div id="db-season-wrap" style="display:none;align-items:center;gap:4px">
+            <label style="font-size:.75rem;color:var(--text-secondary)">Season</label>
+            <select class="db-form-select" id="db-season-select" style="width:auto;padding:4px 8px;font-size:.8rem"></select>
+        </div>
+        <button class="db-topbar-btn" id="db-mock-draft-btn" style="display:none" onclick="goToMockDraft()">Run Mock Draft</button>
+        <button class="db-topbar-btn" id="db-reset-btn">My Leagues</button>
     </div>
 
 
@@ -40,7 +45,7 @@
             <div class="db-source-tabs">
                 <button class="db-source-tab active" data-source="sleeper">Sleeper</button>
                 <button class="db-source-tab" data-source="manual">Manual</button>
-                <button class="db-source-tab" data-source="espn" disabled>ESPN <span class="cs-label">soon</span></button>
+                <button class="db-source-tab" data-source="espn">ESPN</button>
                 <button class="db-source-tab" data-source="yahoo" disabled>Yahoo <span class="cs-label">soon</span></button>
             </div>
 
@@ -74,6 +79,77 @@
                 <button class="db-setup-btn" id="sleeper-connect-btn" style="display:none">
                     Connect to League
                 </button>
+            </div>
+
+            <!-- ── ESPN setup ── -->
+            <div id="setup-espn" style="display:none">
+                <div class="db-form-group">
+                    <label class="db-form-label" for="espn-league-id">ESPN League ID</label>
+                    <div style="display:flex;gap:8px">
+                        <input class="db-form-input" id="espn-league-id" type="text" placeholder="e.g. 12345678" autocomplete="off">
+                        <button class="db-topbar-btn" id="espn-lookup-btn" style="white-space:nowrap;padding:8px 16px">Find League</button>
+                    </div>
+                    <small style="color:var(--text-secondary);margin-top:4px;display:block">
+                        Find this in your league URL: fantasy.espn.com/football/league?leagueId=<b>12345678</b>
+                    </small>
+                </div>
+
+                <details id="espn-private-toggle" style="margin-bottom:1rem">
+                    <summary style="cursor:pointer;color:var(--accent);font-size:.85rem;margin-bottom:.5rem">Private league? Add ESPN cookies</summary>
+
+                    <div style="background:var(--dark-gray);border-radius:8px;padding:14px 16px;margin:8px 0 12px">
+                        <p style="margin:0 0 8px;font-size:.85rem;color:var(--text-secondary)"><b style="color:var(--white)">Easiest way:</b> Drag this button to your bookmarks bar &darr;</p>
+                        <a id="espn-bookmarklet" class="db-topbar-btn"
+                           style="display:inline-block;cursor:grab;text-decoration:none;padding:6px 14px;background:var(--accent);color:#fff;border-radius:6px;font-size:.8rem"
+                           href="javascript:void(function(){try{var c=document.cookie.split(';'),s='',w='';c.forEach(function(x){var p=x.trim().split('=');if(p[0]==='espn_s2')s=p.slice(1).join('=');if(p[0]==='SWID')w=p.slice(1).join('=')});if(s&&w){var d=JSON.stringify({espn_s2:s,swid:w});navigator.clipboard.writeText(d).then(function(){alert('Copied! Go back to Darkhorse and click Paste Cookies.')}).catch(function(){prompt('Copy this:',d)})}else{alert('ESPN cookies not found. Make sure you are logged into fantasy.espn.com first.')}}catch(e){alert('Error: '+e.message)}})()">
+                           Get ESPN Cookies
+                        </a>
+                        <ol style="margin:10px 0 0;padding-left:1.2rem;font-size:.8rem;color:var(--text-secondary);line-height:1.6">
+                            <li>Drag the button above to your <b>bookmarks bar</b></li>
+                            <li>Go to <b>fantasy.espn.com</b> and make sure you're logged in</li>
+                            <li>Click the <b>"Get ESPN Cookies"</b> bookmark</li>
+                            <li>Come back here and click <b>Paste Cookies</b> below</li>
+                        </ol>
+                    </div>
+
+                    <div style="margin-bottom:10px">
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                            <button class="db-topbar-btn" id="espn-paste-cookies-btn" style="white-space:nowrap;padding:8px 14px" onclick="espnShowPasteBox()">Paste Cookies</button>
+                            <span id="espn-cookie-status" style="font-size:.8rem;color:var(--text-secondary);align-self:center"></span>
+                        </div>
+                        <textarea id="espn-paste-box" style="display:none;width:100%;height:60px;resize:vertical;font-size:.8rem;padding:8px;border-radius:6px;border:1px solid var(--border, #555);background:var(--bg-secondary, #1e1e1e);color:var(--text-primary, #eee)" placeholder='Click here, then press Ctrl+V / Cmd+V to paste the bookmarklet output...'></textarea>
+                    </div>
+
+                    <details style="margin-top:4px">
+                        <summary style="cursor:pointer;color:var(--text-secondary);font-size:.75rem">Or enter cookies manually</summary>
+                        <div class="db-form-group" style="margin-top:8px">
+                            <label class="db-form-label" for="espn-swid">SWID</label>
+                            <input class="db-form-input" id="espn-swid" type="text" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}" autocomplete="off">
+                        </div>
+                        <div class="db-form-group">
+                            <label class="db-form-label" for="espn-s2">espn_s2</label>
+                            <textarea class="db-form-input" id="espn-s2" rows="3" placeholder="Paste your espn_s2 cookie here..." style="resize:vertical"></textarea>
+                        </div>
+                    </details>
+                </details>
+
+                <div id="espn-league-info" style="display:none">
+                    <div style="background:var(--dark-gray);border-radius:8px;padding:12px 16px;margin-bottom:1rem">
+                        <h4 id="espn-league-name" style="margin:0 0 4px 0;color:var(--white)"></h4>
+                        <p id="espn-league-meta" style="margin:0;color:var(--text-secondary);font-size:.85rem"></p>
+                    </div>
+                    <div class="db-form-group">
+                        <label class="db-form-label" for="espn-team-select">Which team is yours?</label>
+                        <select class="db-form-select" id="espn-team-select">
+                            <option value="">Choose your team…</option>
+                        </select>
+                    </div>
+                    <button class="db-setup-btn" id="espn-connect-btn">
+                        Connect to League
+                    </button>
+                </div>
+
+                <p class="db-setup-error" id="espn-error"></p>
             </div>
 
             <!-- ── Manual setup ── -->
