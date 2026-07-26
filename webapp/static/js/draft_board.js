@@ -87,11 +87,88 @@ function _alignPanelHeader() {
     requestAnimationFrame(() => {
         const boardHeader = document.querySelector('#db-board-table thead');
         const panelHeader = document.querySelector('#db-available-panel .db-panel-header');
-        if (!boardHeader || !panelHeader) return;
-        // Match the panel header height to the board thead height
-        const boardH = boardHeader.offsetHeight;
-        panelHeader.style.height = boardH + 'px';
+        const layout = document.querySelector('.db-layout');
+        if (!boardHeader || !panelHeader || !layout) return;
+
+        // Match panel header height to board thead
+        const boardHeaderBottom = boardHeader.getBoundingClientRect().bottom;
+        const panelTop = panelHeader.getBoundingClientRect().top;
+        panelHeader.style.height = (boardHeaderBottom - panelTop) + 'px';
         panelHeader.style.boxSizing = 'border-box';
+
+        // Draw one continuous gold line across the full layout width
+        let goldLine = layout.querySelector('.db-gold-line');
+        if (!goldLine) {
+            goldLine = document.createElement('div');
+            goldLine.className = 'db-gold-line';
+            layout.appendChild(goldLine);
+        }
+        const layoutTop = layout.getBoundingClientRect().top;
+        goldLine.style.top = (boardHeaderBottom - layoutTop) + 'px';
+
+        // For standings view: align rows and draw continuous row lines
+        // Remove old row lines
+        layout.querySelectorAll('.db-row-line').forEach(el => el.remove());
+
+        const isStandings = _isHistoricalSeason() && DB.standings && DB.standings.length > 0;
+        if (isStandings) {
+            const boardRows = document.querySelectorAll('#db-board-body tr');
+            const standingsRows = document.querySelectorAll('#db-player-list .db-standings-row');
+            if (standingsRows.length) {
+                // Align standings rows that have corresponding board rows
+                standingsRows.forEach((row, i) => {
+                    if (boardRows[i]) {
+                        row.style.height = boardRows[i].getBoundingClientRect().height + 'px';
+                        row.style.minHeight = row.style.height;
+                    } else {
+                        // More standings than rounds — use default height
+                        row.style.height = '';
+                        row.style.minHeight = '';
+                    }
+                });
+
+                // Draw continuous full-width lines where board rows exist
+                const alignedCount = Math.min(boardRows.length, standingsRows.length);
+                for (let i = 0; i < alignedCount - 1; i++) {
+                    const rowBottom = boardRows[i].getBoundingClientRect().bottom;
+                    const line = document.createElement('div');
+                    line.className = 'db-row-line';
+                    line.style.top = (rowBottom - layoutTop) + 'px';
+                    layout.appendChild(line);
+                }
+
+                // Draw left-panel-only lines for standings rows beyond board rounds
+                const panel = document.getElementById('db-available-panel');
+                const panelW = panel ? panel.offsetWidth + 'px' : '236px';
+                // Lines between standings rows beyond board rounds (not the last one)
+                for (let i = Math.max(alignedCount - 1, 0); i < standingsRows.length - 1; i++) {
+                    const rowBottom = standingsRows[i].getBoundingClientRect().bottom;
+                    const line = document.createElement('div');
+                    line.className = 'db-row-line';
+                    line.style.top = Math.round(rowBottom - layoutTop) + 'px';
+                    line.style.width = panelW;
+                    layout.appendChild(line);
+                }
+                // Last row gets a CSS class for its bottom line (via ::after pseudo-element)
+                standingsRows[standingsRows.length - 1].classList.add('db-standings-last');
+
+                // Now that rows are resized, update active/panel height for standings handle
+                const isDynasty = DB.leagueType === 'dynasty' || DB.leagueType === 'keeper';
+                const isFirstYear = DB.leagueStartYear && DB.season === DB.leagueStartYear;
+                if (isDynasty && !isFirstYear) {
+                    const active = document.getElementById('db-active');
+                    const lastRow = standingsRows[standingsRows.length - 1];
+                    const lastRowBottom = lastRow.getBoundingClientRect().bottom;
+                    const panelTop = panel.getBoundingClientRect().top;
+                    const panelH = lastRowBottom - panelTop;
+                    if (active) active.style.height = panelH + 'px';
+                    if (panel) {
+                        panel.style.height = panelH + 'px';
+                        panel.style.maxHeight = panelH + 'px';
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -104,30 +181,47 @@ function _autosizeBoardHeight() {
     const playerList = document.getElementById('db-player-list');
     if (!board || !table) return;
 
-    // Dynasty-specific standings layout: historical year, not the league's first year
     const isDynasty = DB.leagueType === 'dynasty' || DB.leagueType === 'keeper';
     const isFirstYear = DB.leagueStartYear && DB.season === DB.leagueStartYear;
-    const isStandings = isDynasty && !isFirstYear
-        && _isHistoricalSeason() && DB.standings && DB.standings.length > 0;
 
-    if (isStandings && panel && playerList) {
-        // Historical standings mode: layout driven by standings height.
+    // Standings are shown for any historical season with standings data.
+    // Dynasty (non-first-year): handle aligns to standings bottom, board scrolls.
+    // Non-dynasty: board height drives layout, but panel must still fit all standings.
+    const hasStandings = _isHistoricalSeason() && DB.standings && DB.standings.length > 0;
+    const isDynastyStandings = isDynasty && !isFirstYear && hasStandings;
+
+    if (isDynastyStandings && panel && playerList) {
+        // Historical dynasty standings mode: layout driven by standings height.
         // Standings should NOT scroll — show all teams fully.
         playerList.style.overflow = 'visible';
         playerList.style.flex = 'none';
+        panel.style.overflow = 'visible';
 
-        // Temporarily clear heights to measure natural panel height
+        // Measure actual content: panel header + standings rows
         panel.style.height = '';
         panel.style.maxHeight = '';
+        panel.style.bottom = '';
         if (layout) layout.style.height = '';
-        const panelH = panel.scrollHeight;
 
-        // Set db-active height to standings height so the handle sits right below.
-        // db-layout fills db-active via flex:1, board scrolls within.
+        // Measure from panel top to bottom of last standings row + 1px for the line
+        const standingsRows = playerList.querySelectorAll('.db-standings-row');
+        const lastRow = standingsRows.length ? standingsRows[standingsRows.length - 1] : null;
+        let panelH;
+        if (lastRow) {
+            const panelTop = panel.getBoundingClientRect().top;
+            panelH = lastRow.getBoundingClientRect().bottom - panelTop;
+        } else {
+            const panelHeader = panel.querySelector('.db-panel-header');
+            const headerH = panelHeader ? panelHeader.offsetHeight : 0;
+            panelH = headerH + playerList.scrollHeight;
+        }
+
+        // Set db-active height so the handle sits right after the final line.
         if (active) active.style.height = panelH + 'px';
-        // Fix panel at standings height so it doesn't grow when handle is dragged
+        // Fix panel at standings height — remove bottom:0 so it doesn't stretch
         panel.style.height = panelH + 'px';
         panel.style.maxHeight = panelH + 'px';
+        panel.style.bottom = 'auto';
         if (layout) layout.style.height = '';
         board.style.overflowY = 'auto';
     } else if (isDynasty && !_isHistoricalSeason() && playerList) {
@@ -135,6 +229,7 @@ function _autosizeBoardHeight() {
         board.style.overflowY = 'auto';
         playerList.style.overflow = '';
         playerList.style.flex = '';
+        if (panel) panel.style.overflow = '';
 
         // Measure height through the 7th player row
         const rows = playerList.querySelectorAll('.db-player-row');
@@ -167,10 +262,29 @@ function _autosizeBoardHeight() {
             playerList.style.overflow = '';
             playerList.style.flex = '';
         }
-        if (active) active.style.height = tableH + 'px';
-        if (panel) {
-            panel.style.height = '100%';
-            panel.style.maxHeight = '100%';
+
+        // If standings are showing (non-dynasty historical), ensure panel fits all rows
+        if (hasStandings && panel && playerList) {
+            playerList.style.overflow = 'visible';
+            playerList.style.flex = 'none';
+            panel.style.overflow = 'visible';
+            const panelHeader = panel.querySelector('.db-panel-header');
+            const headerH = panelHeader ? panelHeader.offsetHeight : 0;
+            const listH = playerList.scrollHeight;
+            const panelH = headerH + listH;
+            // Use whichever is taller: board or standings
+            const finalH = Math.max(tableH, panelH);
+            if (active) active.style.height = finalH + 'px';
+            panel.style.height = panelH + 'px';
+            panel.style.maxHeight = panelH + 'px';
+            panel.style.bottom = 'auto';
+        } else {
+            if (active) active.style.height = tableH + 'px';
+            if (panel) {
+                panel.style.height = '100%';
+                panel.style.maxHeight = '100%';
+                panel.style.overflow = '';
+            }
         }
         if (layout) layout.style.height = '';
     }
@@ -813,6 +927,9 @@ async function initBoard(cfg) {
     updateCurrentPickBar();
     scheduleSaveState();
 
+    // Re-align after all picks are rendered (board rows now have final heights)
+    requestAnimationFrame(() => { _autosizeBoardHeight(); _alignPanelHeader(); });
+
     // Start live polling for Sleeper (only if draft is still in progress)
     if (DB.source === 'sleeper' && DB.draftId && !DB.draftComplete) {
         startPolling();
@@ -1001,10 +1118,13 @@ function _isHistoricalSeason() {
 }
 
 function renderLeftPanel() {
+    const layout = document.querySelector('.db-layout');
     if (_isHistoricalSeason() && DB.standings && DB.standings.length > 0) {
         renderStandings();
+        if (layout) layout.classList.add('db-standings-mode');
     } else {
         renderAvailablePlayers();
+        if (layout) layout.classList.remove('db-standings-mode');
     }
     requestAnimationFrame(() => _autosizeBoardHeight());
 }

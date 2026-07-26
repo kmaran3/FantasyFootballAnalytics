@@ -86,7 +86,8 @@
       "Bash(ls:*)",
       "Bash(python3.11 -c \"from webapp import create_app\")",
       "Bash(git checkout:*)",
-      "Bash(python3.11 -c \"from webapp import create_app; app = create_app\\(\\); print\\('OK'\\)\" 2>&1)"
+      "Bash(python3.11 -c \"from webapp import create_app; app = create_app\\(\\); print\\('OK'\\)\" 2>&1)",
+      "Bash(source venv/bin/activate)"
     ]
   }
 }

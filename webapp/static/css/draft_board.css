@@ -118,6 +118,7 @@
     flex-direction: column;
     gap: 3px;
     min-width: 0;
+    text-align: left;
 }
 
 .db-saved-league-name {
@@ -355,15 +356,15 @@
 .db-available {
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--medium-gray);
+    border-right: 1px solid rgba(42,42,42,0.8);
     background: var(--charcoal);
     overflow: hidden;
     /* Positioned absolutely so it doesn't affect parent height */
     position: absolute;
     top: 0;
     left: 0;
+    bottom: 0;
     width: 235px;
-    /* Height set by JS _autosizeBoardHeight to match the board */
 }
 
 .db-player-list {
@@ -379,11 +380,37 @@
     color: var(--gold);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border-bottom: 2px solid var(--gold);
+    border-bottom: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
+}
+
+/* Continuous lines drawn across the full layout width */
+.db-layout .db-gold-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gold);
+    z-index: 25;
+    pointer-events: none;
+}
+.db-layout .db-row-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(42,42,42,0.8);
+    z-index: 25;
+    pointer-events: none;
+}
+
+/* When standings are shown, remove horizontal cell borders so only the continuous row-lines show */
+.db-layout.db-standings-mode .db-cell {
+    border-top: none;
+    border-bottom: none;
 }
 
 .db-avail-count {
@@ -457,9 +484,20 @@
     align-items: center;
     padding: 0 6px;
     min-height: 44px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: none;
     font-size: 0.72em;
     gap: 0;
+    box-sizing: border-box;
+    position: relative;
+}
+.db-standings-row.db-standings-last::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: rgba(42,42,42,0.8);
 }
 .db-standings-rank {
     min-width: 18px;
@@ -647,7 +685,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 8px 4px;
-    border-bottom: 2px solid var(--gold);
+    border-bottom: none;
     white-space: normal;
     word-break: break-word;
     text-align: center;
