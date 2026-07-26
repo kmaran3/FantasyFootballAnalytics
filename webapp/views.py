@@ -3543,33 +3543,39 @@ def draft_board_leagues_save():
     if not league_id:
         return jsonify({'error': 'league_id required'}), 400
 
-    existing = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
-    if existing:
-        existing.league_name    = data.get('league_name', existing.league_name)
-        existing.num_teams      = data.get('num_teams', existing.num_teams)
-        existing.scoring        = data.get('scoring', existing.scoring)
-        existing.league_type    = data.get('league_type', existing.league_type)
-        existing.sleeper_user_id = data.get('sleeper_user_id', existing.sleeper_user_id)
-        existing.espn_s2        = data.get('espn_s2', existing.espn_s2)
-        existing.espn_swid      = data.get('espn_swid', existing.espn_swid)
-        existing.user_slot      = data.get('user_slot', existing.user_slot)
-        existing.last_accessed  = datetime.utcnow()
-    else:
-        db.session.add(SavedLeague(
-            user_id        = current_user.id,
-            league_id      = league_id,
-            league_name    = data.get('league_name', 'My League'),
-            source         = data.get('source', 'sleeper'),
-            num_teams      = data.get('num_teams', 12),
-            scoring        = data.get('scoring', 'ppr'),
-            league_type    = data.get('league_type', 'redraft'),
-            sleeper_user_id = data.get('sleeper_user_id'),
-            espn_s2        = data.get('espn_s2'),
-            espn_swid      = data.get('espn_swid'),
-            user_slot      = data.get('user_slot'),
-        ))
-    db.session.commit()
-    return jsonify({'saved': True})
+    try:
+        existing = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
+        if existing:
+            existing.league_name    = data.get('league_name', existing.league_name)
+            existing.num_teams      = data.get('num_teams', existing.num_teams)
+            existing.scoring        = data.get('scoring', existing.scoring)
+            existing.league_type    = data.get('league_type', existing.league_type)
+            existing.sleeper_user_id = data.get('sleeper_user_id', existing.sleeper_user_id)
+            existing.espn_s2        = data.get('espn_s2', existing.espn_s2)
+            existing.espn_swid      = data.get('espn_swid', existing.espn_swid)
+            existing.user_slot      = data.get('user_slot', existing.user_slot)
+            existing.last_accessed  = datetime.utcnow()
+        else:
+            db.session.add(SavedLeague(
+                user_id        = current_user.id,
+                league_id      = league_id,
+                league_name    = data.get('league_name', 'My League'),
+                source         = data.get('source', 'sleeper'),
+                num_teams      = data.get('num_teams', 12),
+                scoring        = data.get('scoring', 'ppr'),
+                league_type    = data.get('league_type', 'redraft'),
+                sleeper_user_id = data.get('sleeper_user_id'),
+                espn_s2        = data.get('espn_s2'),
+                espn_swid      = data.get('espn_swid'),
+                user_slot      = data.get('user_slot'),
+            ))
+        db.session.commit()
+        return jsonify({'saved': True})
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @main.route('/draft-board/leagues/<league_id>', methods=['DELETE'])

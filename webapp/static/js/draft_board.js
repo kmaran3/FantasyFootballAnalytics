@@ -398,7 +398,7 @@ async function sleeperConnect() {
 
         // Save this league to the user's account
         try {
-            await fetch('/draft-board/leagues/save', {
+            const saveRes = await fetch('/draft-board/leagues/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -412,7 +412,8 @@ async function sleeperConnect() {
                     user_slot:        data.user_slot,
                 }),
             });
-        } catch {}
+            if (!saveRes.ok) console.error('League save failed:', saveRes.status, await saveRes.text());
+        } catch (e) { console.error('League save error:', e); }
 
         // Store root league info for season navigation
         DB.sleeperRootLeagueId = leagueId;
@@ -581,7 +582,7 @@ async function espnConnect() {
 
         // Save league with user_slot; stash user_team_id in sleeper_user_id column
         try {
-            await fetch('/draft-board/leagues/save', {
+            const saveRes = await fetch('/draft-board/leagues/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -597,7 +598,8 @@ async function espnConnect() {
                     sleeper_user_id: userTeamId,
                 }),
             });
-        } catch {}
+            if (!saveRes.ok) console.error('League save failed:', saveRes.status, await saveRes.text());
+        } catch (e) { console.error('League save error:', e); }
 
         await initBoard({
             source:             'espn',
@@ -2482,7 +2484,7 @@ function initPicker() {
 
 async function loadSavedLeagues() {
     try {
-        const res  = await fetch('/draft-board/leagues');
+        const res  = await fetch('/draft-board/leagues?_t=' + Date.now());
         const data = await res.json();
         return Array.isArray(data) ? data : [];
     } catch {
@@ -2648,7 +2650,10 @@ async function boot() {
     initDrawer();
     initPicker();
 
-    document.getElementById('db-reset-btn').addEventListener('click', resetBoard);
+    document.getElementById('db-reset-btn').addEventListener('click', () => {
+        stopPolling();
+        window.location.reload();
+    });
 
     // Available-only toggle
     document.getElementById('db-avail-toggle')?.addEventListener('click', function () {
