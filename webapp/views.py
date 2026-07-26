@@ -2890,6 +2890,25 @@ def draft_board_sleeper_connect():
             })
         standings.sort(key=lambda s: (-s['wins'], -s['pts_for']))
 
+        # Resolve earliest season by following previous_league_id chain (max 15 hops)
+        league_start_year = int(league.get('season') or datetime.utcnow().year)
+        prev_lid = league.get('previous_league_id')
+        hops = 0
+        while prev_lid and hops < 15:
+            try:
+                prev_resp = requests.get(
+                    f'https://api.sleeper.app/v1/league/{prev_lid}', timeout=5)
+                if prev_resp.status_code != 200:
+                    break
+                prev_lg = prev_resp.json()
+                prev_season = prev_lg.get('season')
+                if prev_season:
+                    league_start_year = int(prev_season)
+                prev_lid = prev_lg.get('previous_league_id')
+                hops += 1
+            except Exception:
+                break
+
         return jsonify({
             'draft_id':            draft_id,
             'league_name':         league.get('name', 'My League'),
@@ -2908,6 +2927,7 @@ def draft_board_sleeper_connect():
             'season':              league.get('season') or datetime.utcnow().year,
             'previous_league_id':  league.get('previous_league_id'),
             'standings':           standings,
+            'league_start_year':   league_start_year,
         })
     except requests.RequestException:
         return jsonify({'error': 'Failed to connect to Sleeper API'}), 503

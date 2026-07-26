@@ -46,7 +46,6 @@
                 <button class="db-source-tab active" data-source="sleeper">Sleeper</button>
                 <button class="db-source-tab" data-source="manual">Manual</button>
                 <button class="db-source-tab" data-source="espn">ESPN</button>
-                <button class="db-source-tab" data-source="yahoo" disabled>Yahoo <span class="cs-label">soon</span></button>
             </div>
 
             <!-- ── Sleeper setup ── -->
@@ -286,11 +285,11 @@
 
     </div>
 
-    <!-- Drag handle above bottom row -->
-    <div class="db-ot-resize-handle" id="db-bottom-resize-handle" style="display:none" title="Drag to resize"></div>
+    <!-- Fixed bottom drawer: handle + rosters pinned to viewport bottom -->
+    <div class="db-bottom-drawer" id="db-bottom-drawer" style="display:none">
+    <div class="db-ot-resize-handle" id="db-bottom-resize-handle" title="Drag to resize"></div>
 
-    <!-- Bottom row: Other Teams + AI Bar — full width, below the three-column layout, above footer -->
-    <div class="db-bottom-row" id="db-bottom-row" style="display:none">
+    <div class="db-bottom-row" id="db-bottom-row">
 
         <!-- Other Teams -->
         <div class="db-other-teams" id="db-other-teams">
@@ -325,6 +324,7 @@
         </div>
 
     </div>
+    </div><!-- /db-bottom-drawer -->
 
     <!-- Mobile FAB to open drawer -->
     <button class="db-mobile-fab" id="db-mobile-fab" style="display:none">
