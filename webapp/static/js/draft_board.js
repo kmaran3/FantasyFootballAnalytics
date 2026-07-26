@@ -191,6 +191,24 @@ function badge(pos) {
     return `<span class="db-pos-badge ${posClass(pos)}">${pos || '?'}</span>`;
 }
 
+function escHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function buildPlayerUpdateMarkup(update) {
+    if (!update || !update.has_update || !update.summary) return '';
+    const parts = [update.summary];
+    if (update.detail) parts.push(update.detail);
+    if (update.updated_label) parts.push(`Updated ${update.updated_label}`);
+    const text = parts.join(' | ');
+    return `<div class="db-player-update db-player-update-${update.tone || 'info'}" title="${escHtml(update.title || text)}">${escHtml(text)}</div>`;
+}
+
 // ── Setup panel logic ─────────────────────────────────────────
 
 function initSetupPanel() {
@@ -985,6 +1003,7 @@ function renderAvailable() {
         const name    = p.Name || '';
         const pos     = (p.Position || '').toUpperCase();
         const team    = p.Team || '';
+        const byeWeek = p['Bye Week'];
         const drafted = DB.drafted.has(normalizeName(name));
 
         if (!drafted) availCnt++;
@@ -998,11 +1017,17 @@ function renderAvailable() {
         const div = document.createElement('div');
         div.className = `db-player-row${drafted ? ' db-player-drafted' : ''}`;
         div.dataset.idx = idx;
+        const subParts = [];
+        if (team) subParts.push(team);
+        if (byeWeek) subParts.push(`Bye ${byeWeek}`);
         div.innerHTML = `
             <span class="db-player-rank">${p.Rank || idx + 1}</span>
             ${badge(pos)}
-            <a class="db-player-name db-profile-link" href="${profileUrl(name, pos, team)}">${name}</a>
-            <span class="db-player-nfl">${team}</span>
+            <div class="db-player-main">
+                <a class="db-player-name db-profile-link" href="${profileUrl(name, pos, team)}">${name}</a>
+                <div class="db-player-sub">${subParts.join(' | ')}</div>
+                ${buildPlayerUpdateMarkup(p.InjuryNews)}
+            </div>
         `;
         if (!drafted) {
             // Non-name area click = pick action; name link navigates to profile

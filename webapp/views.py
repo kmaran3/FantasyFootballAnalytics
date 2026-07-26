@@ -11,6 +11,8 @@ import json
 import sys
 from datetime import datetime, timedelta
 from collections import defaultdict
+from urllib.parse import quote_plus
+from xml.etree import ElementTree as ET
 
 
 def _enable_numpy_pickle_compat():
@@ -49,6 +51,41 @@ _TEAM_ABBR_MAP = {
     'BLT': 'BAL', # Baltimore Ravens
     'CLV': 'CLE', # Cleveland Browns
     'HST': 'HOU', # Houston Texans
+}
+
+_TEAM_NAME_MAP = {
+    'ARI': 'Arizona Cardinals',
+    'ATL': 'Atlanta Falcons',
+    'BAL': 'Baltimore Ravens',
+    'BUF': 'Buffalo Bills',
+    'CAR': 'Carolina Panthers',
+    'CHI': 'Chicago Bears',
+    'CIN': 'Cincinnati Bengals',
+    'CLE': 'Cleveland Browns',
+    'DAL': 'Dallas Cowboys',
+    'DEN': 'Denver Broncos',
+    'DET': 'Detroit Lions',
+    'GB': 'Green Bay Packers',
+    'HOU': 'Houston Texans',
+    'IND': 'Indianapolis Colts',
+    'JAX': 'Jacksonville Jaguars',
+    'KC': 'Kansas City Chiefs',
+    'LAC': 'Los Angeles Chargers',
+    'LAR': 'Los Angeles Rams',
+    'LV': 'Las Vegas Raiders',
+    'MIA': 'Miami Dolphins',
+    'MIN': 'Minnesota Vikings',
+    'NE': 'New England Patriots',
+    'NO': 'New Orleans Saints',
+    'NYG': 'New York Giants',
+    'NYJ': 'New York Jets',
+    'PHI': 'Philadelphia Eagles',
+    'PIT': 'Pittsburgh Steelers',
+    'SEA': 'Seattle Seahawks',
+    'SF': 'San Francisco 49ers',
+    'TB': 'Tampa Bay Buccaneers',
+    'TEN': 'Tennessee Titans',
+    'WAS': 'Washington Commanders',
 }
 
 _player_details_cache = None
@@ -264,6 +301,354 @@ def _normalize_name(name):
     n = _re.sub(r'[^a-z\s]', '', n)
     return n.strip()
 
+
+def _clean_text(value):
+    try:
+        if pd.isna(value):
+            return ''
+    except TypeError:
+        pass
+    text = str(value).strip() if value is not None else ''
+    return '' if text.lower() in ('', 'none', 'nan', 'null', 'na') else text
+
+
+def _format_depth_chart_label(position, order):
+    pos = _clean_text(position).upper()
+    if not pos:
+        return ''
+
+    base_pos = pos
+    if pos.endswith('WR'):
+        base_pos = 'WR'
+    elif pos in ('HB', 'FB'):
+        base_pos = 'RB'
+    elif pos in ('PK',):
+        base_pos = 'K'
+
+    try:
+        if order not in (None, ''):
+            return f'{base_pos}{int(order)}'
+    except (TypeError, ValueError):
+        pass
+    return base_pos
+
+
+def _format_sleeper_injury_news(player):
+    status = _clean_text(player.get('status'))
+    injury_status = _clean_text(player.get('injury_status'))
+    injury_body_part = _clean_text(player.get('injury_body_part'))
+    injury_notes = _clean_text(player.get('injury_notes'))
+    depth_chart_position = _clean_text(player.get('depth_chart_position'))
+    depth_chart_order = player.get('depth_chart_order')
+
+    updated_label = ''
+    raw_updated = player.get('news_updated')
+    if raw_updated not in (None, ''):
+        try:
+            updated_label = datetime.utcfromtimestamp(float(raw_updated) / 1000).strftime('%b %d')
+        except (TypeError, ValueError, OSError):
+            updated_label = ''
+
+    summary = ''
+    if injury_status:
+        summary = injury_status
+        if injury_body_part:
+            summary = f'{summary} - {injury_body_part}'
+    elif status and status.upper() not in ('ACTIVE', 'UNKNOWN'):
+        summary = status
+    elif injury_notes:
+        summary = injury_notes
+
+    detail = injury_notes if injury_notes and injury_notes != summary else ''
+    status_key = (injury_status or status).upper()
+    tone = 'info'
+    if any(token in status_key for token in ('OUT', 'DOUBTFUL', 'IR', 'PUP', 'SUSP', 'INACTIVE')):
+        tone = 'danger'
+    elif status_key in ('QUESTIONABLE', 'PROBABLE') or summary:
+        tone = 'warning'
+
+    depth_chart_label = _format_depth_chart_label(depth_chart_position, depth_chart_order)
+
+    title_parts = [summary]
+    if detail:
+        title_parts.append(detail)
+    if updated_label:
+        title_parts.append(f'Updated {updated_label}')
+
+    return {
+        'status': status,
+        'injury_status': injury_status,
+        'injury_body_part': injury_body_part,
+        'injury_notes': injury_notes,
+        'updated_label': updated_label,
+        'summary': summary,
+        'detail': detail,
+        'tone': tone,
+        'has_update': bool(summary),
+        'title': ' | '.join(p for p in title_parts if p),
+        'depth_chart_position': depth_chart_position,
+        'depth_chart_order': depth_chart_order,
+        'depth_chart_label': depth_chart_label,
+    }
+
+
+_sleeper_player_cache = {'ts': 0, 'by_id': {}, 'by_name': {}}
+_SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
+_player_move_news_cache = {'ts': 0, 'data': {}}
+_PLAYER_MOVE_NEWS_CACHE_TTL = 21600  # 6 hours
+_player_watch_news_cache = {'ts': 0, 'data': {}}
+_PLAYER_WATCH_NEWS_CACHE_TTL = 3600  # 1 hour
+
+
+def _refresh_sleeper_player_cache():
+    import time
+    now = time.time()
+    if now - _sleeper_player_cache['ts'] < _SLEEPER_PLAYER_CACHE_TTL and _sleeper_player_cache['by_id']:
+        return
+    try:
+        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=20)
+        if resp.status_code == 200:
+            by_id = {}
+            by_name = defaultdict(list)
+            for pid, p in (resp.json() or {}).items():
+                first = p.get('first_name') or ''
+                last = p.get('last_name') or ''
+                name = (p.get('full_name') or f'{first} {last}').strip()
+                if not name:
+                    continue
+                slim = {
+                    'name': name,
+                    'position': (p.get('position') or '').upper(),
+                    'team': _norm_team(p.get('team') or ''),
+                    'update': _format_sleeper_injury_news(p),
+                }
+                by_id[str(pid)] = slim
+                by_name[_normalize_name(name)].append(slim)
+            _sleeper_player_cache['ts'] = now
+            _sleeper_player_cache['by_id'] = by_id
+            _sleeper_player_cache['by_name'] = by_name
+    except Exception:
+        pass
+
+
+def _get_sleeper_player_map():
+    """Fetch + cache the Sleeper NFL player dict. Returns {player_id: {name, position, team}}."""
+    _refresh_sleeper_player_cache()
+    return _sleeper_player_cache['by_id']  # return stale on failure
+
+
+def _get_sleeper_player_update(name, team='', pos=''):
+    _refresh_sleeper_player_cache()
+    candidates = _sleeper_player_cache['by_name'].get(_normalize_name(name), [])
+    if not candidates:
+        return {}
+
+    team = _norm_team(team)
+    pos = str(pos).strip().upper()
+
+    for candidate in candidates:
+        if team and candidate.get('team') == team and (not pos or candidate.get('position') == pos):
+            return candidate.get('update', {})
+    for candidate in candidates:
+        if team and candidate.get('team') == team:
+            return candidate.get('update', {})
+    for candidate in candidates:
+        if pos and candidate.get('position') == pos:
+            return candidate.get('update', {})
+    return candidates[0].get('update', {})
+
+
+def _fetch_player_move_news(name, team='', prior_team=''):
+    import time
+
+    cache_key = (_normalize_name(name), _norm_team(team), _norm_team(prior_team))
+    now = time.time()
+    if now - _player_move_news_cache['ts'] >= _PLAYER_MOVE_NEWS_CACHE_TTL:
+        _player_move_news_cache['ts'] = now
+        _player_move_news_cache['data'] = {}
+    if cache_key in _player_move_news_cache['data']:
+        return _player_move_news_cache['data'][cache_key]
+
+    team_name = _TEAM_NAME_MAP.get(_norm_team(team), _norm_team(team))
+    prior_team_name = _TEAM_NAME_MAP.get(_norm_team(prior_team), _norm_team(prior_team))
+    query_parts = [f'"{name}"', '"NFL"']
+    if team_name:
+        query_parts.append(f'"{team_name}"')
+    if prior_team_name:
+        query_parts.append(f'"{prior_team_name}"')
+    query_parts.append('(trade OR signs OR signed OR acquired)')
+    query = ' '.join(part for part in query_parts if part)
+    url = f'https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en'
+
+    article = {}
+    try:
+        resp = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        for item in root.findall('./channel/item'):
+            title = _clean_text(item.findtext('title'))
+            if not title:
+                continue
+            title_lower = title.lower()
+            if _normalize_name(name) not in _normalize_name(title):
+                continue
+            source = _clean_text(item.findtext('source'))
+            published = _clean_text(item.findtext('pubDate'))
+            published_label = ''
+            if published:
+                try:
+                    published_dt = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
+                    published_label = published_dt.strftime('%b %d')
+                except ValueError:
+                    published_label = ''
+            article = {
+                'headline': title,
+                'source': source,
+                'published_label': published_label,
+            }
+            break
+    except Exception:
+        article = {}
+
+    _player_move_news_cache['data'][cache_key] = article
+    return article
+
+
+def _extract_expected_time_missed(text):
+    body = _clean_text(text)
+    if not body:
+        return 'Unknown'
+
+    lower = body.lower()
+    if 'no suspension' in lower or 'not suspended' in lower:
+        return 'None announced'
+    if 'indefinite' in lower or 'indefinitely' in lower:
+        return 'Indefinite'
+    if 'commissioner exempt' in lower or 'exempt list' in lower:
+        return 'Until league review ends'
+
+    word_to_num = {
+        'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+        'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
+    }
+
+    patterns = [
+        (r'(\d+)\s*-\s*game suspension', '{0} games'),
+        (r'suspended\s+for\s+(\d+)\s+games?', '{0} games'),
+        (r'(\d+)\s+games?\s+suspension', '{0} games'),
+        (r'suspended\s+(\d+)\s+games?', '{0} games'),
+        (r'(\d+)\s*-\s*week', '{0} weeks'),
+        (r'(\d+)\s+weeks?', '{0} weeks'),
+    ]
+    for pattern, fmt in patterns:
+        match = _re.search(pattern, lower)
+        if match:
+            return fmt.format(match.group(1))
+    for word, num in word_to_num.items():
+        word_patterns = [
+            rf'suspended\s+{word}\s+games?',
+            rf'{word}\s+games?\s+suspension',
+            rf'{word}\s+weeks?',
+        ]
+        for pattern in word_patterns:
+            if _re.search(pattern, lower):
+                unit = 'games' if 'game' in pattern else 'weeks'
+                return f'{num} {unit}'
+    return 'Unknown'
+
+
+def _compose_flag_tooltip(tag, description, expected_time):
+    parts = [tag]
+    if description:
+        parts.append(f'Description: {description}')
+    if expected_time:
+        parts.append(f'Expected time missed: {expected_time}')
+    return ' | '.join(parts)
+
+
+def _fetch_player_watch_news(player_names):
+    import time
+
+    now = time.time()
+    if now - _player_watch_news_cache['ts'] < _PLAYER_WATCH_NEWS_CACHE_TTL and _player_watch_news_cache['data']:
+        return _player_watch_news_cache['data']
+
+    name_map = {_normalize_name(name): name for name in player_names if _clean_text(name)}
+    if not name_map:
+        return {}
+
+    queries = [
+        '"NFL" (suspension OR suspended OR "commissioner exempt" OR "exempt list")',
+        '"NFL" (arrest OR arrested OR charges OR charged OR jail OR lawsuit OR investigation OR "domestic violence")',
+    ]
+
+    watch_map = {}
+    for query in queries:
+        url = f'https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en'
+        try:
+            resp = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+        except Exception:
+            continue
+
+        for item in root.findall('./channel/item'):
+            title = _clean_text(item.findtext('title'))
+            raw_description = _clean_text(item.findtext('description'))
+            description = BeautifulSoup(raw_description, 'html.parser').get_text(' ', strip=True) if raw_description else ''
+            article_text = ' '.join(part for part in [title, description] if part)
+            normalized_text = _normalize_name(article_text)
+            normalized_title = _normalize_name(title)
+            lower_title = title.lower()
+            if not normalized_text:
+                continue
+
+            matched_name = None
+            for name_key, original_name in name_map.items():
+                if name_key and name_key in normalized_title:
+                    matched_name = (name_key, original_name)
+                    break
+            if not matched_name or matched_name[0] in watch_map:
+                continue
+
+            lower_text = article_text.lower()
+            name_index = normalized_title.find(matched_name[0])
+            suspension_index = min(
+                [idx for idx in [lower_title.find(token) for token in ('suspension', 'suspended', 'commissioner exempt', 'exempt list')] if idx >= 0] or [-1]
+            )
+            is_suspension = suspension_index >= 0 and name_index >= 0 and name_index <= suspension_index
+            is_offfield = any(token in lower_text for token in ('arrest', 'arrested', 'charges', 'charged', 'jail', 'lawsuit', 'investigation', 'domestic violence'))
+            if not (is_suspension or is_offfield):
+                continue
+
+            published = _clean_text(item.findtext('pubDate'))
+            published_label = ''
+            if published:
+                try:
+                    published_dt = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
+                    published_label = published_dt.strftime('%b %d')
+                except ValueError:
+                    published_label = ''
+
+            source = _clean_text(item.findtext('source'))
+            desc = description or title
+            expected_time = _extract_expected_time_missed(article_text)
+            label = 'Suspension' if is_suspension else 'Off-field'
+            watch_map[matched_name[0]] = {
+                'label': label,
+                'tone': 'danger' if is_suspension else 'warning',
+                'description': desc,
+                'expected_time_missed': expected_time,
+                'headline': title,
+                'source': source,
+                'published_label': published_label,
+                'title': _compose_flag_tooltip(label, desc, expected_time),
+            }
+
+    _player_watch_news_cache['ts'] = now
+    _player_watch_news_cache['data'] = watch_map
+    return watch_map
+
 # ── Sleeper ADP (scoring-format-specific) ─────────────────────────────
 # Sleeper projections endpoint returns per-scoring-type projected points
 # which we use to derive format-specific rank ordering.
@@ -448,6 +833,144 @@ def _norm_team(t):
     t = str(t).strip().upper()
     return _TEAM_ABBR_MAP.get(t, t)
 
+
+def _latest_player_team_map():
+    def _team_col(df):
+        return next((c for c in ['recent_team', 'team', 'posteam', 'team_abbr', 'club', 'Tm', 'Team'] if c in df.columns), None)
+
+    if _nfl_seasonal.empty:
+        frames = []
+        for filename, default_pos in [('final_qb_data.pkl', 'QB'), ('final_rb_data.pkl', 'RB'), ('final_wrte_data.pkl', None)]:
+            df = _load(filename)
+            if df.empty:
+                continue
+            df = df[df['season'] == df['season'].max()].copy()
+            if 'season_type' in df.columns:
+                df = df[df['season_type'] == 'REG']
+            name_col = 'player_display_name' if 'player_display_name' in df.columns else None
+            team_col = _team_col(df)
+            pos_col = 'position' if 'position' in df.columns else None
+            if not (name_col and team_col):
+                continue
+            use_cols = [name_col, team_col]
+            if pos_col:
+                use_cols.append(pos_col)
+            slim = df[use_cols].copy()
+            if not pos_col and default_pos:
+                slim['position'] = default_pos
+            frames.append(slim.rename(columns={name_col: 'name', team_col: 'team', pos_col or 'position': 'position'}))
+        if not frames:
+            return {}
+        latest_df = pd.concat(frames, ignore_index=True).dropna(subset=['name', 'team']).drop_duplicates('name')
+        return {
+            _normalize_name(row['name']): _norm_team(row['team'])
+            for _, row in latest_df.iterrows()
+            if _clean_text(row.get('name')) and _clean_text(row.get('team'))
+        }
+
+    season_col = next((c for c in ['season'] if c in _nfl_seasonal.columns), None)
+    name_col = next((c for c in ['player_display_name', 'player_name'] if c in _nfl_seasonal.columns), None)
+    team_col = next((c for c in ['recent_team', 'team'] if c in _nfl_seasonal.columns), None)
+    games_col = next((c for c in ['games', 'GP'] if c in _nfl_seasonal.columns), None)
+    points_col = next((c for c in ['fantasy_points_ppr', 'fantasy_points'] if c in _nfl_seasonal.columns), None)
+    if not (season_col and name_col and team_col):
+        return {}
+
+    latest_df = _nfl_seasonal[_nfl_seasonal[season_col] == _nfl_seasonal[season_col].max()].copy()
+    if 'season_type' in latest_df.columns:
+        latest_df = latest_df[latest_df['season_type'] == 'REG']
+    latest_df = latest_df.dropna(subset=[name_col, team_col])
+    if latest_df.empty:
+        return {}
+
+    sort_cols = []
+    ascending = []
+    if games_col:
+        sort_cols.append(games_col)
+        ascending.append(False)
+    if points_col:
+        sort_cols.append(points_col)
+        ascending.append(False)
+    if sort_cols:
+        latest_df = latest_df.sort_values(sort_cols, ascending=ascending)
+
+    latest_df = latest_df.drop_duplicates(name_col)
+    return {
+        _normalize_name(row[name_col]): _norm_team(row[team_col])
+        for _, row in latest_df.iterrows()
+        if _clean_text(row.get(name_col)) and _clean_text(row.get(team_col))
+    }
+
+
+def _build_rankings_flags(name, pos, team, prior_team_map, watch_news_map):
+    flags = []
+    update = _get_sleeper_player_update(name, team, pos)
+    status_key = (update.get('status') or '').upper()
+    summary_key = (update.get('summary') or '').upper()
+    name_key = _normalize_name(name)
+    watch_news = watch_news_map.get(name_key, {})
+
+    if watch_news:
+        flags.append({
+            'label': watch_news.get('label', 'Off-field'),
+            'tone': watch_news.get('tone', 'warning'),
+            'title': watch_news.get('title', ''),
+            'description': watch_news.get('description', ''),
+            'expected_time_missed': watch_news.get('expected_time_missed', 'Unknown'),
+        })
+
+    if 'SUSP' in status_key or 'SUSP' in summary_key:
+        flags.append({
+            'label': 'Suspension',
+            'tone': 'danger',
+            'title': _compose_flag_tooltip(
+                'Suspension',
+                update.get('title') or update.get('summary') or 'Official status flag',
+                _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+            ),
+            'description': update.get('title') or update.get('summary') or 'Official status flag',
+            'expected_time_missed': _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+        })
+    elif (
+        update.get('injury_status')
+        or update.get('injury_notes')
+        or any(token in status_key for token in ('OUT', 'DOUBTFUL', 'QUESTIONABLE', 'PUP', 'IR', 'INACTIVE'))
+    ):
+        flags.append({
+            'label': 'Injury',
+            'tone': 'warning',
+            'title': _compose_flag_tooltip(
+                'Injury',
+                update.get('title') or update.get('summary') or 'Injury update',
+                _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+            ),
+            'description': update.get('title') or update.get('summary') or 'Injury update',
+            'expected_time_missed': _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+        })
+
+    prior_team = prior_team_map.get(_normalize_name(name))
+    if prior_team and team and prior_team != team:
+        move_news = _fetch_player_move_news(name, team, prior_team)
+        move_desc_parts = [f'{prior_team} -> {team}']
+        if update.get('depth_chart_label'):
+            move_desc_parts.append(f'Depth: {update["depth_chart_label"]}')
+        if move_news.get('headline'):
+            move_desc_parts.append(f'News: {move_news["headline"]}')
+            if move_news.get('source'):
+                move_desc_parts.append(f'Source: {move_news["source"]}')
+            if move_news.get('published_label'):
+                move_desc_parts.append(f'Updated {move_news["published_label"]}')
+        move_description = ' | '.join(move_desc_parts)
+        flags.append({
+            'label': 'New Team',
+            'tone': 'info',
+            'title': _compose_flag_tooltip('New Team', move_description, 'Unknown'),
+            'description': move_description,
+            'expected_time_missed': 'Unknown',
+        })
+
+    return flags
+
 # ── New model predictions (Phase 3) ──────────────────────────────────
 _BASELINES = {'QB': 13, 'RB': 37, 'WR': 37, 'TE': 13}
 
@@ -551,6 +1074,44 @@ _model_data = {
     'standard': _load_model_rankings('standard'),
 }
 _model_table = {k: v.to_dict(orient='records') if not v.empty else [] for k, v in _model_data.items()}
+
+
+def _inject_rankings_flags(rows):
+    if not rows:
+        return rows
+
+    prior_team_map = _latest_player_team_map()
+    watch_news_map = _fetch_player_watch_news([row.get('Name', '') for row in rows])
+
+    enriched = []
+    for row in rows:
+        update = _get_sleeper_player_update(
+            row.get('Name', ''),
+            row.get('Team', ''),
+            row.get('Position', ''),
+        )
+        flags = _build_rankings_flags(
+            row.get('Name', ''),
+            row.get('Position', ''),
+            row.get('Team', ''),
+            prior_team_map,
+            watch_news_map,
+        )
+        ordered = {}
+        for key, value in row.items():
+            ordered[key] = value
+            if key == 'Team':
+                ordered['Depth'] = update.get('depth_chart_label', '')
+                ordered['Flags'] = flags
+        if 'Depth' not in ordered:
+            ordered['Depth'] = update.get('depth_chart_label', '')
+        if 'Flags' not in ordered:
+            ordered['Flags'] = flags
+        enriched.append(ordered)
+    return enriched
+
+
+_model_table = {k: _inject_rankings_flags(v) for k, v in _model_table.items()}
 for k, v in _model_table.items():
     print(f'Model table ({k}): {len(v)} rows')
 
@@ -1149,12 +1710,16 @@ def view_saved_ranking(ranking_id):
         return redirect(url_for('main.rankings'))
     # Parse the saved JSON data back into table format
     rows = json.loads(ranking.ranking_data)
-    # Get column headers from the ranking type's original table
-    header_map = {'PPR': 'Full_PPR', 'Half PPR': 'Half_PPR', 'Standard': 'Non_PPR'}
-    table_name = header_map.get(ranking.ranking_type, 'Full_PPR')
-    with engine.connect() as connection:
-        df = pd.read_sql(text(f'SELECT * FROM {table_name} LIMIT 1'), con=connection)
-    headers = list(df.columns)
+    current_header_map = {'PPR': 'ppr', 'Half PPR': 'half_ppr', 'Standard': 'standard'}
+    current_table_key = current_header_map.get(ranking.ranking_type)
+    if current_table_key and _model_table.get(current_table_key):
+        headers = list(_model_table[current_table_key][0].keys())
+    else:
+        header_map = {'PPR': 'Full_PPR', 'Half PPR': 'Half_PPR', 'Standard': 'Non_PPR'}
+        table_name = header_map.get(ranking.ranking_type, 'Full_PPR')
+        with engine.connect() as connection:
+            df = pd.read_sql(text(f'SELECT * FROM {table_name} LIMIT 1'), con=connection)
+        headers = list(df.columns)
     # Convert rows back to list of dicts
     table_data = []
     for row in rows:
@@ -1322,20 +1887,11 @@ def player_stats():
         'team_grade': team_grade,
         'team_grade_ranks': team_grade_ranks,
         'comps': _similarity_comps.get(name, []),
+        'injury_news': _get_sleeper_player_update(name, team, pos),
     })
 
 
-@main.route('/player_quick_stats')
-@login_required
-def player_quick_stats():
-    name = request.args.get('name', '').strip()
-    pos  = request.args.get('pos', '').strip().upper()
-    team = request.args.get('team', '').strip().upper()
-
-    if not name:
-        return jsonify({})
-
-    # Look up espn_id and bio from teamsPastRoster.pkl
+def _get_player_roster_profile(name, team='', pos=''):
     espn_id = None
     bio = {}
     try:
@@ -1344,10 +1900,11 @@ def player_quick_stats():
             roster_df = pd.read_pickle(roster_path)
             match = roster_df[roster_df['Player'] == name]
             if not match.empty:
-                _r = match.iloc[0]
-                raw_id = _r['espn_id']
+                row = match.iloc[0]
+                raw_id = row.get('espn_id')
                 if raw_id is not None and str(raw_id) not in ('', 'nan', 'None'):
                     espn_id = str(raw_id)
+
                 def _sv(v):
                     return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
 
@@ -1377,7 +1934,6 @@ def player_quick_stats():
                         from datetime import date
                         import re as _re_age
                         s = str(birth_str).strip()
-                        # Try YYYY-MM-DD first, then MM/DD/YYYY
                         m = _re_age.match(r'(\d{4})-(\d{2})-(\d{2})', s)
                         if m:
                             born = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -1402,17 +1958,46 @@ def player_quick_stats():
                         return '—'
 
                 bio = {
-                    'Age':              _fmt_age(_r.get('BirthDate')),
-                    'Height':           _fmt_height(_r.get('height')),
-                    'Weight':           _fmt_weight(_r.get('weight')),
-                    'College':          _sv(_r.get('College')),
-                    'Draft Year':       _fmt_year(_r.get('DraftYear')),
-                    'Draft Team':       _sv(_r.get('DraftTeam')),
-                    'Pick':             _fmt_pick(_r.get('DraftRound'), _r.get('DraftPick')),
-                    'Seasons Played':   _fmt_year(_r.get('ExperienceYears')),
+                    'Age': _fmt_age(row.get('BirthDate')),
+                    'Height': _fmt_height(row.get('height')),
+                    'Weight': _fmt_weight(row.get('weight')),
+                    'College': _sv(row.get('College')),
+                    'Draft Year': _fmt_year(row.get('DraftYear')),
+                    'Draft Team': _sv(row.get('DraftTeam')),
+                    'Pick': _fmt_pick(row.get('DraftRound'), row.get('DraftPick')),
+                    'Seasons Played': _fmt_year(row.get('ExperienceYears')),
                 }
-    except Exception as _e:
-        print(f'Warning: could not look up espn_id: {_e}')
+    except Exception as exc:
+        print(f'Warning: could not look up player roster profile: {exc}')
+
+    injury_news = _get_sleeper_player_update(name, team, pos)
+    if injury_news.get('summary'):
+        bio['Status'] = injury_news['summary']
+        update_parts = []
+        if injury_news.get('detail'):
+            update_parts.append(injury_news['detail'])
+        if injury_news.get('updated_label'):
+            update_parts.append(f"Updated {injury_news['updated_label']}")
+        if update_parts:
+            bio['Update'] = ' | '.join(update_parts)
+
+    return {'espn_id': espn_id, 'bio': bio, 'injury_news': injury_news}
+
+
+@main.route('/player_quick_stats')
+@login_required
+def player_quick_stats():
+    name = request.args.get('name', '').strip()
+    pos  = request.args.get('pos', '').strip().upper()
+    team = request.args.get('team', '').strip().upper()
+
+    if not name:
+        return jsonify({})
+
+    roster_profile = _get_player_roster_profile(name, team, pos)
+    espn_id = roster_profile['espn_id']
+    bio = roster_profile['bio']
+    injury_news = roster_profile['injury_news']
 
     # Get 2025 stats from _nfl_seasonal
     stats = {}
@@ -1488,6 +2073,7 @@ def player_quick_stats():
         'stats': stats,
         'fantasy_points': fantasy_points,
         'ranking': ranking,
+        'injury_news': injury_news,
     })
 
 
@@ -1500,83 +2086,9 @@ def player_profile(name):
     compare = request.args.get('compare', 'false').lower() == 'true'
     back_url = request.args.get('back', '/rankings/ppr')
 
-    # Look up player bio from teamsPastRoster.pkl
-    espn_id = None
-    player_bio = {}
-    try:
-        roster_path = Path(app.root_path) / 'data' / 'teamsPastRoster.pkl'
-        if roster_path.exists():
-            roster_df = pd.read_pickle(roster_path)
-            match = roster_df[roster_df['Player'] == name]
-            if not match.empty:
-                row = match.iloc[0]
-                raw_id = row.get('espn_id')
-                if raw_id is not None and str(raw_id) not in ('', 'nan', 'None'):
-                    espn_id = str(raw_id)
-                def _sv(v):
-                    return str(v) if pd.notna(v) and str(v) not in ('nan', 'None', '') else '—'
-
-                def _fmt_height(v):
-                    try:
-                        inches = float(v)
-                        ft = int(inches // 12)
-                        rem = int(inches % 12)
-                        return f"{ft}'{rem}\""
-                    except (TypeError, ValueError):
-                        return '—'
-
-                def _fmt_weight(v):
-                    try:
-                        return f"{int(float(v))} lbs"
-                    except (TypeError, ValueError):
-                        return '—'
-
-                def _fmt_year(v):
-                    try:
-                        return str(int(float(v)))
-                    except (TypeError, ValueError):
-                        return '—'
-
-                def _fmt_age(birth_str):
-                    try:
-                        from datetime import date
-                        import re as _re_age
-                        s = str(birth_str).strip()
-                        m = _re_age.match(r'(\d{4})-(\d{2})-(\d{2})', s)
-                        if m:
-                            born = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-                        else:
-                            m2 = _re_age.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
-                            if m2:
-                                born = date(int(m2.group(3)), int(m2.group(1)), int(m2.group(2)))
-                            else:
-                                return '—'
-                        today = date.today()
-                        age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
-                        return str(age)
-                    except Exception:
-                        return '—'
-
-                def _fmt_pick(round_val, pick_val):
-                    try:
-                        r = int(float(round_val))
-                        p = int(float(pick_val))
-                        return f"Rd {r} Pk {p}"
-                    except (TypeError, ValueError):
-                        return '—'
-
-                player_bio = {
-                    'Age':            _fmt_age(row.get('BirthDate')),
-                    'Height':         _fmt_height(row.get('height')),
-                    'Weight':         _fmt_weight(row.get('weight')),
-                    'College':        _sv(row.get('College')),
-                    'Draft Year':     _fmt_year(row.get('DraftYear')),
-                    'Draft Team':     _sv(row.get('DraftTeam')),
-                    'Pick':           _fmt_pick(row.get('DraftRound'), row.get('DraftPick')),
-                    'Seasons Played': _fmt_year(row.get('ExperienceYears')),
-                }
-    except Exception as _e:
-        print(f'Warning: could not look up player bio: {_e}')
+    roster_profile = _get_player_roster_profile(name, team, pos)
+    espn_id = roster_profile['espn_id']
+    player_bio = roster_profile['bio']
 
     player_comps_data = _similarity_comps.get(name, [])
 
@@ -1607,14 +2119,25 @@ def mockdraft_players():
     scoring = request.args.get('scoring', 'ppr')
     source  = request.args.get('source', 'darkhorse').lower()
 
+    def _with_injury_news(row):
+        enriched = dict(row)
+        name = enriched.get('Name') or enriched.get('Player') or ''
+        pos = _re2.sub(r'\d+$', '', (enriched.get('Position') or '').strip()).upper()
+        team = enriched.get('Team') or ''
+        enriched['InjuryNews'] = _get_sleeper_player_update(name, team, pos)
+        return enriched
+
     def _clean(players_list):
         out = []
         for row in players_list:
             pos = _re2.sub(r'\d+$', '', (row.get('Position') or '')).strip().upper()
             if pos in ('K', 'DEF', 'DST', 'P'):
                 continue
-            out.append({k: (None if isinstance(v, float) and math.isnan(v) else v)
-                        for k, v in row.items()})
+            clean_row = {
+                k: (None if isinstance(v, float) and math.isnan(v) else v)
+                for k, v in row.items()
+            }
+            out.append(_with_injury_news(clean_row))
         return out
 
     if source == 'darkhorse':
@@ -1666,7 +2189,7 @@ def mockdraft_players():
             'Bye Week': bye_lookup.get(name_key, ''),
         })
 
-    return jsonify(players_out)
+    return jsonify([_with_injury_news(row) for row in players_out])
 
 
 @main.route('/mockdraft/save', methods=['POST'])
@@ -1873,39 +2396,6 @@ def _parse_sleeper_roster_positions(roster_positions):
             slots['bench'] += 1
         # IR slots are excluded from draft round count
     return slots
-
-
-# In-memory cache for Sleeper player map (player_id → {name, position, team})
-_sleeper_player_cache = {'ts': 0, 'data': {}}
-_SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
-
-
-def _get_sleeper_player_map():
-    """Fetch + cache the Sleeper NFL player dict. Returns {player_id: {name, position, team}}."""
-    import time
-    now = time.time()
-    if now - _sleeper_player_cache['ts'] < _SLEEPER_PLAYER_CACHE_TTL and _sleeper_player_cache['data']:
-        return _sleeper_player_cache['data']
-    try:
-        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=20)
-        if resp.status_code == 200:
-            slim = {}
-            for pid, p in (resp.json() or {}).items():
-                first = p.get('first_name') or ''
-                last  = p.get('last_name') or ''
-                name  = f'{first} {last}'.strip()
-                if name:
-                    slim[str(pid)] = {
-                        'name':     name,
-                        'position': (p.get('position') or '').upper(),
-                        'team':     p.get('team') or '',
-                    }
-            _sleeper_player_cache['ts']   = now
-            _sleeper_player_cache['data'] = slim
-            return slim
-    except Exception:
-        pass
-    return _sleeper_player_cache['data']  # return stale on failure
 
 
 def _format_sleeper_pick(pick, roster_id_to_slot=None):

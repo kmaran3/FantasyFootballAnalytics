@@ -50,6 +50,24 @@ const S = {
   auctionComplete: false,
 };
 
+function escHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildPlayerUpdateMarkup(update) {
+  if (!update || !update.has_update || !update.summary) return '';
+  const parts = [update.summary];
+  if (update.detail) parts.push(update.detail);
+  if (update.updated_label) parts.push(`Updated ${update.updated_label}`);
+  const text = parts.join(' | ');
+  return `<div class="player-update player-update-${update.tone || 'info'}" title="${escHtml(update.title || text)}">${escHtml(text)}</div>`;
+}
+
 // ── Lobby setup ────────────────────────────────────────────────
 $(function () {
   // Pre-fill settings from URL params (e.g. coming from Draft Board)
@@ -565,12 +583,16 @@ function renderPlayerList() {
     // During user's turn, check if their roster has room for this position
     const posFull   = !drafted && S.isUserTurn && !userCanDraftPosition(pos);
     const classes   = ['player-row', drafted ? 'drafted' : '', posFull ? 'pos-full' : ''].filter(Boolean).join(' ');
+    const subParts  = [];
+    if (p['Team']) subParts.push(p['Team']);
+    if (p['Bye Week']) subParts.push('Bye ' + p['Bye Week']);
 
     const $row = $(`<div class="${classes}" data-idx="${i}">
       <span class="player-rank">${p['Rank'] || i+1}</span>
       <div class="player-name-cell">
         <div class="player-name">${name}</div>
-        <div class="player-sub">${p['Team'] || ''} · ${p['Bye Week'] ? 'Bye '+p['Bye Week'] : ''}</div>
+        <div class="player-sub">${subParts.join(' | ')}</div>
+        ${buildPlayerUpdateMarkup(p['InjuryNews'])}
       </div>
       <span class="pos-badge pos-${pos}">${pos}</span>
     </div>`);
@@ -928,6 +950,7 @@ function renderAuctionPlayerList(nominationMode) {
       <div class="player-name-cell">
         <div class="player-name">${name}</div>
         <div class="player-sub">${p['Team']||''} · Rank #${p['Rank']||'?'}</div>
+        ${buildPlayerUpdateMarkup(p['InjuryNews'])}
       </div>
       <span class="pos-badge pos-${pos}">${pos}</span>
     </div>`);

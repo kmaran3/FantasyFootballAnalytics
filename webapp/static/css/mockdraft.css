@@ -220,6 +220,14 @@
 .player-name-cell { flex: 1; }
 .player-name { color: #F5F5F5; font-size: 0.82rem; font-weight: 600; }
 .player-sub { color: #B0B0B0; font-size: 0.7rem; }
+.player-update {
+  margin-top: 2px;
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+.player-update-warning { color: #d4a84a; }
+.player-update-danger { color: #d47a8a; }
+.player-update-info { color: #d7d7d7; }
 
 .pos-badge {
   font-size: 0.65rem;
