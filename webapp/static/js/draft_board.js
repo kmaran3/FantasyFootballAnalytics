@@ -830,6 +830,7 @@ function showSetupError(panel, msg) {
 // ── Board initialisation ──────────────────────────────────────
 
 async function initBoard(cfg) {
+    window.scrollTo(0, 0);
     DB.source        = cfg.source;
     DB.leagueId      = cfg.leagueId;
     DB.draftId       = cfg.draftId;
