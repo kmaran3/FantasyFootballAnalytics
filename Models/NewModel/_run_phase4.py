@@ -8,17 +8,14 @@ import pickle
 import warnings
 warnings.filterwarnings('ignore')
 
-BASE        = Path(__file__).parent.parent / 'PickleFiles' / 'NewModel'
-GRADES_PATH = Path(__file__).parent.parent / 'PickleFiles' / 'AVgrades.pkl'
-OUT         = BASE
-K_COMPS     = 5
-PEAK_AGE    = {'QB': 30, 'RB': 25, 'WR': 26, 'TE': 27}
+BASE     = Path(__file__).parent.parent / 'PickleFiles' / 'NewModel'
+OUT      = BASE
+K_COMPS  = 5
+PEAK_AGE = {'QB': 30, 'RB': 25, 'WR': 26, 'TE': 27}
 
-# ── Team grades ───────────────────────────────────────────────────
-grades_raw = pd.read_pickle(GRADES_PATH)
-grades = grades_raw[['season', 'team', 'rb', 'oline', 'wrte', 'qb']].copy()
-grades = grades.rename(columns={'rb': 'rb_grade', 'oline': 'oline_grade', 'wrte': 'wrte_grade', 'qb': 'qb_grade'})
-print(f'Team grades: {grades.shape}, seasons {sorted(grades["season"].unique())}')
+# NOTE: AVgrades.pkl has a numpy version mismatch and cannot be loaded.
+# Grade features (rb_grade, oline_grade, wrte_grade, qb_grade) are excluded.
+# seasons_played and age_curve are computed directly from the data.
 
 # ── Load full datasets + new_team flag ───────────────────────────
 def add_new_team_flag(df):
@@ -31,6 +28,12 @@ pos_dfs = {}
 for pos in ['rb', 'wr', 'te', 'qb']:
     df = pd.read_pickle(BASE / f'{pos}_full.pkl')
     df = add_new_team_flag(df)
+    # Compute seasons_played (cumulative seasons in dataset per player)
+    df = df.sort_values(['player_name', 'season'])
+    df['seasons_played'] = df.groupby('player_name').cumcount() + 1
+    # Compute age_curve (distance from positional peak age)
+    peak = PEAK_AGE[pos.upper()]
+    df['age_curve'] = peak - df['age']
     pos_dfs[pos] = df
     print(f'{pos.upper()}: {df.shape}, seasons {sorted(df["season"].unique())}')
 
@@ -38,63 +41,50 @@ for pos in ['rb', 'wr', 'te', 'qb']:
 FEATURES = {
     'rb': ['age', 'seasons_played', 'age_curve', 'new_team',
            'ppg_lag1', 'weighted_ppg',
-           'lag1_carries_pg', 'lag1_targets_pg', 'lag1_target_share',
-           'rb_grade', 'oline_grade'],
+           'lag1_carries_pg', 'lag1_targets_pg', 'lag1_target_share'],
     'wr': ['age', 'seasons_played', 'age_curve', 'new_team',
            'ppg_lag1', 'weighted_ppg',
-           'lag1_targets_pg', 'lag1_target_share', 'lag1_wopr',
-           'wrte_grade'],
+           'lag1_targets_pg', 'lag1_target_share', 'lag1_wopr'],
     'te': ['age', 'seasons_played', 'age_curve', 'new_team',
            'ppg_lag1', 'weighted_ppg',
-           'lag1_targets_pg', 'lag1_target_share',
-           'wrte_grade'],
+           'lag1_targets_pg', 'lag1_target_share'],
     'qb': ['age', 'seasons_played', 'age_curve', 'new_team',
            'ppg_lag1', 'weighted_ppg',
-           'lag1_passing_yards_pg', 'lag1_passing_tds_pg', 'lag1_comp_pct',
-           'qb_grade'],
+           'lag1_passing_yards_pg', 'lag1_passing_tds_pg', 'lag1_comp_pct'],
 }
 
 RADAR_FEATURES = {
-    'rb': ['age', 'seasons_played', 'ppg_lag1', 'lag1_carries_pg', 'lag1_target_share', 'new_team', 'rb_grade', 'oline_grade'],
-    'wr': ['age', 'seasons_played', 'ppg_lag1', 'lag1_targets_pg', 'lag1_target_share', 'lag1_wopr', 'new_team', 'wrte_grade'],
-    'te': ['age', 'seasons_played', 'ppg_lag1', 'lag1_targets_pg', 'lag1_target_share', 'new_team', 'wrte_grade'],
-    'qb': ['age', 'seasons_played', 'ppg_lag1', 'lag1_passing_yards_pg', 'lag1_passing_tds_pg', 'lag1_comp_pct', 'new_team', 'qb_grade'],
+    'rb': ['age', 'seasons_played', 'ppg_lag1', 'lag1_carries_pg', 'lag1_target_share', 'new_team'],
+    'wr': ['age', 'seasons_played', 'ppg_lag1', 'lag1_targets_pg', 'lag1_target_share', 'lag1_wopr', 'new_team'],
+    'te': ['age', 'seasons_played', 'ppg_lag1', 'lag1_targets_pg', 'lag1_target_share', 'new_team'],
+    'qb': ['age', 'seasons_played', 'ppg_lag1', 'lag1_passing_yards_pg', 'lag1_passing_tds_pg', 'lag1_comp_pct', 'new_team'],
 }
 
 # ── Build entering-season profiles ───────────────────────────────
-def build_entering_profile(pos, df, grades):
+def build_entering_profile(pos, df):
     pos_upper = pos.upper()
     peak = PEAK_AGE.get(pos_upper, 28)
-    grade_cols = {
-        'rb': ['rb_grade', 'oline_grade'],
-        'wr': ['wrte_grade'],
-        'te': ['wrte_grade'],
-        'qb': ['qb_grade'],
-    }[pos]
 
     # Historical: entering seasons 2021-2025
     hist = df[df['season'] >= 2021].copy()
-    hist = hist.merge(grades[['season', 'team'] + grade_cols], on=['season', 'team'], how='left')
     hist = hist.dropna(subset=['ppg_lag1'])
     hist = hist.dropna(subset=FEATURES[pos])
     hist['outcome_ppg'] = hist['ppg']
     hist['is_current']  = False
 
-    # Current: entering 2026
+    # Current: entering 2026 (shift age/experience forward by 1, use 2025 actuals as lags)
     curr = df[df['season'] == 2025].copy()
-    curr['age']           = curr['age'] + 1
-    curr['seasons_played']= curr['seasons_played'] + 1
-    curr['age_curve']     = peak - curr['age']
-    curr['ppg_lag1']      = curr['ppg']
-    if 'targets_pg'   in curr.columns: curr['lag1_targets_pg']   = curr['targets_pg']
-    if 'target_share' in curr.columns: curr['lag1_target_share'] = curr['target_share']
-    if 'carries_pg'   in curr.columns: curr['lag1_carries_pg']   = curr['carries_pg']
-    if 'wopr'         in curr.columns: curr['lag1_wopr']          = curr['wopr']
+    curr['age']            = curr['age'] + 1
+    curr['seasons_played'] = curr['seasons_played'] + 1
+    curr['age_curve']      = peak - curr['age']
+    curr['ppg_lag1']       = curr['ppg']
+    if 'targets_pg'       in curr.columns: curr['lag1_targets_pg']       = curr['targets_pg']
+    if 'target_share'     in curr.columns: curr['lag1_target_share']     = curr['target_share']
+    if 'carries_pg'       in curr.columns: curr['lag1_carries_pg']       = curr['carries_pg']
+    if 'wopr'             in curr.columns: curr['lag1_wopr']              = curr['wopr']
     if 'passing_yards_pg' in curr.columns: curr['lag1_passing_yards_pg'] = curr['passing_yards_pg']
-    if 'passing_tds_pg'  in curr.columns: curr['lag1_passing_tds_pg']  = curr['passing_tds_pg']
-    if 'comp_pct'        in curr.columns: curr['lag1_comp_pct']         = curr['comp_pct']
-    g2025 = grades[grades['season'] == 2025][['team'] + grade_cols]
-    curr = curr.merge(g2025, on='team', how='left')
+    if 'passing_tds_pg'   in curr.columns: curr['lag1_passing_tds_pg']   = curr['passing_tds_pg']
+    if 'comp_pct'         in curr.columns: curr['lag1_comp_pct']          = curr['comp_pct']
     curr = curr.dropna(subset=FEATURES[pos])
     curr['outcome_ppg'] = np.nan
     curr['is_current']  = True
@@ -104,7 +94,7 @@ def build_entering_profile(pos, df, grades):
 
 historical, current = {}, {}
 for pos in ['rb', 'wr', 'te', 'qb']:
-    historical[pos], current[pos] = build_entering_profile(pos, pos_dfs[pos], grades)
+    historical[pos], current[pos] = build_entering_profile(pos, pos_dfs[pos])
 
 # ── KNN comps ────────────────────────────────────────────────────
 all_comps  = {}
@@ -124,10 +114,10 @@ for pos in ['rb', 'wr', 'te', 'qb']:
     nn.fit(hist_scaled)
     distances, indices = nn.kneighbors(curr_scaled)
 
-    for i, row in curr.iterrows():
+    for i_pos, (_, row) in enumerate(curr.iterrows()):
         player = row['player_name']
         comps  = []
-        for dist, idx in zip(distances[i], indices[i]):
+        for dist, idx in zip(distances[i_pos], indices[i_pos]):
             comp = hist.iloc[idx]
             comp_feat = {c: round(float(comp[c]), 2) for c in radar_cols if c in comp.index}
             curr_feat = {c: round(float(row[c]),  2) for c in radar_cols if c in row.index}
