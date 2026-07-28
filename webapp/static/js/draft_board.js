@@ -68,6 +68,11 @@ const DB = {
     activeOtTab:     -999,     // teamIdx shown in other-teams panel; -999 = My Team
     saveDebounce:    null,
     aiDebounce:      null,
+    // Copilot state
+    copilotOpen:     false,
+    copilotMessages: [],
+    copilotAbort:    null,
+    copilotAvailable: true,
 };
 
 // ── Panel top alignment ──────────────────────────────────────
@@ -902,6 +907,41 @@ async function initBoard(cfg) {
         document.getElementById('db-sync-now-btn').style.display = '';
     }
 
+    // Copilot toggle — show for active drafts (not historical season views)
+    const copilotToggle = document.getElementById('db-copilot-toggle');
+    if (copilotToggle) {
+        const _isHistView = DB.season && DB.season < new Date().getFullYear();
+        copilotToggle.style.display = _isHistView ? 'none' : '';
+    }
+    // Reset copilot state
+    DB.copilotOpen = false;
+    DB.copilotMessages = [];
+    const copilotPanel = document.getElementById('db-copilot-panel');
+    if (copilotPanel) copilotPanel.style.display = 'none';
+    const copilotMsgs = document.getElementById('db-copilot-messages');
+    if (copilotMsgs) {
+        copilotMsgs.innerHTML = '<div class="db-copilot-welcome">Ask me anything about your draft &mdash; who to pick, player comparisons, or strategy questions.</div>';
+    }
+    const bavEl = document.getElementById('db-copilot-bav');
+    if (bavEl) bavEl.style.display = 'none';
+
+    // Check copilot API key availability
+    fetch('/draft-board/copilot/status').then(r => r.json()).then(data => {
+        DB.copilotAvailable = data.available;
+        const noKeyBanner = document.getElementById('db-copilot-no-key');
+        const cpInput = document.getElementById('db-copilot-input');
+        const cpSend = document.getElementById('db-copilot-send');
+        if (!data.available) {
+            if (noKeyBanner) noKeyBanner.style.display = '';
+            if (cpInput) { cpInput.disabled = true; cpInput.placeholder = 'API key required'; }
+            if (cpSend) cpSend.disabled = true;
+        } else {
+            if (noKeyBanner) noKeyBanner.style.display = 'none';
+            if (cpInput) { cpInput.disabled = false; cpInput.placeholder = 'Ask about your draft...'; }
+            if (cpSend) cpSend.disabled = false;
+        }
+    }).catch(() => {});
+
     // Season selector — show for Sleeper and ESPN linked leagues
     const seasonWrap = document.getElementById('db-season-wrap');
     if (seasonWrap && (DB.source === 'sleeper' || DB.source === 'espn')) {
@@ -931,11 +971,31 @@ async function initBoard(cfg) {
     // Re-align after all picks are rendered (board rows now have final heights)
     requestAnimationFrame(() => { _autosizeBoardHeight(); _alignPanelHeader(); });
 
-    // Start live polling for Sleeper (only if draft is still in progress)
-    if (DB.source === 'sleeper' && DB.draftId && !DB.draftComplete) {
-        startPolling();
+    // Start live polling (Sleeper + ESPN)
+    const canPoll = (DB.source === 'sleeper' && DB.draftId) || DB.source === 'espn';
+
+    if (canPoll && !DB.draftComplete) {
+        if (cfg.draftStatus === 'in_progress') {
+            startPolling(POLL_LIVE_MS);
+        } else if (cfg.draftStatus === 'pre_draft') {
+            setSyncStatus('paused', 'Draft not started');
+        }
     } else if (DB.draftComplete) {
         setSyncStatus('paused', 'Draft complete');
+    }
+
+    // Show/hide Go Live button for pre-draft
+    const goLiveBtn = document.getElementById('db-go-live-btn');
+    if (goLiveBtn) {
+        if (canPoll && cfg.draftStatus === 'pre_draft') {
+            goLiveBtn.style.display = 'inline-flex';
+            goLiveBtn.onclick = () => {
+                goLiveBtn.style.display = 'none';
+                startPolling(POLL_PREDRAFT_MS);
+            };
+        } else {
+            goLiveBtn.style.display = 'none';
+        }
     }
 
     // Trigger analysis now that all picks are loaded (runs for any draft state)
@@ -1733,18 +1793,21 @@ function confirmPick() {
     closePicker();
 }
 
-// ── Sleeper live polling ──────────────────────────────────────
+// ── Live draft polling (Sleeper + ESPN) ──────────────────────
 
-const POLL_INTERVAL_MS = 30000;   // 30 seconds
+const POLL_LIVE_MS     = 5000;    // 5s during active draft
+const POLL_PREDRAFT_MS = 30000;   // 30s while waiting for draft to start
+let   _currentPollMs   = POLL_LIVE_MS;
 let   _countdownTimer  = null;
 let   _secondsLeft     = 0;
 
-function startPolling() {
+function startPolling(intervalMs) {
+    _currentPollMs = intervalMs || POLL_LIVE_MS;
     if (DB.syncInterval) clearInterval(DB.syncInterval);
     if (_countdownTimer)  clearInterval(_countdownTimer);
 
-    syncFromSleeper();   // immediate first fetch
-    DB.syncInterval = setInterval(syncFromSleeper, POLL_INTERVAL_MS);
+    syncDraft();   // immediate first fetch
+    DB.syncInterval = setInterval(syncDraft, _currentPollMs);
     _startCountdown();
 }
 
@@ -1756,40 +1819,77 @@ function stopPolling() {
 }
 
 function _startCountdown() {
-    _secondsLeft = POLL_INTERVAL_MS / 1000;
+    _secondsLeft = _currentPollMs / 1000;
     clearInterval(_countdownTimer);
     _countdownTimer = setInterval(() => {
         _secondsLeft--;
         if (_secondsLeft <= 0) {
-            _secondsLeft = POLL_INTERVAL_MS / 1000;
+            _secondsLeft = _currentPollMs / 1000;
         }
-        // Update label if currently live
         if (DB.syncErrorCount === 0 && DB.lastSyncAt) {
             const lbl = document.getElementById('db-sync-label');
-            if (lbl) lbl.textContent = `Live · next sync in ${_secondsLeft}s`;
+            if (lbl) {
+                if (_currentPollMs === POLL_PREDRAFT_MS) {
+                    lbl.textContent = `Waiting for draft · checking in ${_secondsLeft}s`;
+                } else {
+                    lbl.textContent = `Live · next sync in ${_secondsLeft}s`;
+                }
+            }
         }
     }, 1000);
 }
 
-async function syncFromSleeper() {
-    if (!DB.draftId || !DB.leagueId) return;
+async function syncDraft() {
+    if (!DB.leagueId) return;
+
+    // Build URL based on source
+    let url;
+    if (DB.source === 'sleeper') {
+        if (!DB.draftId) return;
+        url = `/draft-board/sleeper/sync?draft_id=${encodeURIComponent(DB.draftId)}&league_id=${encodeURIComponent(DB.leagueId)}&last_pick=${DB.currentPickNo}`;
+    } else if (DB.source === 'espn') {
+        url = `/draft-board/espn/sync?league_id=${encodeURIComponent(DB.leagueId)}`;
+        if (DB.espnCookies) {
+            url += `&espn_s2=${encodeURIComponent(DB.espnCookies.espn_s2)}&swid=${encodeURIComponent(DB.espnCookies.swid)}`;
+        }
+    } else {
+        return; // manual source — no polling
+    }
+
     try {
-        const url = `/draft-board/sleeper/sync?draft_id=${DB.draftId}&league_id=${DB.leagueId}`;
         const res  = await fetch(url);
+
+        // Handle ESPN auth expiry
+        if (res.status === 401 && DB.source === 'espn') {
+            stopPolling();
+            setSyncStatus('error', '⚠ ESPN auth expired — reconnect league');
+            return;
+        }
+
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'sync error');
 
         DB.syncErrorCount = 0;
         DB.lastSyncAt     = new Date();
-        _secondsLeft      = POLL_INTERVAL_MS / 1000;
+        _secondsLeft      = _currentPollMs / 1000;
 
-        // ── Apply roster changes first ──────────────────────────
+        // ── Pre-draft → in_progress transition ──────────────────
+        if (data.draft_status === 'in_progress' && _currentPollMs !== POLL_LIVE_MS) {
+            _currentPollMs = POLL_LIVE_MS;
+            clearInterval(DB.syncInterval);
+            clearInterval(_countdownTimer);
+            DB.syncInterval = setInterval(syncDraft, POLL_LIVE_MS);
+            _startCountdown();
+            _secondsLeft = POLL_LIVE_MS / 1000;
+            // Hide "Go Live" button if still visible
+            const goLiveBtn = document.getElementById('db-go-live-btn');
+            if (goLiveBtn) goLiveBtn.style.display = 'none';
+        }
+
+        // ── Apply roster changes (skip if server returned null = no change) ──
         if (data.team_rosters) {
             DB.fullRosters = data.team_rosters;
 
-            // Rebuild drafted set.
-            // Primary: flat list of Sleeper-resolved player names (handles suffix mismatches).
-            // Fallback: names from structured roster objects.
             DB.drafted = new Set();
             if (data.roster_player_names && data.roster_player_names.length) {
                 data.roster_player_names.forEach(n => DB.drafted.add(normalizeName(n)));
@@ -1830,6 +1930,8 @@ async function syncFromSleeper() {
             setSyncStatus('paused', 'Draft complete');
             updateCurrentPickBar();
             renderDraftCompleteAnalysis();
+        } else if (data.draft_status === 'pre_draft') {
+            setSyncStatus('live', `Waiting for draft · checking in ${_secondsLeft}s`);
         } else {
             setSyncStatus('live', `Live · next sync in ${_secondsLeft}s`);
         }
@@ -1838,8 +1940,22 @@ async function syncFromSleeper() {
 
     } catch (e) {
         DB.syncErrorCount++;
-        const msg = DB.syncErrorCount >= 3 ? '⚠ Sync paused — retrying' : `Retrying… (${DB.syncErrorCount})`;
-        setSyncStatus(DB.syncErrorCount >= 3 ? 'error' : 'paused', msg);
+        if (DB.syncErrorCount >= 3) {
+            stopPolling();
+            setSyncStatus('error', '⚠ Sync paused — click to retry');
+            const lbl = document.getElementById('db-sync-label');
+            if (lbl) {
+                lbl.style.cursor = 'pointer';
+                lbl.onclick = () => {
+                    DB.syncErrorCount = 0;
+                    lbl.style.cursor = '';
+                    lbl.onclick = null;
+                    startPolling(_currentPollMs);
+                };
+            }
+        } else {
+            setSyncStatus('paused', `Retrying… (${DB.syncErrorCount})`);
+        }
     }
 }
 
@@ -1887,7 +2003,10 @@ async function fetchAISuggestions() {
             body: JSON.stringify(payload),
         });
         const data = await res.json();
-        if (res.ok) renderAISuggestions(data);
+        if (res.ok) {
+            renderAISuggestions(data);
+            updateCopilotBestAvail(data);
+        }
     } catch {}
 }
 
@@ -2315,11 +2434,12 @@ async function resumeSession() {
     renderYourTeam();
     updateCurrentPickBar();
 
-    // If Sleeper: re-sync only if draft is still in progress
-    if (DB.source === 'sleeper' && DB.draftId && !DB.draftComplete) {
+    // Re-sync if draft is still in progress
+    const canPollSeason = (DB.source === 'sleeper' && DB.draftId) || DB.source === 'espn';
+    if (canPollSeason && !DB.draftComplete) {
         setSyncStatus('live', 'Syncing…');
-        await syncFromSleeper();
-        startPolling();
+        await syncDraft();
+        startPolling(POLL_LIVE_MS);
     } else if (DB.draftComplete) {
         setSyncStatus('paused', 'Draft complete');
         renderDraftCompleteAnalysis();
@@ -2329,6 +2449,338 @@ async function resumeSession() {
         document.getElementById('db-mobile-fab').style.display = 'flex';
     }
 }
+
+// ── Copilot ──────────────────────────────────────────────────
+
+function toggleCopilot() {
+    const panel = document.getElementById('db-copilot-panel');
+    if (!panel) return;
+    DB.copilotOpen = !DB.copilotOpen;
+    panel.style.display = DB.copilotOpen ? 'flex' : 'none';
+    // Add/remove margin on board center so content doesn't hide behind panel
+    const boardCenter = document.querySelector('.db-board-center');
+    if (boardCenter) {
+        if (DB.copilotOpen) boardCenter.classList.add('copilot-open');
+        else boardCenter.classList.remove('copilot-open');
+    }
+    if (DB.copilotOpen) {
+        const input = document.getElementById('db-copilot-input');
+        if (input) setTimeout(() => input.focus(), 100);
+    }
+}
+
+function _copilotBuildPayload(message) {
+    // Build available players list (top 30 undrafted, sorted by rank)
+    const available = (DB.players || [])
+        .filter(p => !DB.drafted.has((p.Name || '').toLowerCase()))
+        .slice(0, 30)
+        .map(p => ({
+            name: p.Name,
+            position: p.Position,
+            nfl_team: p.Team,
+            ppg: p.PPG || p.ADP || '',
+            vbd: p.VBD || '',
+        }));
+
+    // Build user roster
+    const userRoster = (DB.userRoster || []).map(p => ({
+        name: p.name,
+        position: p.position,
+        nfl_team: p.nfl_team,
+    }));
+
+    return {
+        message,
+        context: {
+            user_roster: userRoster,
+            available_players: available,
+            roster_slots: DB.rosterSlots || {},
+            scoring_format: DB.scoringFormat || 'ppr',
+            num_teams: DB.numTeams || 12,
+            current_pick: DB.currentPickNo || 1,
+            user_slot: DB.userSlot || '',
+            league_type: DB.leagueType || 'redraft',
+        },
+    };
+}
+
+function _copilotRenderMessage(role, content, status) {
+    const container = document.getElementById('db-copilot-messages');
+    if (!container) return null;
+
+    // Hide welcome message
+    const welcome = container.querySelector('.db-copilot-welcome');
+    if (welcome) welcome.style.display = 'none';
+
+    const div = document.createElement('div');
+    div.className = `db-copilot-msg ${role}`;
+
+    if (role === 'copilot') {
+        div.innerHTML = _copilotFormatMarkdown(content || '');
+    } else {
+        div.textContent = content;
+    }
+
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+}
+
+function _copilotEscapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function _copilotFormatMarkdown(text) {
+    // Escape HTML first to prevent XSS, then apply markdown transforms
+    return _copilotEscapeHtml(text)
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+        .replace(/\n{2,}/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+}
+
+function _copilotShowTyping() {
+    const container = document.getElementById('db-copilot-messages');
+    if (!container) return;
+    const existing = container.querySelector('.db-copilot-typing');
+    if (existing) existing.remove();
+    const div = document.createElement('div');
+    div.className = 'db-copilot-typing';
+    div.innerHTML = '<span></span><span></span><span></span>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function _copilotHideTyping() {
+    const container = document.getElementById('db-copilot-messages');
+    if (!container) return;
+    const typing = container.querySelector('.db-copilot-typing');
+    if (typing) typing.remove();
+}
+
+function updateCopilotBestAvail(data) {
+    const bavEl = document.getElementById('db-copilot-bav');
+    const playerEl = document.getElementById('db-copilot-bav-player');
+    if (!bavEl || !playerEl) return;
+
+    if (DB.draftComplete) {
+        bavEl.style.display = 'block';
+        playerEl.innerHTML = '<span class="db-copilot-bav-complete">Draft Complete</span>';
+        return;
+    }
+
+    // Use data from ai-suggest response (targets or best_available)
+    let target = null;
+    if (data && data.targets && data.targets.length) {
+        target = data.targets[0];
+    } else if (data && data.best_available && data.best_available.length) {
+        target = data.best_available[0];
+    }
+
+    if (!target) {
+        bavEl.style.display = 'none';
+        return;
+    }
+
+    const posColors = { QB: '#e74c3c', RB: '#2ecc71', WR: '#3498db', TE: '#e67e22', K: '#9b59b6', DST: '#1abc9c' };
+    const pos = (target.Position || target.position || '').toUpperCase();
+    const bg = posColors[pos] || '#666';
+    const name = target.Name || target.name || '?';
+    const ppg = target.PPG || target.ppg || '';
+
+    // Find reason from needs
+    let reason = '';
+    if (data && data.needs) {
+        for (const n of data.needs) {
+            if (n.position === pos && n.score > 0) {
+                reason = `Fills your ${pos} need`;
+                break;
+            }
+        }
+    }
+    if (!reason) reason = 'Best available player';
+
+    bavEl.style.display = 'block';
+    playerEl.innerHTML =
+        `<span class="bav-pos" style="background:${bg}">${pos}</span>` +
+        `<strong>${name}</strong>` +
+        (ppg ? `<span class="bav-ppg">${ppg} PPG</span>` : '') +
+        `<span class="bav-reason">${reason}</span>`;
+}
+
+async function sendCopilotMessage() {
+    const input = document.getElementById('db-copilot-input');
+    if (!input) return;
+    const message = input.value.trim();
+    if (!message) return;
+    if (message.length > 2000) return;
+
+    input.value = '';
+
+    // Abort any in-flight stream
+    if (DB.copilotAbort) {
+        DB.copilotAbort.abort();
+        DB.copilotAbort = null;
+    }
+
+    // Render user message
+    DB.copilotMessages.push({ role: 'user', content: message });
+    _copilotRenderMessage('user', message);
+
+    // Show typing indicator
+    _copilotShowTyping();
+
+    // Build payload
+    const payload = _copilotBuildPayload(message);
+    const abortController = new AbortController();
+    DB.copilotAbort = abortController;
+
+    try {
+        const response = await fetch('/draft-board/copilot/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: abortController.signal,
+        });
+
+        if (response.status === 429) {
+            _copilotHideTyping();
+            _copilotRenderMessage('error', "You're sending messages too quickly. Please wait a moment.");
+            return;
+        }
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            _copilotHideTyping();
+            _copilotRenderMessage('error', err.error || 'Something went wrong.');
+            return;
+        }
+
+        // Stream the SSE response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let copilotBubble = null;
+        let fullText = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep incomplete line
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                let event;
+                try { event = JSON.parse(line.slice(6)); }
+                catch { continue; }
+
+                if (event.type === 'chunk') {
+                    if (!copilotBubble) {
+                        _copilotHideTyping();
+                        copilotBubble = _copilotRenderMessage('copilot', '');
+                    }
+                    fullText += event.text;
+                    copilotBubble.innerHTML = _copilotFormatMarkdown(fullText);
+                    const container = document.getElementById('db-copilot-messages');
+                    if (container) container.scrollTop = container.scrollHeight;
+                }
+
+                if (event.type === 'done') {
+                    _copilotHideTyping();
+                    if (event.text && !copilotBubble) {
+                        // Full response in one shot (fallback mode)
+                        fullText = event.text;
+                        copilotBubble = _copilotRenderMessage('copilot', '');
+                        copilotBubble.innerHTML = _copilotFormatMarkdown(fullText);
+                    }
+                    if (event.best_available) {
+                        _copilotUpdateBavFromServer(event.best_available);
+                    }
+                    DB.copilotMessages.push({ role: 'copilot', content: fullText });
+                }
+
+                if (event.type === 'error') {
+                    _copilotHideTyping();
+                    if (event.fallback) {
+                        const prefix = "I'm having trouble thinking right now. Here's a quick suggestion:\n\n";
+                        fullText = prefix + event.fallback;
+                        copilotBubble = _copilotRenderMessage('copilot', '');
+                        copilotBubble.innerHTML = _copilotFormatMarkdown(fullText);
+                    } else {
+                        _copilotRenderMessage('error', 'Something went wrong. Please try again.');
+                    }
+                    if (event.best_available) {
+                        _copilotUpdateBavFromServer(event.best_available);
+                    }
+                    DB.copilotMessages.push({ role: 'copilot', content: fullText });
+                }
+            }
+        }
+
+        // Handle case where stream ended without a done event
+        if (!copilotBubble && fullText) {
+            _copilotHideTyping();
+            copilotBubble = _copilotRenderMessage('copilot', '');
+            copilotBubble.innerHTML = _copilotFormatMarkdown(fullText);
+        }
+
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            _copilotHideTyping();
+            // Append interrupted label to the last copilot bubble if any
+            const container = document.getElementById('db-copilot-messages');
+            const lastBubble = container ? container.querySelector('.db-copilot-msg.copilot:last-of-type') : null;
+            if (lastBubble) {
+                lastBubble.innerHTML += '<br><span class="interrupted">[Response interrupted]</span>';
+            }
+            return;
+        }
+        _copilotHideTyping();
+        _copilotRenderMessage('error', 'Connection error. Please try again.');
+    } finally {
+        DB.copilotAbort = null;
+    }
+}
+
+function _copilotUpdateBavFromServer(bav) {
+    // Update BAV bar from server-computed best available
+    const bavEl = document.getElementById('db-copilot-bav');
+    const playerEl = document.getElementById('db-copilot-bav-player');
+    if (!bavEl || !playerEl || !bav) return;
+
+    const posColors = { QB: '#e74c3c', RB: '#2ecc71', WR: '#3498db', TE: '#e67e22', K: '#9b59b6', DST: '#1abc9c' };
+    const pos = (bav.position || '').toUpperCase();
+    const bg = posColors[pos] || '#666';
+
+    bavEl.style.display = 'block';
+    playerEl.innerHTML =
+        `<span class="bav-pos" style="background:${bg}">${pos}</span>` +
+        `<strong>${bav.name || '?'}</strong>` +
+        (bav.ppg ? `<span class="bav-ppg">${bav.ppg} PPG</span>` : '') +
+        `<span class="bav-reason">${bav.reason || ''}</span>`;
+}
+
+// Handle Enter key in copilot input
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && e.target && e.target.id === 'db-copilot-input') {
+        e.preventDefault();
+        sendCopilotMessage();
+    }
+    if (e.key === 'Escape' && DB.copilotOpen) {
+        toggleCopilot();
+    }
+});
 
 // ── Reset ─────────────────────────────────────────────────────
 
@@ -2355,8 +2807,19 @@ async function resetBoard() {
     document.getElementById('db-current-pick-bar').classList.remove('visible');
     document.getElementById('db-sync-badge').style.display  = 'none';
     document.getElementById('db-sync-now-btn').style.display = 'none';
+    document.getElementById('db-go-live-btn').style.display  = 'none';
     document.getElementById('db-mobile-fab').style.display   = 'none';
     document.getElementById('db-drawer').classList.remove('open');
+    // Reset copilot
+    const _cpPanel = document.getElementById('db-copilot-panel');
+    if (_cpPanel) _cpPanel.style.display = 'none';
+    const _cpToggle = document.getElementById('db-copilot-toggle');
+    if (_cpToggle) _cpToggle.style.display = 'none';
+    const _cpCenter = document.querySelector('.db-board-center');
+    if (_cpCenter) _cpCenter.classList.remove('copilot-open');
+    DB.copilotOpen = false;
+    DB.copilotMessages = [];
+    if (DB.copilotAbort) { DB.copilotAbort.abort(); DB.copilotAbort = null; }
 
     // Clear inline styles left by _autosizeBoardHeight so next open starts fresh
     const panel = document.getElementById('db-available-panel');
@@ -2555,6 +3018,55 @@ function initDrawer() {
                 body.innerHTML = '';
                 const panel = document.getElementById('db-available-panel');
                 if (panel) body.appendChild(panel.cloneNode(true));
+            } else if (tab === 'copilot') {
+                body.innerHTML = '';
+                // Build mobile copilot UI with unique IDs
+                const bavDiv = document.createElement('div');
+                bavDiv.className = 'db-copilot-bav';
+                bavDiv.id = 'db-mobile-copilot-bav';
+                const srcBav = document.getElementById('db-copilot-bav');
+                if (srcBav) { bavDiv.innerHTML = srcBav.innerHTML; bavDiv.style.display = srcBav.style.display; }
+                body.appendChild(bavDiv);
+
+                const msgsDiv = document.createElement('div');
+                msgsDiv.className = 'db-copilot-messages';
+                msgsDiv.id = 'db-mobile-copilot-messages';
+                msgsDiv.setAttribute('role', 'log');
+                // Copy existing messages from desktop panel
+                const srcMsgs = document.getElementById('db-copilot-messages');
+                if (srcMsgs) msgsDiv.innerHTML = srcMsgs.innerHTML;
+                body.appendChild(msgsDiv);
+
+                const inputDiv = document.createElement('div');
+                inputDiv.className = 'db-copilot-input-wrap';
+                const isDisabled = !DB.copilotAvailable;
+                inputDiv.innerHTML =
+                    '<input type="text" id="db-mobile-copilot-input" class="db-copilot-input" ' +
+                    'placeholder="' + (isDisabled ? 'API key required' : 'Ask about your draft...') + '" ' +
+                    'maxlength="2000" aria-label="Draft copilot message"' + (isDisabled ? ' disabled' : '') + '>' +
+                    '<button class="db-copilot-send" aria-label="Send message"' + (isDisabled ? ' disabled' : '') + '>' +
+                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg></button>';
+                body.appendChild(inputDiv);
+
+                // Wire up mobile send
+                const mInput = document.getElementById('db-mobile-copilot-input');
+                const mSend = inputDiv.querySelector('.db-copilot-send');
+                const mobileSend = () => {
+                    if (!mInput || !mInput.value.trim()) return;
+                    // Temporarily swap the main input value and send
+                    const mainInput = document.getElementById('db-copilot-input');
+                    const origVal = mainInput ? mainInput.value : '';
+                    if (mainInput) mainInput.value = mInput.value;
+                    mInput.value = '';
+                    sendCopilotMessage();
+                    // Sync mobile messages after a short delay
+                    setTimeout(() => {
+                        const updated = document.getElementById('db-copilot-messages');
+                        if (updated && msgsDiv) msgsDiv.innerHTML = updated.innerHTML;
+                    }, 500);
+                };
+                if (mSend) mSend.addEventListener('click', mobileSend);
+                if (mInput) mInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); mobileSend(); } });
             } else {
                 body.innerHTML = '';
                 const panel = document.getElementById('db-your-team-panel');
@@ -2873,7 +3385,7 @@ async function boot() {
         btn.disabled = true;
         btn.textContent = '↻ Syncing…';
         try {
-            await syncFromSleeper();
+            await syncDraft();
             btn.textContent = '✓ Synced';
             btn.classList.add('db-sync-ok');
         } catch (_) {
@@ -2896,3 +3408,4 @@ async function boot() {
 }
 
 document.addEventListener('DOMContentLoaded', boot);
+window.addEventListener('beforeunload', stopPolling);

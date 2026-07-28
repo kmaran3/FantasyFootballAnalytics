@@ -152,6 +152,9 @@ def create_app():
     # Import and register blueprints
     from .views import main as main_blueprint
     app.register_blueprint(main_blueprint)
+
+    from .copilot import copilot_bp
+    app.register_blueprint(copilot_bp)
     
     # Add security headers to all responses
     @app.after_request

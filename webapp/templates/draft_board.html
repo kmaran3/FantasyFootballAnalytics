@@ -16,11 +16,14 @@
             <span id="db-sync-label">Connecting…</span>
         </div>
         <button class="db-topbar-btn" id="db-sync-now-btn" style="display:none">Sync Now</button>
+        <button class="db-go-live-btn" id="db-go-live-btn" style="display:none">Go Live</button>
         <div id="db-season-wrap" style="display:none;align-items:center;gap:4px">
             <label style="font-size:.75rem;color:var(--text-secondary)">Season</label>
             <select class="db-form-select" id="db-season-select" style="width:auto;padding:4px 8px;font-size:.8rem"></select>
         </div>
         <button class="db-topbar-btn" id="db-mock-draft-btn" style="display:none" onclick="goToMockDraft()">Run Mock Draft</button>
+        <button class="db-copilot-toggle" id="db-copilot-toggle" style="display:none"
+                onclick="toggleCopilot()" aria-label="Toggle AI Copilot" title="AI Draft Copilot">&#10022; Copilot</button>
         <button class="db-topbar-btn" id="db-reset-btn">My Leagues</button>
     </div>
 
@@ -281,6 +284,32 @@
                 </div>
             </div>
 
+            <!-- RIGHT: Copilot Panel -->
+            <div class="db-copilot-panel" id="db-copilot-panel" style="display:none">
+                <div class="db-copilot-header">
+                    <span class="db-copilot-title">&#10022; Draft Copilot</span>
+                    <button class="db-copilot-close" onclick="toggleCopilot()" aria-label="Close copilot">&times;</button>
+                </div>
+                <div class="db-copilot-bav" id="db-copilot-bav" style="display:none">
+                    <span class="db-copilot-bav-label">Best Pick For You</span>
+                    <div class="db-copilot-bav-player" id="db-copilot-bav-player"></div>
+                </div>
+                <div class="db-copilot-messages" id="db-copilot-messages" role="log" aria-live="polite">
+                    <div class="db-copilot-welcome">Ask me anything about your draft &mdash; who to pick, player comparisons, or strategy questions.</div>
+                </div>
+                <div class="db-copilot-input-wrap">
+                    <input type="text" id="db-copilot-input" class="db-copilot-input"
+                           placeholder="Ask about your draft..." maxlength="2000"
+                           aria-label="Draft copilot message">
+                    <button id="db-copilot-send" class="db-copilot-send" onclick="sendCopilotMessage()" aria-label="Send message">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                    </button>
+                </div>
+                <div class="db-copilot-no-key" id="db-copilot-no-key" style="display:none">
+                    AI Copilot requires API key configuration.
+                </div>
+            </div>
+
         </div>
 
     </div>
@@ -337,6 +366,7 @@
         <div class="db-drawer-tabs">
             <button class="db-drawer-tab active" data-dtab="available">Available</button>
             <button class="db-drawer-tab" data-dtab="your-team">Your Team</button>
+            <button class="db-drawer-tab" data-dtab="copilot">&#10022; Copilot</button>
         </div>
         <div class="db-drawer-body" id="db-drawer-body">
             <!-- Content swapped by JS based on active drawer tab -->

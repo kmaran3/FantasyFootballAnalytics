@@ -2943,6 +2943,7 @@ def draft_board_sleeper_sync():
     """
     draft_id  = request.args.get('draft_id', '').strip()
     league_id = request.args.get('league_id', '').strip()
+    last_pick = int(request.args.get('last_pick', 0) or 0)
     if not draft_id or not league_id:
         return jsonify({'error': 'draft_id and league_id required'}), 400
 
@@ -2965,6 +2966,16 @@ def draft_board_sleeper_sync():
         # ── 2. Picks (with trade-corrected slot attribution) ──
         picks_resp = requests.get(f'https://api.sleeper.app/v1/draft/{draft_id}/picks', timeout=8)
         picks_raw  = picks_resp.json() if picks_resp.status_code == 200 else []
+
+        # Fast path: no new picks and draft still going — skip expensive roster fetch
+        if len(picks_raw) <= last_pick and draft_status not in ('complete', 'pre_draft'):
+            return jsonify({
+                'picks':               [],
+                'team_rosters':        None,
+                'draft_status':        draft_status,
+                'roster_player_names': None,
+                'pick_count':          len(picks_raw),
+            })
 
         # If slot_to_roster was empty, fall back to roster_id derived from rosters endpoint
         need_roster_fallback = not roster_id_to_slot
@@ -3063,6 +3074,7 @@ def draft_board_sleeper_sync():
             'team_rosters':        team_rosters,
             'draft_status':        draft_status,
             'roster_player_names': roster_player_names,
+            'pick_count':          len(picks_raw),
         })
 
     except requests.RequestException:
