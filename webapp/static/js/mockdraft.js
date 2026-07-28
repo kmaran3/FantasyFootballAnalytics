@@ -70,8 +70,47 @@ function buildPlayerUpdateMarkup(update) {
 
 // ── Lobby setup ────────────────────────────────────────────────
 $(function () {
+  // Pre-fill settings from URL params (e.g. coming from Draft Board)
+  const _qp = new URLSearchParams(window.location.search);
+  if (_qp.has('scoring')) {
+    const sc = _qp.get('scoring');
+    S.scoring = sc;
+    $('#scoringToggle .toggle-btn').removeClass('active');
+    $(`#scoringToggle .toggle-btn[data-val="${sc}"]`).addClass('active');
+  }
+  if (_qp.has('source')) {
+    const src = _qp.get('source');
+    const srcMap = { sleeper: 'sleeper', espn: 'espn' };
+    const rankSrc = srcMap[src] || 'darkhorse';
+    S.rankingSource = rankSrc;
+    $('#rankingSourceToggle .toggle-btn').removeClass('active');
+    $(`#rankingSourceToggle .toggle-btn[data-val="${rankSrc}"]`).addClass('active');
+    onSettingChange('rankingSourceToggle', rankSrc);
+  }
+  if (_qp.has('teams')) {
+    const t = _qp.get('teams');
+    S.numTeams = parseInt(t);
+    $('#numTeamsToggle .toggle-btn').removeClass('active');
+    const $teamBtn = $(`#numTeamsToggle .toggle-btn[data-val="${t}"]`);
+    if ($teamBtn.length) $teamBtn.addClass('active');
+    else $('#numTeamsToggle .toggle-btn[data-val="12"]').addClass('active');
+  }
+  // Roster slot overrides
+  const _slotMap = { QB: '#slotQB', RB: '#slotRB', WR: '#slotWR', TE: '#slotTE', FLEX: '#slotFLEX', bench: '#slotBench' };
+  for (const [key, sel] of Object.entries(_slotMap)) {
+    if (_qp.has(`slot_${key}`)) $(sel).val(_qp.get(`slot_${key}`));
+  }
+
   updateRoundsPreview();
   updatePositionDropdown();
+
+  // Set draft position after dropdown is populated
+  if (_qp.has('slot')) {
+    const slot = _qp.get('slot');
+    if ($(`#draftPositionSelect option[value="${slot}"]`).length) {
+      $('#draftPositionSelect').val(slot);
+    }
+  }
 
   // Toggle groups
   $(document).on('click', '.toggle-btn', function () {

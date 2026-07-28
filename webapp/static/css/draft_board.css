@@ -118,6 +118,7 @@
     flex-direction: column;
     gap: 3px;
     min-width: 0;
+    text-align: left;
 }
 
 .db-saved-league-name {
@@ -342,29 +343,34 @@
 .db-active {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
 }
 
 .db-layout {
+    position: relative;
+    overflow: hidden;
     flex: 1;
-    display: grid;
-    grid-template-columns: 210px 1fr;
-    gap: 0;
-    align-items: start;  /* panels don't stretch — left/right become sticky */
+    min-height: 0;
 }
 
 /* ── Available players panel ─────────────────────────────────── */
 .db-available {
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--medium-gray);
-    background: var(--black);
+    border-right: 1px solid rgba(42,42,42,0.8);
+    background: var(--charcoal);
     overflow: hidden;
-    /* Stick below the topbar (~49px) and fill the rest of the viewport */
-    position: sticky;
-    top: 49px;
-    height: calc(100vh - 49px);
-    align-self: start;
+    /* Positioned absolutely so it doesn't affect parent height */
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 235px;
+}
+
+.db-player-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .db-panel-header {
@@ -374,11 +380,37 @@
     color: var(--gold);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border-bottom: 1px solid var(--medium-gray);
+    border-bottom: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
+}
+
+/* Continuous lines drawn across the full layout width */
+.db-layout .db-gold-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gold);
+    z-index: 25;
+    pointer-events: none;
+}
+.db-layout .db-row-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(42,42,42,0.8);
+    z-index: 25;
+    pointer-events: none;
+}
+
+/* When standings are shown, remove horizontal cell borders so only the continuous row-lines show */
+.db-layout.db-standings-mode .db-cell {
+    border-top: none;
+    border-bottom: none;
 }
 
 .db-avail-count {
@@ -446,6 +478,65 @@
     overflow-x: hidden;
 }
 
+/* ── Standings rows ───────────────────────────────────────────── */
+.db-standings-row {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    min-height: 44px;
+    border-bottom: none;
+    font-size: 0.72em;
+    gap: 0;
+    box-sizing: border-box;
+    position: relative;
+}
+.db-standings-row.db-standings-last::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: rgba(42,42,42,0.8);
+}
+.db-standings-rank {
+    min-width: 18px;
+    text-align: center;
+    color: var(--gold);
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.db-standings-divider {
+    width: 1px;
+    align-self: stretch;
+    background: rgba(255,255,255,0.15);
+    margin: 0 5px;
+    flex-shrink: 0;
+}
+.db-standings-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--white);
+    font-weight: 600;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: keep-all;
+}
+.db-standings-record {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    flex: 0 0 32px;
+    text-align: center;
+    font-size: 0.92em;
+}
+.db-standings-pts {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    flex: 0 0 62px;
+    text-align: right;
+    font-size: 0.92em;
+}
+
 .db-player-row {
     display: flex;
     align-items: flex-start;
@@ -503,9 +594,9 @@
     margin-top: 2px;
     font-size: 0.68em;
     line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: break-word;
 }
 
 .db-player-update-warning { color: #f0b870; }
@@ -536,11 +627,14 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    margin-left: 235px;
+    height: 100%;
 }
 
 .db-board-scroll {
-    flex: none;
+    flex: 1;
     min-width: 0;
+    min-height: 0;
     overflow-x: hidden;
 }
 
@@ -591,10 +685,9 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 8px 4px;
-    border-bottom: 2px solid var(--gold);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    border-bottom: none;
+    white-space: normal;
+    word-break: break-word;
     text-align: center;
     position: sticky;
     top: 0;
@@ -779,6 +872,12 @@
     border-top: none;
 }
 
+/* ── Bottom drawer wrapper ───────────────────────────────────── */
+.db-bottom-drawer {
+    display: flex;
+    flex-direction: column;
+}
+
 /* ── Bottom row: Other Teams + AI Bar side by side ───────────── */
 .db-bottom-row {
     display: flex;
@@ -836,9 +935,7 @@
 .db-ot-tab {
     flex: 1;
     padding: 6px 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -849,6 +946,7 @@
     transition: all 0.15s;
     text-align: center;
     min-width: 0;
+    line-height: 1.2;
 }
 
 .db-ot-tab:hover  { color: var(--white); }
@@ -1330,7 +1428,7 @@
     }
 
     /* Board center takes full width on mobile */
-    .db-board-center { order: 1; }
+    .db-board-center { order: 1; margin-left: 0; }
 
     /* Hide side panels — replaced by drawer */
     .db-available { display: none; position: static; height: auto; }

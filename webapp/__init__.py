@@ -53,6 +53,8 @@ class SavedLeague(db.Model):
     scoring        = db.Column(db.String(20))
     league_type    = db.Column(db.String(20))
     sleeper_user_id = db.Column(db.String(100))
+    espn_s2        = db.Column(db.Text, nullable=True)
+    espn_swid      = db.Column(db.String(50), nullable=True)
     user_slot      = db.Column(db.Integer)
     last_accessed  = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('user_id', 'league_id', name='uq_user_league'),)
@@ -167,6 +169,7 @@ def create_app():
             "style-src 'self' 'unsafe-inline' https://code.jquery.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
             "font-src 'self' data: https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
+            "connect-src 'self' https://api.sleeper.app; "
         )
         # Force HTTPS in production
         if _is_production():
@@ -176,6 +179,24 @@ def create_app():
     with app.app_context():
         try:
             db.create_all()  # Ensure tables are created
+
+            # Migrate: add missing columns to saved_league if table already existed
+            from sqlalchemy import inspect as sa_inspect, text
+            insp = sa_inspect(db.engine)
+            if insp.has_table('saved_league'):
+                existing_cols = {c['name'] for c in insp.get_columns('saved_league')}
+                migrations = {
+                    'espn_s2':   'TEXT',
+                    'espn_swid': 'VARCHAR(50)',
+                }
+                with db.engine.begin() as conn:
+                    for col_name, col_type in migrations.items():
+                        if col_name not in existing_cols:
+                            conn.execute(text(
+                                f'ALTER TABLE saved_league ADD COLUMN {col_name} {col_type}'
+                            ))
+                            print(f"  migrated: added {col_name} to saved_league")
+
             print(f"Database initialized at: {app.config['SQLALCHEMY_DATABASE_URI']}")
         except Exception as e:
             print(f"Error creating database tables: {e}")

@@ -22,6 +22,21 @@ const DB = {
     // Sleeper user info (stored so polls know who the user is)
     sleeperUserId: null,
 
+    // ESPN auth (stored so polls can include cookies)
+    espnCookies:   null,   // {espn_s2, swid} or null
+
+    // ESPN user team ID (for reconnecting / season switching)
+    espnUserTeamId: null,
+
+    // Season history
+    season:            null,   // current season year being viewed
+    previousLeagueId:  null,   // Sleeper's previous_league_id for chaining
+    sleeperRootLeagueId: null, // the newest Sleeper league ID (for chaining to any season)
+    sleeperRootSeason:   null, // the season of the root league
+    seasonHistory:     [],     // [{year, leagueId}] for the season selector
+    standings:         [],     // [{slot, name, wins, losses, ties, pts_for, seed, rank}]
+    leagueStartYear:   null,   // earliest year the league existed
+
     // Live draft state
     players:        [],        // Full ranked list [{Rank, Name, Position, Team, ADP}]
     drafted:        new Set(), // Set of player Names that are drafted
@@ -54,6 +69,226 @@ const DB = {
     saveDebounce:    null,
     aiDebounce:      null,
 };
+
+// ── Panel top alignment ──────────────────────────────────────
+
+function _syncPanelTop() {
+    requestAnimationFrame(() => {
+        const topbar = document.getElementById('db-topbar');
+        const banner = document.querySelector('header.banner');
+        if (!topbar) return;
+        const bannerH = banner ? banner.offsetHeight : 0;
+        document.documentElement.style.setProperty('--banner-h', bannerH + 'px');
+        document.documentElement.style.setProperty('--panel-top', (bannerH + topbar.offsetHeight) + 'px');
+    });
+}
+
+function _alignPanelHeader() {
+    requestAnimationFrame(() => {
+        const boardHeader = document.querySelector('#db-board-table thead');
+        const panelHeader = document.querySelector('#db-available-panel .db-panel-header');
+        const layout = document.querySelector('.db-layout');
+        if (!boardHeader || !panelHeader || !layout) return;
+
+        // Match panel header height to board thead
+        const boardHeaderBottom = boardHeader.getBoundingClientRect().bottom;
+        const panelTop = panelHeader.getBoundingClientRect().top;
+        panelHeader.style.height = (boardHeaderBottom - panelTop) + 'px';
+        panelHeader.style.boxSizing = 'border-box';
+
+        // Draw one continuous gold line across the full layout width
+        let goldLine = layout.querySelector('.db-gold-line');
+        if (!goldLine) {
+            goldLine = document.createElement('div');
+            goldLine.className = 'db-gold-line';
+            layout.appendChild(goldLine);
+        }
+        const layoutTop = layout.getBoundingClientRect().top;
+        goldLine.style.top = (boardHeaderBottom - layoutTop) + 'px';
+
+        // For standings view: align rows and draw continuous row lines
+        // Remove old row lines
+        layout.querySelectorAll('.db-row-line').forEach(el => el.remove());
+
+        const isStandings = _isHistoricalSeason() && DB.standings && DB.standings.length > 0;
+        if (isStandings) {
+            const boardRows = document.querySelectorAll('#db-board-body tr');
+            const standingsRows = document.querySelectorAll('#db-player-list .db-standings-row');
+            if (standingsRows.length) {
+                // Align standings rows that have corresponding board rows
+                standingsRows.forEach((row, i) => {
+                    if (boardRows[i]) {
+                        row.style.height = boardRows[i].getBoundingClientRect().height + 'px';
+                        row.style.minHeight = row.style.height;
+                    } else {
+                        // More standings than rounds — use default height
+                        row.style.height = '';
+                        row.style.minHeight = '';
+                    }
+                });
+
+                // Draw continuous full-width lines where board rows exist
+                const alignedCount = Math.min(boardRows.length, standingsRows.length);
+                for (let i = 0; i < alignedCount - 1; i++) {
+                    const rowBottom = boardRows[i].getBoundingClientRect().bottom;
+                    const line = document.createElement('div');
+                    line.className = 'db-row-line';
+                    line.style.top = (rowBottom - layoutTop) + 'px';
+                    layout.appendChild(line);
+                }
+
+                // Draw left-panel-only lines for standings rows beyond board rounds
+                const panel = document.getElementById('db-available-panel');
+                const panelW = panel ? panel.offsetWidth + 'px' : '236px';
+                // Lines between standings rows beyond board rounds (not the last one)
+                for (let i = Math.max(alignedCount - 1, 0); i < standingsRows.length - 1; i++) {
+                    const rowBottom = standingsRows[i].getBoundingClientRect().bottom;
+                    const line = document.createElement('div');
+                    line.className = 'db-row-line';
+                    line.style.top = Math.round(rowBottom - layoutTop) + 'px';
+                    line.style.width = panelW;
+                    layout.appendChild(line);
+                }
+                // Last row gets a CSS class for its bottom line (via ::after pseudo-element)
+                standingsRows[standingsRows.length - 1].classList.add('db-standings-last');
+
+                // Now that rows are resized, update active/panel height for standings handle
+                const isDynasty = DB.leagueType === 'dynasty' || DB.leagueType === 'keeper';
+                const isFirstYear = DB.leagueStartYear && DB.season === DB.leagueStartYear;
+                if (isDynasty && !isFirstYear) {
+                    const active = document.getElementById('db-active');
+                    const lastRow = standingsRows[standingsRows.length - 1];
+                    const lastRowBottom = lastRow.getBoundingClientRect().bottom;
+                    const panelTop = panel.getBoundingClientRect().top;
+                    const panelH = lastRowBottom - panelTop;
+                    if (active) active.style.height = panelH + 'px';
+                    if (panel) {
+                        panel.style.height = panelH + 'px';
+                        panel.style.maxHeight = panelH + 'px';
+                    }
+                }
+            }
+        }
+    });
+}
+
+function _autosizeBoardHeight() {
+    const board = document.getElementById('db-board-scroll');
+    const table = document.getElementById('db-board-table');
+    const panel = document.getElementById('db-available-panel');
+    const active = document.getElementById('db-active');
+    const layout = document.querySelector('.db-layout');
+    const playerList = document.getElementById('db-player-list');
+    if (!board || !table) return;
+
+    const isDynasty = DB.leagueType === 'dynasty' || DB.leagueType === 'keeper';
+    const isFirstYear = DB.leagueStartYear && DB.season === DB.leagueStartYear;
+
+    // Standings are shown for any historical season with standings data.
+    // Dynasty (non-first-year): handle aligns to standings bottom, board scrolls.
+    // Non-dynasty: board height drives layout, but panel must still fit all standings.
+    const hasStandings = _isHistoricalSeason() && DB.standings && DB.standings.length > 0;
+    const isDynastyStandings = isDynasty && !isFirstYear && hasStandings;
+
+    if (isDynastyStandings && panel && playerList) {
+        // Historical dynasty standings mode: layout driven by standings height.
+        // Standings should NOT scroll — show all teams fully.
+        playerList.style.overflow = 'visible';
+        playerList.style.flex = 'none';
+        panel.style.overflow = 'visible';
+
+        // Measure actual content: panel header + standings rows
+        panel.style.height = '';
+        panel.style.maxHeight = '';
+        panel.style.bottom = '';
+        if (layout) layout.style.height = '';
+
+        // Measure from panel top to bottom of last standings row + 1px for the line
+        const standingsRows = playerList.querySelectorAll('.db-standings-row');
+        const lastRow = standingsRows.length ? standingsRows[standingsRows.length - 1] : null;
+        let panelH;
+        if (lastRow) {
+            const panelTop = panel.getBoundingClientRect().top;
+            panelH = lastRow.getBoundingClientRect().bottom - panelTop;
+        } else {
+            const panelHeader = panel.querySelector('.db-panel-header');
+            const headerH = panelHeader ? panelHeader.offsetHeight : 0;
+            panelH = headerH + playerList.scrollHeight;
+        }
+
+        // Set db-active height so the handle sits right after the final line.
+        if (active) active.style.height = panelH + 'px';
+        // Fix panel at standings height — remove bottom:0 so it doesn't stretch
+        panel.style.height = panelH + 'px';
+        panel.style.maxHeight = panelH + 'px';
+        panel.style.bottom = 'auto';
+        if (layout) layout.style.height = '';
+        board.style.overflowY = 'auto';
+    } else if (isDynasty && !_isHistoricalSeason() && playerList) {
+        // Dynasty current year: align handle with the bottom of the 7th player row
+        board.style.overflowY = 'auto';
+        playerList.style.overflow = '';
+        playerList.style.flex = '';
+        if (panel) panel.style.overflow = '';
+
+        // Measure height through the 7th player row
+        const rows = playerList.querySelectorAll('.db-player-row');
+        let targetH = 0;
+        if (rows.length >= 7) {
+            const listTop = playerList.getBoundingClientRect().top;
+            const row7 = rows[6]; // 0-indexed
+            targetH = row7.getBoundingClientRect().bottom - listTop;
+        }
+        // Add panel header height (everything above the player list)
+        const panelHeaderH = playerList.offsetTop; // distance from panel top to list top
+        const cutoff = panelHeaderH + targetH;
+
+        if (cutoff > 0 && panel) {
+            if (active) active.style.height = cutoff + 'px';
+            panel.style.height = '100%';
+            panel.style.maxHeight = '100%';
+        } else {
+            // Fallback to board table height
+            const tableH = table.offsetHeight;
+            if (active) active.style.height = tableH + 'px';
+            if (panel) { panel.style.height = '100%'; panel.style.maxHeight = '100%'; }
+        }
+        if (layout) layout.style.height = '';
+    } else {
+        // Default: layout driven by board table height
+        const tableH = table.offsetHeight;
+        board.style.overflowY = '';
+        if (playerList) {
+            playerList.style.overflow = '';
+            playerList.style.flex = '';
+        }
+
+        // If standings are showing (non-dynasty historical), ensure panel fits all rows
+        if (hasStandings && panel && playerList) {
+            playerList.style.overflow = 'visible';
+            playerList.style.flex = 'none';
+            panel.style.overflow = 'visible';
+            const panelHeader = panel.querySelector('.db-panel-header');
+            const headerH = panelHeader ? panelHeader.offsetHeight : 0;
+            const listH = playerList.scrollHeight;
+            const panelH = headerH + listH;
+            // Use whichever is taller: board or standings
+            const finalH = Math.max(tableH, panelH);
+            if (active) active.style.height = finalH + 'px';
+            panel.style.height = panelH + 'px';
+            panel.style.maxHeight = panelH + 'px';
+            panel.style.bottom = 'auto';
+        } else {
+            if (active) active.style.height = tableH + 'px';
+            if (panel) {
+                panel.style.height = '100%';
+                panel.style.maxHeight = '100%';
+                panel.style.overflow = '';
+            }
+        }
+        if (layout) layout.style.height = '';
+    }
+}
 
 // ── Snake draft math ──────────────────────────────────────────
 
@@ -169,6 +404,8 @@ function initSetupPanel() {
             const src = btn.dataset.source;
             document.getElementById('setup-sleeper').style.display = (src === 'sleeper') ? '' : 'none';
             document.getElementById('setup-manual').style.display  = (src === 'manual')  ? '' : 'none';
+            const espnEl = document.getElementById('setup-espn');
+            if (espnEl) espnEl.style.display = (src === 'espn') ? '' : 'none';
         });
     });
 
@@ -186,6 +423,13 @@ function initSetupPanel() {
     });
 
     document.getElementById('sleeper-connect-btn').addEventListener('click', sleeperConnect);
+
+    // ESPN lookup + connect
+    document.getElementById('espn-lookup-btn').addEventListener('click', espnLookup);
+    document.getElementById('espn-league-id').addEventListener('keydown', e => {
+        if (e.key === 'Enter') espnLookup();
+    });
+    document.getElementById('espn-connect-btn').addEventListener('click', espnConnect);
 
     // Manual: populate slot selects + team names
     const numTeamsSel = document.getElementById('manual-num-teams');
@@ -266,21 +510,28 @@ async function sleeperConnect() {
             return;
         }
 
-        // Auto-save this league to the user's account
-        fetch('/draft-board/leagues/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                league_id:        leagueId,
-                league_name:      data.league_name,
-                source:           'sleeper',
-                num_teams:        data.num_teams,
-                scoring:          scoringFormat,
-                league_type:      data.league_type || 'redraft',
-                sleeper_user_id:  DB.sleeperUserId,
-                user_slot:        data.user_slot,
-            }),
-        }).catch(() => {});   // non-blocking
+        // Save this league to the user's account
+        try {
+            const saveRes = await fetch('/draft-board/leagues/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    league_id:        leagueId,
+                    league_name:      data.league_name,
+                    source:           'sleeper',
+                    num_teams:        data.num_teams,
+                    scoring:          scoringFormat,
+                    league_type:      data.league_type || 'redraft',
+                    sleeper_user_id:  DB.sleeperUserId,
+                    user_slot:        data.user_slot,
+                }),
+            });
+            if (!saveRes.ok) console.error('League save failed:', saveRes.status, await saveRes.text());
+        } catch (e) { console.error('League save error:', e); }
+
+        // Store root league info for season navigation
+        DB.sleeperRootLeagueId = leagueId;
+        DB.sleeperRootSeason = parseInt(data.season) || new Date().getFullYear();
 
         await initBoard({
             source:             'sleeper',
@@ -299,9 +550,195 @@ async function sleeperConnect() {
             rosterPlayerNames:  data.roster_player_names || [],
             draftStatus:        data.draft_status || 'pre_draft',
             leagueType:         data.league_type  || 'redraft',
+            season:             data.season || new Date().getFullYear(),
+            previousLeagueId:   data.previous_league_id || null,
+            standings:          data.standings || [],
+            leagueStartYear:    data.league_start_year || null,
         });
     } catch (e) {
         showSetupError('sleeper', 'Network error. Please try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect to League';
+    }
+}
+
+// ── ESPN paste-cookies helper (called from inline onclick) ────
+window.espnShowPasteBox = function () {
+    const box = document.getElementById('espn-paste-box');
+    if (!box) return;
+    box.style.display = '';
+    box.focus();
+    box.addEventListener('input', function handler() {
+        const raw = box.value.trim();
+        if (!raw) return;
+        try {
+            const obj = JSON.parse(raw);
+            if (obj.espn_s2 && obj.swid) {
+                document.getElementById('espn-s2').value   = obj.espn_s2;
+                document.getElementById('espn-swid').value = obj.swid;
+                document.getElementById('espn-cookie-status').textContent = '✓ Cookies pasted';
+                document.getElementById('espn-cookie-status').style.color = 'var(--green, #4caf50)';
+                box.style.display = 'none';
+                box.removeEventListener('input', handler);
+            }
+        } catch (_) { /* not valid JSON yet */ }
+    });
+};
+
+async function espnLookup() {
+    const leagueId = document.getElementById('espn-league-id').value.trim();
+    if (!leagueId) return;
+
+    const errEl = document.getElementById('espn-error');
+    errEl.style.display = 'none';
+    const btn = document.getElementById('espn-lookup-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="db-spinner"></span>Searching…';
+
+    const espnS2  = document.getElementById('espn-s2').value.trim();
+    const espnSwid = document.getElementById('espn-swid').value.trim();
+
+    try {
+        const body = { league_id: leagueId };
+        if (espnS2 && espnSwid) {
+            body.espn_s2 = espnS2;
+            body.swid    = espnSwid;
+        }
+
+        const res = await fetch('/draft-board/espn/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+            if (data.error === 'private') {
+                showSetupError('espn', 'This league is private. Add your ESPN cookies above and try again.');
+                const toggle = document.getElementById('espn-private-toggle');
+                if (toggle) toggle.open = true;
+            } else {
+                showSetupError('espn', data.message || data.error || 'Could not find ESPN league.');
+            }
+            return;
+        }
+
+        // Populate league info
+        document.getElementById('espn-league-name').textContent = data.league_name;
+        document.getElementById('espn-league-meta').textContent =
+            `${data.num_teams} teams · ${(data.scoring || 'ppr').toUpperCase()} · ${data.season}`;
+        document.getElementById('espn-league-info').style.display = '';
+
+        // Populate team select
+        const sel = document.getElementById('espn-team-select');
+        sel.innerHTML = '<option value="">Choose your team…</option>';
+        (data.teams || []).forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name || t.abbrev || `Team ${t.id}`;
+            sel.appendChild(opt);
+        });
+
+        // Store league data for connect step
+        sel.dataset.leagueId   = data.league_id;
+        sel.dataset.leagueName = data.league_name;
+        sel.dataset.numTeams   = data.num_teams;
+        sel.dataset.scoring    = data.scoring;
+    } catch (e) {
+        showSetupError('espn', 'Network error. Please try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Find League';
+    }
+}
+
+async function espnConnect() {
+    const sel = document.getElementById('espn-team-select');
+    const userTeamId = sel.value;
+    if (!userTeamId) {
+        showSetupError('espn', 'Please select your team.');
+        return;
+    }
+
+    const leagueId = sel.dataset.leagueId;
+    const scoring  = sel.dataset.scoring || 'ppr';
+    const errEl    = document.getElementById('espn-error');
+    errEl.style.display = 'none';
+    const btn = document.getElementById('espn-connect-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="db-spinner"></span>Connecting…';
+
+    const espnS2  = document.getElementById('espn-s2').value.trim();
+    const espnSwid = document.getElementById('espn-swid').value.trim();
+
+    try {
+        const body = { league_id: leagueId, user_team_id: userTeamId };
+        if (espnS2 && espnSwid) {
+            body.espn_s2 = espnS2;
+            body.swid    = espnSwid;
+        }
+
+        const res = await fetch('/draft-board/espn/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            showSetupError('espn', data.error || 'Could not connect to league.');
+            return;
+        }
+
+        // Store ESPN state for season switching
+        DB.espnCookies     = (espnS2 && espnSwid) ? { espn_s2: espnS2, swid: espnSwid } : null;
+        DB.espnUserTeamId  = userTeamId;
+
+        // Save league with user_slot; stash user_team_id in sleeper_user_id column
+        try {
+            const saveRes = await fetch('/draft-board/leagues/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    league_id:       leagueId,
+                    league_name:     data.league_name,
+                    source:          'espn',
+                    num_teams:       data.num_teams,
+                    scoring:         scoring,
+                    league_type:     data.league_type || 'redraft',
+                    espn_s2:         espnS2 || null,
+                    espn_swid:       espnSwid || null,
+                    user_slot:       data.user_slot,
+                    sleeper_user_id: userTeamId,
+                }),
+            });
+            if (!saveRes.ok) console.error('League save failed:', saveRes.status, await saveRes.text());
+        } catch (e) { console.error('League save error:', e); }
+
+        await initBoard({
+            source:             'espn',
+            leagueId:           leagueId,
+            draftId:            data.draft_id,
+            leagueName:         data.league_name,
+            numTeams:           data.num_teams,
+            numRounds:          data.num_rounds,
+            userSlot:           data.user_slot,
+            teamNames:          data.team_names,
+            scoringFormat:      scoring,
+            rosterSlots:        data.roster_slots,
+            starterSlotLabels:  data.starter_slot_labels || [],
+            existingPicks:      data.picks || [],
+            teamRosters:        data.team_rosters || null,
+            rosterPlayerNames:  data.roster_player_names || [],
+            draftStatus:        data.draft_status || 'pre_draft',
+            leagueType:         data.league_type  || 'redraft',
+            season:             data.season || new Date().getFullYear(),
+            previousLeagueId:   data.previous_league_id || null,
+            standings:          data.standings || [],
+            leagueStartYear:    data.league_start_year || null,
+        });
+    } catch (e) {
+        showSetupError('espn', 'Network error. Please try again.');
     } finally {
         btn.disabled = false;
         btn.textContent = 'Connect to League';
@@ -393,6 +830,7 @@ function showSetupError(panel, msg) {
 // ── Board initialisation ──────────────────────────────────────
 
 async function initBoard(cfg) {
+    window.scrollTo(0, 0);
     DB.source        = cfg.source;
     DB.leagueId      = cfg.leagueId;
     DB.draftId       = cfg.draftId;
@@ -409,6 +847,13 @@ async function initBoard(cfg) {
     DB.fullRosters        = cfg.teamRosters || null;
     DB._analysisCache     = {};
     DB.starterSlotLabels  = cfg.starterSlotLabels || [];
+    DB.season             = parseInt(cfg.season) || new Date().getFullYear();
+    DB.previousLeagueId   = cfg.previousLeagueId || null;
+    DB.standings          = cfg.standings || [];
+    DB.leagueStartYear   = cfg.leagueStartYear || null;
+
+    // Reset active tab to user's team
+    DB.activeOtTab = (cfg.userSlot > 0) ? cfg.userSlot - 1 : 0;
 
     // Reset live state
     DB.drafted       = new Set();
@@ -439,27 +884,31 @@ async function initBoard(cfg) {
     // Show board UI
     document.getElementById('db-setup-wrap').style.display  = 'none';
     document.getElementById('db-topbar').style.display      = '';
-    document.getElementById('db-active').style.display             = '';
-    document.getElementById('db-bottom-row').style.display         = '';
-    document.getElementById('db-bottom-resize-handle').style.display = '';
-    requestAnimationFrame(() => {
-        const active = document.getElementById('db-active');
-        if (!active) return;
-        try {
-            const saved = localStorage.getItem('db_active_panel_height');
-            if (saved) active.style.height = Math.max(80, parseInt(saved)) + 'px';
-            else if (!active.style.height) active.style.height = active.offsetHeight + 'px';
-        } catch {
-            if (!active.style.height) active.style.height = active.offsetHeight + 'px';
-        }
-    });
+    const activeEl = document.getElementById('db-active');
+    activeEl.style.display = '';
+    activeEl.style.height = '';  // Clear any previous drag-resize height
+    document.getElementById('db-bottom-drawer').style.display       = '';
+    _syncPanelTop();
+    // Auto-size board scroll area after rendering
+    requestAnimationFrame(() => { _autosizeBoardHeight(); _alignPanelHeader(); });
     document.getElementById('db-league-name').textContent    = DB.leagueName;
+    const _isHistorical = DB.season && DB.season < new Date().getFullYear();
     document.getElementById('db-topbar-meta').textContent   =
-        `${DB.numTeams} teams · ${DB.scoringFormat.toUpperCase()} · ${DB.numRounds} rounds`;
+        `${DB.numTeams} teams · ${DB.scoringFormat.toUpperCase()} · ${DB.numRounds} rounds` +
+        (_isHistorical ? ` · ${DB.season} season` : '');
 
-    if (DB.source === 'sleeper') {
+    if (DB.source === 'sleeper' || DB.source === 'espn') {
         document.getElementById('db-sync-badge').style.display   = '';
         document.getElementById('db-sync-now-btn').style.display = '';
+    }
+
+    // Season selector — show for Sleeper and ESPN linked leagues
+    const seasonWrap = document.getElementById('db-season-wrap');
+    if (seasonWrap && (DB.source === 'sleeper' || DB.source === 'espn')) {
+        seasonWrap.style.display = 'flex';
+        buildSeasonSelector(parseInt(cfg.season) || new Date().getFullYear());
+    } else if (seasonWrap) {
+        seasonWrap.style.display = 'none';
     }
 
     // Render skeleton board and your-team slots
@@ -469,7 +918,7 @@ async function initBoard(cfg) {
 
     // Fetch player list
     DB.players = await fetchPlayers(DB.scoringFormat);
-    renderAvailable();
+    renderLeftPanel();
 
     // Apply any existing picks (from Sleeper connect or saved session)
     for (const pick of (cfg.existingPicks || [])) {
@@ -478,6 +927,9 @@ async function initBoard(cfg) {
 
     updateCurrentPickBar();
     scheduleSaveState();
+
+    // Re-align after all picks are rendered (board rows now have final heights)
+    requestAnimationFrame(() => { _autosizeBoardHeight(); _alignPanelHeader(); });
 
     // Start live polling for Sleeper (only if draft is still in progress)
     if (DB.source === 'sleeper' && DB.draftId && !DB.draftComplete) {
@@ -554,14 +1006,17 @@ function applyPick(pick, animate) {
 
     // Update DOM
     updateBoardCell(round, teamIdx, pickObj, animate);
-    renderAvailable();
+    requestAnimationFrame(() => _autosizeBoardHeight());
+    if (!_isHistoricalSeason() || !DB.standings || !DB.standings.length) renderAvailable();
     renderYourTeam();
     if (DB.activeOtTab === teamIdx) renderOtherTeamBody(teamIdx);
     updateCurrentPickBar();
 
     // Invalidate analysis cache for the affected team so next view re-fetches
-    const tabKey = (teamIdx === DB.userSlot - 1) ? MY_TEAM_TAB : teamIdx;
-    if (DB._analysisCache) delete DB._analysisCache[tabKey];
+    if (DB._analysisCache) {
+        delete DB._analysisCache[teamIdx];
+        delete DB._analysisCache[MY_TEAM_TAB]; // clear legacy key too
+    }
 
     // Trigger AI (debounced)
     clearTimeout(DB.aiDebounce);
@@ -658,6 +1113,81 @@ function updateBoardCell(round, teamIdx, pickObj, animate) {
 }
 
 // ── Available players list ────────────────────────────────────
+
+function _isHistoricalSeason() {
+    return DB.season && DB.season < new Date().getFullYear();
+}
+
+function renderLeftPanel() {
+    const layout = document.querySelector('.db-layout');
+    if (_isHistoricalSeason() && DB.standings && DB.standings.length > 0) {
+        renderStandings();
+        if (layout) layout.classList.add('db-standings-mode');
+    } else {
+        renderAvailablePlayers();
+        if (layout) layout.classList.remove('db-standings-mode');
+    }
+    requestAnimationFrame(() => _autosizeBoardHeight());
+}
+
+function renderStandings() {
+    const panel = document.getElementById('db-available-panel');
+    if (!panel) return;
+
+    // Update header
+    const header = panel.querySelector('.db-panel-header');
+    if (header) header.innerHTML = `${DB.season} Final Standings`;
+
+    // Hide search and position tabs
+    const searchWrap = panel.querySelector('.db-search-wrap');
+    const posTabs = panel.querySelector('.db-pos-tabs');
+    if (searchWrap) searchWrap.style.display = 'none';
+    if (posTabs) posTabs.style.display = 'none';
+
+    const list = document.getElementById('db-player-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    DB.standings.forEach((team, i) => {
+        const div = document.createElement('div');
+        div.className = 'db-standings-row';
+        const record = `${team.wins || 0}-${team.losses || 0}${team.ties ? '-' + team.ties : ''}`;
+        const pts = team.pts_for ? parseFloat(team.pts_for).toFixed(1) : '';
+        div.innerHTML = `
+            <span class="db-standings-rank">${team.seed || team.rank || i + 1}</span>
+            <span class="db-standings-divider"></span>
+            <span class="db-standings-name">${team.name || 'Team ' + (i+1)}</span>
+            <span class="db-standings-divider"></span>
+            <span class="db-standings-record">${record}</span>
+            <span class="db-standings-divider"></span>
+            <span class="db-standings-pts">${pts} pts</span>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renderAvailablePlayers() {
+    // Restore player panel header and controls
+    const panel = document.getElementById('db-available-panel');
+    if (panel) {
+        const header = panel.querySelector('.db-panel-header');
+        if (header) {
+            header.innerHTML = `Players <span class="db-avail-count" id="db-avail-count">—</span>
+                <button class="db-avail-toggle" id="db-avail-toggle" title="Show available only">Available only</button>`;
+            // Re-bind toggle
+            document.getElementById('db-avail-toggle')?.addEventListener('click', function () {
+                DB.showAvailOnly = !DB.showAvailOnly;
+                this.classList.toggle('active', DB.showAvailOnly);
+                renderAvailable();
+            });
+        }
+        const searchWrap = panel.querySelector('.db-search-wrap');
+        const posTabs = panel.querySelector('.db-pos-tabs');
+        if (searchWrap) searchWrap.style.display = '';
+        if (posTabs) posTabs.style.display = '';
+    }
+    renderAvailable();
+}
 
 function renderAvailable() {
     const list    = document.getElementById('db-player-list');
@@ -876,8 +1406,8 @@ function renderRosterSections(container, rosterObj) {
 }
 
 function renderYourTeam() {
-    // If My Team tab is active in the bottom row, refresh it
-    if (DB.activeOtTab === MY_TEAM_TAB) renderOtherTeamBody(MY_TEAM_TAB);
+    // If user's team tab is active in the bottom row, refresh it
+    if (DB.activeOtTab === MY_TEAM_TAB || DB.activeOtTab === DB.userSlot - 1) renderOtherTeamBody(DB.userSlot - 1);
     syncDrawerYourTeam();
     const container = document.getElementById('db-roster-slots');
     if (!container) return;
@@ -952,26 +1482,18 @@ function renderOtherTeamTabs() {
     if (!tabs) return;
     tabs.innerHTML = '';
 
-    // "My Team" tab — always first, selected by default
-    const myBtn = document.createElement('button');
-    myBtn.className = `db-ot-tab${DB.activeOtTab === MY_TEAM_TAB ? ' active' : ''}`;
-    myBtn.dataset.team = MY_TEAM_TAB;
-    myBtn.textContent  = 'My Team';
-    myBtn.addEventListener('click', () => {
-        document.querySelectorAll('.db-ot-tab').forEach(b => b.classList.remove('active'));
-        myBtn.classList.add('active');
-        DB.activeOtTab = MY_TEAM_TAB;
-        renderOtherTeamBody(MY_TEAM_TAB);
-        renderDraftCompleteAnalysis(MY_TEAM_TAB);
-    });
-    tabs.appendChild(myBtn);
+    // Auto-select user's team by default
+    const userIdx = DB.userSlot - 1;
+    if (DB.activeOtTab === MY_TEAM_TAB || DB.activeOtTab < 0) {
+        DB.activeOtTab = (userIdx >= 0 && userIdx < DB.teamNames.length) ? userIdx : 0;
+    }
 
-    DB.teamNames.forEach((name, i) => {
-        if (i === DB.userSlot - 1) return; // skip user's own team
+    // Show ALL teams in their natural order
+    DB.teamNames.forEach((_, i) => {
         const btn = document.createElement('button');
         btn.className = `db-ot-tab${DB.activeOtTab === i ? ' active' : ''}`;
         btn.dataset.team = i;
-        btn.textContent  = name;
+        btn.textContent  = DB.teamNames[i] || `Team ${i + 1}`;
         btn.addEventListener('click', () => {
             document.querySelectorAll('.db-ot-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -982,19 +1504,12 @@ function renderOtherTeamTabs() {
         tabs.appendChild(btn);
     });
 
-    // Default to My Team
-    if (DB.activeOtTab < 0 || DB.activeOtTab === MY_TEAM_TAB) {
-        DB.activeOtTab = MY_TEAM_TAB;
-        myBtn.classList.add('active');
-    }
-
-    // Scale tab font size so all tabs fit without scroll (My Team + all other teams)
-    const totalTabs = DB.teamNames.length + 1; // +1 for My Team
+    // Scale tab font size so all tabs fit in one row
+    const totalTabs = DB.teamNames.length;
     const tabScale  = totalTabs <= 10 ? 0.78 : totalTabs <= 12 ? 0.68 : totalTabs <= 14 ? 0.60 : 0.54;
     tabs.style.fontSize = tabScale + 'em';
 
     renderOtherTeamBody(DB.activeOtTab);
-    // Analysis is deferred until after picks are loaded (called from activateDraft)
 }
 
 function renderTwoColRoster(container, fullData) {
@@ -1062,7 +1577,7 @@ function renderOtherTeamBody(teamIdx) {
     body.innerHTML = '';
 
     // My Team tab — render user's roster using the same two-column layout
-    if (teamIdx === MY_TEAM_TAB) {
+    if (teamIdx === MY_TEAM_TAB || teamIdx === DB.userSlot - 1) {
         renderTwoColRoster(body, buildRosterData(DB.userSlot - 1));
         return;
     }
@@ -1474,7 +1989,7 @@ async function renderDraftCompleteAnalysis(forTeamTab) {
     const alertsEl = document.getElementById('db-ai-alerts');
     if (alertsEl) alertsEl.innerHTML = '';
 
-    const isMyTeam  = (forTeamTab === MY_TEAM_TAB);
+    const isMyTeam  = (forTeamTab === MY_TEAM_TAB || forTeamTab === DB.userSlot - 1);
     const actualIdx = isMyTeam ? DB.userSlot - 1 : forTeamTab;
     const teamLabel = isMyTeam ? 'you' : (DB.teamNames[forTeamTab] || `Team ${forTeamTab + 1}`);
 
@@ -1768,25 +2283,17 @@ async function resumeSession() {
     // Show board UI
     document.getElementById('db-setup-wrap').style.display  = 'none';
     document.getElementById('db-topbar').style.display      = '';
-    document.getElementById('db-active').style.display             = '';
-    document.getElementById('db-bottom-row').style.display         = '';
-    document.getElementById('db-bottom-resize-handle').style.display = '';
-    requestAnimationFrame(() => {
-        const active = document.getElementById('db-active');
-        if (!active) return;
-        try {
-            const saved = localStorage.getItem('db_active_panel_height');
-            if (saved) active.style.height = Math.max(80, parseInt(saved)) + 'px';
-            else if (!active.style.height) active.style.height = active.offsetHeight + 'px';
-        } catch {
-            if (!active.style.height) active.style.height = active.offsetHeight + 'px';
-        }
-    });
+    const activeEl2 = document.getElementById('db-active');
+    activeEl2.style.display = '';
+    activeEl2.style.height = '';  // Clear any previous drag-resize height
+    document.getElementById('db-bottom-drawer').style.display       = '';
+    _syncPanelTop();
+    requestAnimationFrame(() => { _autosizeBoardHeight(); _alignPanelHeader(); });
     document.getElementById('db-league-name').textContent    = DB.leagueName;
     document.getElementById('db-topbar-meta').textContent   =
         `${DB.numTeams} teams · ${DB.scoringFormat.toUpperCase()} · ${DB.numRounds} rounds`;
 
-    if (DB.source === 'sleeper') {
+    if (DB.source === 'sleeper' || DB.source === 'espn') {
         document.getElementById('db-sync-badge').style.display   = '';
         document.getElementById('db-sync-now-btn').style.display = '';
     }
@@ -1804,7 +2311,7 @@ async function resumeSession() {
     }
 
     DB.players = await fetchPlayers(DB.scoringFormat);
-    renderAvailable();
+    renderLeftPanel();
     renderYourTeam();
     updateCurrentPickBar();
 
@@ -1842,14 +2349,190 @@ async function resetBoard() {
 
     document.getElementById('db-topbar').style.display             = 'none';
     document.getElementById('db-active').style.display             = 'none';
-    document.getElementById('db-bottom-row').style.display         = 'none';
-    document.getElementById('db-bottom-resize-handle').style.display = 'none';
+    document.getElementById('db-active').style.height              = '';
+    document.getElementById('db-bottom-drawer').style.display      = 'none';
     document.getElementById('db-setup-wrap').style.display         = '';
     document.getElementById('db-current-pick-bar').classList.remove('visible');
     document.getElementById('db-sync-badge').style.display  = 'none';
     document.getElementById('db-sync-now-btn').style.display = 'none';
     document.getElementById('db-mobile-fab').style.display   = 'none';
     document.getElementById('db-drawer').classList.remove('open');
+
+    // Clear inline styles left by _autosizeBoardHeight so next open starts fresh
+    const panel = document.getElementById('db-available-panel');
+    const playerList = document.getElementById('db-player-list');
+    const boardScroll = document.getElementById('db-board-scroll');
+    const layout = document.querySelector('.db-layout');
+    if (panel) { panel.style.height = ''; panel.style.maxHeight = ''; }
+    if (playerList) { playerList.style.overflow = ''; playerList.style.flex = ''; }
+    if (boardScroll) { boardScroll.style.height = ''; boardScroll.style.overflowY = ''; }
+    if (layout) { layout.style.height = ''; }
+
+    // Reload saved leagues so "My Leagues" section is visible
+    const savedLeagues = await loadSavedLeagues();
+    renderSavedLeagues(savedLeagues);
+
+    // Scroll to top so user isn't stranded mid-page
+    window.scrollTo(0, 0);
+}
+
+// ── Season history selector ──────────────────────────────────
+
+function buildSeasonSelector(currentYear) {
+    const sel = document.getElementById('db-season-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+
+    // Build options from current year down to the league's first season
+    const now = new Date().getFullYear();
+    const startYear = Math.max(currentYear, now);
+    const endYear = (DB.leagueStartYear && DB.leagueStartYear <= startYear) ? DB.leagueStartYear : (startYear - 2);
+    for (let y = startYear; y >= endYear; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        if (y === DB.season) opt.selected = true;
+        sel.appendChild(opt);
+    }
+
+    // Remove old listener and add new one
+    sel.onchange = () => switchSeason(parseInt(sel.value, 10));
+}
+
+async function switchSeason(year) {
+    if (year === DB.season) return;
+
+    stopPolling();
+    const sel = document.getElementById('db-season-select');
+    if (sel) sel.disabled = true;
+
+    try {
+        let connectUrl, connectBody;
+
+        if (DB.source === 'espn') {
+            connectUrl = '/draft-board/espn/connect';
+            connectBody = { league_id: DB.leagueId, year };
+            if (DB.espnUserTeamId) connectBody.user_team_id = DB.espnUserTeamId;
+            if (DB.espnCookies) {
+                connectBody.espn_s2 = DB.espnCookies.espn_s2;
+                connectBody.swid    = DB.espnCookies.swid;
+            }
+        } else if (DB.source === 'sleeper') {
+            const targetLeagueId = await _resolveSleeperLeagueId(DB.leagueId, DB.season, year);
+            if (!targetLeagueId) {
+                trimSeasonSelector(year);
+                showSeasonError(`No league history found for ${year}`);
+                return;
+            }
+            connectUrl = '/draft-board/sleeper/connect';
+            connectBody = { league_id: targetLeagueId, sleeper_user_id: DB.sleeperUserId };
+        } else {
+            return;
+        }
+
+        const res = await fetch(connectUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(connectBody),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            if (res.status === 404) {
+                trimSeasonSelector(year);
+            }
+            showSeasonError(data.error || `Could not load ${year} season`);
+            return;
+        }
+
+        await initBoard({
+            source:             DB.source,
+            leagueId:           DB.source === 'espn' ? DB.leagueId : connectBody.league_id,
+            draftId:            data.draft_id,
+            leagueName:         data.league_name,
+            numTeams:           data.num_teams,
+            numRounds:          data.num_rounds,
+            userSlot:           data.user_slot,
+            teamNames:          data.team_names,
+            scoringFormat:      data.scoring,
+            rosterSlots:        data.roster_slots,
+            starterSlotLabels:  data.starter_slot_labels || [],
+            existingPicks:      data.picks || [],
+            teamRosters:        data.team_rosters || null,
+            rosterPlayerNames:  data.roster_player_names || [],
+            draftStatus:        data.draft_status || 'complete',
+            leagueType:         data.league_type  || 'redraft',
+            season:             data.season || year,
+            previousLeagueId:   data.previous_league_id || null,
+            standings:          data.standings || [],
+            leagueStartYear:    data.league_start_year || DB.leagueStartYear || null,
+        });
+    } catch (e) {
+        showSeasonError('Network error loading season');
+    } finally {
+        if (sel) sel.disabled = false;
+    }
+}
+
+function trimSeasonSelector(failedYear) {
+    const sel = document.getElementById('db-season-select');
+    if (!sel) return;
+    Array.from(sel.options).forEach(opt => {
+        if (parseInt(opt.value, 10) <= failedYear) opt.remove();
+    });
+    DB.leagueStartYear = failedYear + 1;
+}
+
+function showSeasonError(msg) {
+    const sel = document.getElementById('db-season-select');
+    if (sel) sel.value = DB.season;
+    const meta = document.getElementById('db-topbar-meta');
+    if (meta) {
+        const orig = meta.textContent;
+        meta.textContent = msg;
+        meta.style.color = 'var(--error, #f44)';
+        setTimeout(() => { meta.textContent = orig; meta.style.color = ''; }, 3000);
+    }
+}
+
+async function _resolveSleeperStartYear(leagueId) {
+    let lid = leagueId;
+    let earliest = null;
+    let hops = 0;
+    while (lid && hops < 15) {
+        try {
+            const resp = await fetch(`https://api.sleeper.app/v1/league/${lid}`);
+            if (!resp.ok) break;
+            const lg = await resp.json();
+            earliest = lg.season ? parseInt(lg.season) : earliest;
+            lid = lg.previous_league_id || null;
+            hops++;
+        } catch { break; }
+    }
+    return earliest;
+}
+
+async function _resolveSleeperLeagueId(currentLeagueId, currentYear, targetYear) {
+    const rootId = DB.sleeperRootLeagueId || currentLeagueId;
+    const rootYear = DB.sleeperRootSeason || currentYear;
+
+    if (targetYear === rootYear) return rootId;
+    if (targetYear > rootYear) return null;
+
+    let lid = rootId;
+    let y = rootYear;
+    while (y > targetYear && lid) {
+        try {
+            const resp = await fetch(`https://api.sleeper.app/v1/league/${lid}`);
+            if (!resp.ok) return null;
+            const lg = await resp.json();
+            lid = lg.previous_league_id;
+            y = (lg.season ? parseInt(lg.season) : y) - 1;
+            if (!lid) return null;
+        } catch {
+            return null;
+        }
+    }
+    return lid;
 }
 
 // ── Mobile drawer ─────────────────────────────────────────────
@@ -1922,7 +2605,7 @@ function initPicker() {
 
 async function loadSavedLeagues() {
     try {
-        const res  = await fetch('/draft-board/leagues');
+        const res  = await fetch('/draft-board/leagues?_t=' + Date.now());
         const data = await res.json();
         return Array.isArray(data) ? data : [];
     } catch {
@@ -1958,7 +2641,11 @@ function renderSavedLeagues(leagues) {
             </div>
             <div class="db-saved-league-actions">
                 <button class="db-topbar-btn db-open-league-btn" data-league-id="${lg.league_id}"
+                        data-source="${lg.source || 'sleeper'}"
                         data-sleeper-user-id="${lg.sleeper_user_id || ''}"
+                        data-espn-s2="${lg.espn_s2 || ''}"
+                        data-espn-swid="${lg.espn_swid || ''}"
+                        data-user-slot="${lg.user_slot || 0}"
                         data-scoring="${lg.scoring || 'ppr'}">Open</button>
                 <button class="db-topbar-btn danger db-remove-league-btn" data-league-id="${lg.league_id}">✕</button>
             </div>
@@ -1969,9 +2656,13 @@ function renderSavedLeagues(leagues) {
     // Open button
     list.querySelectorAll('.db-open-league-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const leagueId      = btn.dataset.leagueId;
-            const sleeperUserId = btn.dataset.sleeperUserId;
-            const scoring       = btn.dataset.scoring || 'ppr';
+            const leagueId        = btn.dataset.leagueId;
+            const connectSource   = btn.dataset.source || 'sleeper';
+            const sleeperUserId   = btn.dataset.sleeperUserId;
+            const scoring         = btn.dataset.scoring || 'ppr';
+            const espnS2          = btn.dataset.espnS2;
+            const espnSwid        = btn.dataset.espnSwid;
+            const savedUserSlot   = parseInt(btn.dataset.userSlot) || 0;
 
             DB.sleeperUserId = sleeperUserId || null;
 
@@ -1982,10 +2673,26 @@ function renderSavedLeagues(leagues) {
             if (errEl) errEl.style.display = 'none';
 
             try {
-                const res = await fetch('/draft-board/sleeper/connect', {
+                let connectUrl, connectBody;
+                if (connectSource === 'espn') {
+                    connectUrl = '/draft-board/espn/connect';
+                    connectBody = { league_id: leagueId };
+                    // For ESPN, sleeper_user_id stores the ESPN team ID
+                    if (sleeperUserId) connectBody.user_team_id = sleeperUserId;
+                    if (espnS2) connectBody.espn_s2 = espnS2;
+                    if (espnSwid) connectBody.swid = espnSwid;
+                    DB.espnCookies = (espnS2 && espnSwid) ? { espn_s2: espnS2, swid: espnSwid } : null;
+                    DB.espnUserTeamId = sleeperUserId || null;
+                } else {
+                    connectUrl = '/draft-board/sleeper/connect';
+                    connectBody = { league_id: leagueId, sleeper_user_id: sleeperUserId };
+                    DB.sleeperRootLeagueId = leagueId;
+                }
+
+                const res = await fetch(connectUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ league_id: leagueId, sleeper_user_id: sleeperUserId }),
+                    body: JSON.stringify(connectBody),
                 });
                 const data = await res.json();
                 if (!res.ok || data.error) {
@@ -1995,21 +2702,33 @@ function renderSavedLeagues(leagues) {
                     return;
                 }
 
-                // Update last_accessed
+                // Update last_accessed + persist user_slot if we got one
+                const resolvedSlot = data.user_slot || savedUserSlot;
                 fetch('/draft-board/leagues/save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ league_id: leagueId, league_name: data.league_name }),
+                    body: JSON.stringify({
+                        league_id:   leagueId,
+                        league_name: data.league_name,
+                        user_slot:   resolvedSlot || undefined,
+                    }),
                 }).catch(() => {});
 
+                if (connectSource === 'sleeper') {
+                    DB.sleeperRootSeason = parseInt(data.season) || new Date().getFullYear();
+                }
+
+                // Backend now resolves league_start_year; only fall back to client-side if missing
+                const openStartYear = data.league_start_year || null;
+
                 await initBoard({
-                    source:             'sleeper',
+                    source:             connectSource,
                     leagueId,
                     draftId:            data.draft_id,
                     leagueName:         data.league_name,
                     numTeams:           data.num_teams,
                     numRounds:          data.num_rounds,
-                    userSlot:           data.user_slot,
+                    userSlot:           data.user_slot || savedUserSlot,
                     teamNames:          data.team_names,
                     scoringFormat:      scoring,
                     rosterSlots:        data.roster_slots,
@@ -2019,9 +2738,15 @@ function renderSavedLeagues(leagues) {
                     rosterPlayerNames:  data.roster_player_names || [],
                     draftStatus:        data.draft_status || 'pre_draft',
                     leagueType:         data.league_type  || 'redraft',
+                    season:             data.season || new Date().getFullYear(),
+                    previousLeagueId:   data.previous_league_id || null,
+                    standings:          data.standings || [],
+                    leagueStartYear:    data.league_start_year || openStartYear || null,
                 });
             } catch (e) {
+                console.error('Open league error:', e);
                 if (errEl) { errEl.textContent = 'Network error.'; errEl.style.display = ''; }
+            } finally {
                 btn.disabled = false;
                 btn.textContent = 'Open';
             }
@@ -2046,7 +2771,10 @@ async function boot() {
     initDrawer();
     initPicker();
 
-    document.getElementById('db-reset-btn').addEventListener('click', resetBoard);
+    document.getElementById('db-reset-btn').addEventListener('click', () => {
+        stopPolling();
+        window.location.reload();
+    });
 
     // Available-only toggle
     document.getElementById('db-avail-toggle')?.addEventListener('click', function () {
@@ -2054,6 +2782,24 @@ async function boot() {
         this.classList.toggle('active', DB.showAvailOnly);
         renderAvailable();
     });
+
+    // ── Scroll isolation: board & left panel scroll independently ──
+    function trapScroll(el) {
+        if (!el) return;
+        el.addEventListener('wheel', e => {
+            const maxScroll = el.scrollHeight - el.clientHeight;
+            if (maxScroll <= 0) return;
+            const atTop    = el.scrollTop <= 0 && e.deltaY < 0;
+            const atBottom = el.scrollTop >= maxScroll && e.deltaY > 0;
+            if (!atTop && !atBottom) {
+                e.stopPropagation();
+                e.preventDefault();
+                el.scrollTop += e.deltaY;
+            }
+        }, { passive: false });
+    }
+    trapScroll(document.getElementById('db-board-scroll'));
+    trapScroll(document.getElementById('db-player-list'));
 
     // ── Other Teams: collapse / expand toggle ─────────────────
     document.getElementById('db-ot-toggle')?.addEventListener('click', () => {
@@ -2118,7 +2864,7 @@ async function boot() {
     }
 
     // Bottom row handle: drag down = grows, drag up = shrinks — persisted in localStorage
-    makeResizeHandle('db-bottom-resize-handle', 'db-active', { min: 80, max: 2000, direction: 'down', storageKey: PANEL_HEIGHT_KEY });
+    makeResizeHandle('db-bottom-resize-handle', 'db-active', { min: 200, max: 5000, direction: 'down' });
 
     // Sync Now — show brief spinner then success indicator
     document.getElementById('db-sync-now-btn')?.addEventListener('click', async function () {
@@ -2145,11 +2891,8 @@ async function boot() {
     const savedLeagues = await loadSavedLeagues();
     renderSavedLeagues(savedLeagues);
 
-    // Try to restore a saved session
-    const hasSaved = await loadSavedSession();
-    if (hasSaved) {
-        await resumeSession();
-    }
+    // Always show setup/My Leagues page on fresh navigation.
+    // User clicks "Open" on a league to enter it.
 }
 
 document.addEventListener('DOMContentLoaded', boot);

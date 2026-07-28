@@ -45,6 +45,10 @@
     <p>© 2024 Darkhorse CopyrightTM</p>
 </footer>
 <script>
+// Always start every page at the top
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+window.scrollTo(0, 0);
+
 (function () {
     var btn = document.getElementById('hamburger-btn');
     var nav = document.getElementById('main-nav');
