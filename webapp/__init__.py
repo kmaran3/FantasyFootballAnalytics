@@ -1,10 +1,22 @@
 from flask import Flask
+from flask.json.provider import DefaultJSONProvider
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from dotenv import load_dotenv
+
+try:
+    import numpy as _np
+    class _NumpyJSONProvider(DefaultJSONProvider):
+        def default(self, obj):
+            if isinstance(obj, _np.floating): return float(obj)
+            if isinstance(obj, _np.integer):  return int(obj)
+            if isinstance(obj, _np.ndarray):  return obj.tolist()
+            return super().default(obj)
+except ImportError:
+    _NumpyJSONProvider = None
 
 # Initialize the database globally
 db = SQLAlchemy()
@@ -117,6 +129,9 @@ def _get_database_uri(app):
 def create_app():
     load_dotenv()
     app = Flask(__name__)
+    if _NumpyJSONProvider:
+        app.json_provider_class = _NumpyJSONProvider
+        app.json = _NumpyJSONProvider(app)
     
     # Ensure instance folder exists
     os.makedirs(app.instance_path, exist_ok=True)

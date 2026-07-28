@@ -1760,7 +1760,7 @@ def logout():
 @main.route('/guest-login')
 def guest_login():
     from webapp import db
-    guest = User.query.filter_by(id='guest').first()
+    guest = User.query.filter_by(id='guest').first() or User.query.filter_by(email='guest@darkhorse.local').first()
     if not guest:
         guest = User(id='guest', email='guest@darkhorse.local')
         guest.set_password('guest-no-password')
