@@ -369,6 +369,45 @@ function profileUrl(name, pos, nflTeam) {
     return `/player/${encodeURIComponent(name)}?pos=${encodeURIComponent(pos || '')}&team=${encodeURIComponent(nflTeam || '')}&back=/draft-board`;
 }
 
+/** Open player profile in a modal overlay instead of navigating away. */
+function openProfileModal(url) {
+    const overlay = document.getElementById('db-profile-overlay');
+    const iframe  = document.getElementById('db-profile-iframe');
+    if (!overlay || !iframe) return;
+    iframe.src = url + (url.includes('?') ? '&' : '?') + 'embed=1';
+    overlay.style.display = '';
+    document.addEventListener('keydown', _profileModalEsc);
+}
+function closeProfileModal() {
+    const overlay = document.getElementById('db-profile-overlay');
+    const iframe  = document.getElementById('db-profile-iframe');
+    if (overlay) overlay.style.display = 'none';
+    if (iframe)  iframe.src = '';
+    document.removeEventListener('keydown', _profileModalEsc);
+}
+function _profileModalEsc(e) {
+    if (e.key === 'Escape') closeProfileModal();
+}
+
+// Intercept all profile link clicks on the draft board page → open in modal
+document.addEventListener('click', function(e) {
+    const link = e.target.closest('.db-profile-link');
+    if (!link) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openProfileModal(link.getAttribute('href'));
+});
+
+// Close button for profile modal
+document.addEventListener('DOMContentLoaded', function() {
+    const closeBtn = document.getElementById('db-profile-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeProfileModal);
+    const overlay = document.getElementById('db-profile-overlay');
+    if (overlay) overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) closeProfileModal();
+    });
+});
+
 function posClass(pos) {
     const p = (pos || '').toUpperCase();
     const map = { QB: 'pos-QB', RB: 'pos-RB', WR: 'pos-WR', TE: 'pos-TE', K: 'pos-K', DST: 'pos-DST', DEF: 'pos-DST' };
@@ -1610,13 +1649,19 @@ function renderTwoColRoster(container, fullData) {
         fullData.starters.forEach(s => leftCol.appendChild(makeSlotRow(s.slot || '?', s.player)));
     }
 
-    const hasBench = (fullData.bench   || []).length > 0;
+    const benchEntries = (fullData.bench || []);
     const hasIR    = (fullData.reserve || []).length > 0;
     const hasTaxi  = (fullData.taxi    || []).length > 0;
-    if (hasBench) { rightCol.appendChild(hdr('BENCH')); fullData.bench.forEach(p => rightCol.appendChild(makePlayerRow(p, 'BN'))); }
+    if (benchEntries.length > 0) {
+        rightCol.appendChild(hdr('BENCH'));
+        benchEntries.forEach(p => {
+            if (p) rightCol.appendChild(makePlayerRow(p, 'BN'));
+            else rightCol.appendChild(makeSlotRow('BN', null));
+        });
+    }
     if (hasIR)    { rightCol.appendChild(hdr('IR'));    fullData.reserve.forEach(p => rightCol.appendChild(makePlayerRow(p, 'IR'))); }
     if (hasTaxi)  { rightCol.appendChild(hdr('TAXI')); fullData.taxi.forEach(p => rightCol.appendChild(makePlayerRow(p, 'TAXI'))); }
-    if (!hasBench && !hasIR && !hasTaxi) {
+    if (benchEntries.length === 0 && !hasIR && !hasTaxi) {
         rightCol.innerHTML = '<div style="padding:10px;font-size:0.8em;color:var(--text-secondary)">No bench.</div>';
     }
 
@@ -1643,24 +1688,7 @@ function renderOtherTeamBody(teamIdx) {
     }
 
     const fullData = buildRosterData(teamIdx);
-    if ((fullData.starters || []).length > 0 || (fullData.bench || []).length > 0) {
-        renderTwoColRoster(body, fullData);
-        return;
-    }
-
-    // Fallback: flat pick list for in-progress drafts without roster data
-    const picks = DB.otherRosters[teamIdx] || [];
-    if (picks.length === 0) {
-        body.innerHTML = '<span style="font-size:0.8em;color:var(--text-secondary);padding:8px">No picks yet.</span>';
-        return;
-    }
-
-    picks.forEach(p => {
-        const div = document.createElement('div');
-        div.className = 'db-ot-pick';
-        div.innerHTML = `${badge(p.position)} <span style="font-size:0.82em;color:var(--white)">${shortName(p.name)}</span>`;
-        body.appendChild(div);
-    });
+    renderTwoColRoster(body, fullData);
 }
 
 // ── Current pick indicator ────────────────────────────────────
@@ -2075,9 +2103,8 @@ function buildRosterData(actualIdx) {
     const bench    = [];
     slotDefs.forEach((slot, i) => {
         const pick = assigned[i];
-        if (!pick) return;
-        const playerObj = { name: pick.name, position: pick.position, team: pick.nfl_team };
-        if (slot === 'BN') bench.push(playerObj);
+        const playerObj = pick ? { name: pick.name, position: pick.position, team: pick.nfl_team } : null;
+        if (slot === 'BN') { bench.push(playerObj); }
         else starters.push({ slot, player: playerObj });
     });
 
