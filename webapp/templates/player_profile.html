@@ -208,13 +208,30 @@
     color: var(--gold);
     font-weight: 700;
 }
-.comps-preview-link {
-    font-size: 0.72em;
-    color: var(--text-secondary);
-    font-family: monospace;
-    transition: color 0.15s;
+.comps-full-analysis-btn {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 16px;
+    padding: 12px 20px;
+    text-align: center;
+    background: transparent;
+    color: var(--gold);
+    border: 1.5px solid var(--gold);
+    border-radius: 5px;
+    font-size: 1em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    pointer-events: auto;
 }
-.comps-preview-card:hover .comps-preview-link { color: var(--gold); }
+.comps-full-analysis-btn:hover {
+    background: var(--gold);
+    color: var(--black);
+    box-shadow: 0 0 18px var(--gold-glow);
+}
 .comps-proj-row {
     display: flex;
     align-items: flex-end;
@@ -369,14 +386,14 @@
             <div id="comps-preview-card" class="comps-preview-card" style="cursor:default;">
                 <div class="comps-preview-header">
                     <span class="comps-preview-title">&#x25A0; Season Similarities &amp; 2026 Projection</span>
-                    <a id="comps-preview-link" href="#" class="comps-preview-link" style="pointer-events:auto;">View Full Analysis →</a>
                 </div>
                 <div id="comps-preview-body"><p class="comps-no-data">No comp data available for this player.</p></div>
+                <a id="comps-preview-link" href="#" class="comps-full-analysis-btn" style="pointer-events:auto;">View Full Matrix Analysis &rarr;</a>
             </div>
 
             <div class="profile-card">
                 <h4 class="card-heading">Season History</h4>
-                <div id="history-table" style="overflow-x:auto;"><p class="loading-text">Loading...</p></div>
+                <div id="history-table" style="overflow-x:auto;">{% if is_rookie %}<p class="loading-text">No career history — 2026 NFL draft pick.</p>{% else %}<p class="loading-text">Loading...</p>{% endif %}</div>
             </div>
         </div>
 
@@ -425,9 +442,9 @@
                 <div id="cmp-comps-preview-card" class="comps-preview-card" style="margin-bottom:24px;cursor:default;">
                     <div class="comps-preview-header">
                         <span class="comps-preview-title">&#x25A0; Season Similarities &amp; 2026 Projection</span>
-                        <a id="cmp-comps-link" href="#" class="comps-preview-link" style="pointer-events:auto;">View Full Analysis →</a>
                     </div>
                     <div id="cmp-comps-preview-body"><p class="comps-no-data">No comp data available for this player.</p></div>
+                    <a id="cmp-comps-link" href="#" class="comps-full-analysis-btn" style="pointer-events:auto;">View Full Matrix Analysis &rarr;</a>
                 </div>
                 <div class="profile-card">
                     <h4 class="card-heading">Season History</h4>
@@ -845,6 +862,8 @@ function renderStatsIntoPanel(data, panelId, pos) {
     if (history.length) {
         histEl.innerHTML = renderHistoryTable(history, pos);
         highlightBestSeason(histEl);
+    } else if (data.is_rookie) {
+        histEl.innerHTML = '<p class="loading-text">No career history — 2026 NFL draft pick.</p>';
     } else {
         histEl.innerHTML = '<p class="loading-text">No data available.</p>';
     }
