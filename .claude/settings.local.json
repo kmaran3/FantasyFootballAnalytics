@@ -82,7 +82,9 @@
       "Bash(curl -sL \"https://api.sleeper.app/v1/stats/nfl/regular/2024\")",
       "Bash(find /Users/kmaran3/Dropbox/StepByStepToolKit/Models/PickleFiles -name *.pkl)",
       "Bash(wc -l /Users/kmaran3/Dropbox/StepByStepToolKit/webapp/templates/*.html)",
-      "Bash(grep -r \"from sklearn\\\\|import.*KMeans\\\\|import.*DBSCAN\" /Users/kmaran3/Dropbox/StepByStepToolKit --include=*.py --include=*.ipynb)"
+      "Bash(grep -r \"from sklearn\\\\|import.*KMeans\\\\|import.*DBSCAN\" /Users/kmaran3/Dropbox/StepByStepToolKit --include=*.py --include=*.ipynb)",
+      "Bash(/opt/homebrew/bin/python3.11 -m pytest tests/ -v --tb=short)",
+      "Bash(/opt/homebrew/bin/python3.11 -m pip install pytest)"
     ]
   }
 }
