@@ -292,7 +292,8 @@
 
 .board-scroll {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
 }
 .board-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -300,31 +301,40 @@
 .board-scroll::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 3px; }
 
 .draft-board {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.75rem;
-  min-width: 100%;
+  width: 100%;
+  table-layout: fixed;
 }
 .draft-board th {
   background: #0B0B0B;
   color: #D4AF37;
-  padding: 6px 8px;
+  padding: 4px 3px;
   text-align: center;
   position: sticky;
   top: 0;
   z-index: 2;
   border: 1px solid #2A2A2A;
-  white-space: nowrap;
+  font-size: 0.65rem;
+  overflow: hidden;
+}
+.draft-board th:first-child {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
 }
 .draft-board th.user-col { background: #2A1A00; color: #D4AF37; }
 
 .draft-board td {
   border: 1px solid #2A2A2A;
-  padding: 5px 7px;
+  padding: 4px 3px;
   text-align: center;
-  min-width: 90px;
-  height: 44px;
+  height: 40px;
   vertical-align: middle;
   color: #c0c0c0;
+  overflow: hidden;
 }
 .draft-board td.user-col { background: #1A1000; }
 .draft-board td.active-cell { background: #1a3d1a; animation: pulse 1s infinite; }
@@ -335,19 +345,20 @@
   50% { background: #224d22; }
 }
 
-.cell-name { font-weight: 600; color: #F5F5F5; font-size: 0.75rem; }
-.cell-meta { color: #B0B0B0; font-size: 0.65rem; }
+.cell-name { font-weight: 600; color: #F5F5F5; font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-meta { color: #B0B0B0; font-size: 0.6rem; }
 
 .round-label {
   background: #0B0B0B;
   color: #B0B0B0;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   text-align: center;
-  padding: 4px;
+  padding: 2px;
+  width: 24px;
   border: 1px solid #2A2A2A;
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 3;
 }
 
 /* Your Team Panel */
@@ -613,7 +624,7 @@
     position: sticky;
     left: 0;
     background: #0B0B0B;
-    z-index: 2;
+    z-index: 3;
   }
 
   /* Roster grid: 2 columns on mobile */

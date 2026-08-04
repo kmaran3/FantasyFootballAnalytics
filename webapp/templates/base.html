@@ -9,6 +9,16 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script>
+        if (new URLSearchParams(window.location.search).get('embed') === '1') {
+            document.documentElement.classList.add('embed-mode');
+        }
+    </script>
+    <style>
+        .embed-mode header.banner,
+        .embed-mode .profile-top-bar { display: none !important; }
+        .embed-mode .profile-page-wrap { padding-top: 10px; }
+    </style>
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <header class="banner">
@@ -45,6 +55,10 @@
     <p>© 2024 Darkhorse CopyrightTM</p>
 </footer>
 <script>
+// Always start every page at the top
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+window.scrollTo(0, 0);
+
 (function () {
     var btn = document.getElementById('hamburger-btn');
     var nav = document.getElementById('main-nav');

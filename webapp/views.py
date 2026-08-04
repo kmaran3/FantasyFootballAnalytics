@@ -291,6 +291,137 @@ try:
 except Exception as e:
     print(f'Warning: could not load nflreadpy stats: {e}')
 
+# Build name→espn_id and name→bio maps from nfl_data_py (loaded once at startup)
+_espn_id_map = {}
+_bio_map = {}  # name → {Age, Height, Weight, College, Draft Year, Draft Team, Pick, Seasons Played}
+try:
+    import nfl_data_py as _nfldata
+    from datetime import date as _bio_date
+    _players_df = _nfldata.import_players()
+    _today_bio = _bio_date.today()
+
+    def _bio_fmt_height(v):
+        try:
+            inches = float(v)
+            return f"{int(inches // 12)}'{int(inches % 12)}\""
+        except Exception:
+            s = str(v).strip()
+            return s if s and s not in ('nan', 'None') else None
+
+    def _bio_fmt_age(bd):
+        try:
+            import re as _re_bd
+            s = str(bd).strip()
+            m = _re_bd.match(r'(\d{4})-(\d{2})-(\d{2})', s)
+            if not m:
+                return None
+            born = _bio_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            age = _today_bio.year - born.year - ((_today_bio.month, _today_bio.day) < (born.month, born.day))
+            return str(age)
+        except Exception:
+            return None
+
+    def _bio_ok(v):
+        return v is not None and str(v).strip() not in ('', 'nan', 'None', 'NaN')
+
+    for _, _pr in _players_df.iterrows():
+        _pname = str(_pr.get('display_name') or _pr.get('short_name') or '').strip()
+        if not _pname:
+            continue
+
+        _eid = _pr.get('espn_id')
+        if _bio_ok(_eid):
+            _espn_id_map[_pname] = str(int(float(_eid)))
+
+        bio = {}
+        _age = _bio_fmt_age(_pr.get('birth_date'))
+        if _age:
+            bio['Age'] = _age
+        _ht = _bio_fmt_height(_pr.get('height'))
+        if _ht:
+            bio['Height'] = _ht
+        if _bio_ok(_pr.get('weight')):
+            try:
+                bio['Weight'] = f"{int(float(_pr['weight']))} lbs"
+            except Exception:
+                pass
+        if _bio_ok(_pr.get('college')):
+            bio['College'] = str(_pr['college'])
+        # Draft year
+        _entry = _pr.get('entry_year') or _pr.get('rookie_year')
+        if _bio_ok(_entry):
+            try:
+                bio['Draft Year'] = str(int(float(_entry)))
+                yrs = _today_bio.year - int(float(_entry))
+                if yrs >= 0:
+                    bio['Seasons Played'] = str(yrs)
+            except Exception:
+                pass
+        # Draft team (column name varies by nfl_data_py version)
+        for _dt_col in ('draft_club', 'draft_team', 'team_draft'):
+            if _bio_ok(_pr.get(_dt_col)):
+                bio['Draft Team'] = str(_pr[_dt_col]).upper()
+                break
+        # Draft round + pick
+        _rnd = _pr.get('draft_round') or _pr.get('round')
+        _pick = _pr.get('draft_pick') or _pr.get('pick') or _pr.get('draft_number')
+        if _bio_ok(_rnd) and _bio_ok(_pick):
+            try:
+                bio['Pick'] = f"Rd {int(float(_rnd))} Pk {int(float(_pick))}"
+            except Exception:
+                pass
+        elif _bio_ok(_pr.get('draft_number')):
+            try:
+                bio['Pick'] = f"#{int(float(_pr['draft_number']))} overall"
+            except Exception:
+                pass
+        if bio:
+            _bio_map[_pname] = bio
+
+    # Supplement with draft picks data for Draft Team / Round / Pick if still missing
+    try:
+        _draft_years = list(range(2000, _today_bio.year + 1))
+        _draft_df = _nfldata.import_draft_picks(_draft_years)
+        # build name → (season, team, round, pick) — keep most recent entry per player
+        _draft_info = {}
+        for _, _dp in _draft_df.iterrows():
+            _dpname = str(_dp.get('pfr_player_name') or '').strip()
+            if not _dpname:
+                continue
+            try:
+                _draft_info[_dpname] = {
+                    'Draft Year': str(int(float(_dp['season']))),
+                    'Draft Team': str(_dp.get('team', '')).upper(),
+                    'Pick':       f"Rd {int(float(_dp['round']))} Pk {int(float(_dp['pick']))}",
+                }
+            except Exception:
+                pass
+        # Merge into _bio_map
+        for _dpname, _dinfo in _draft_info.items():
+            if _dpname in _bio_map:
+                for _k, _v in _dinfo.items():
+                    if _k not in _bio_map[_dpname] and _v and _v not in ('', 'nan'):
+                        _bio_map[_dpname][_k] = _v
+            else:
+                _bio_map[_dpname] = dict(_dinfo)
+        # After merging draft info, calculate Seasons Played for anyone who got Draft Year
+        # but not Seasons Played (happens when entry_year was NaN in import_players)
+        for _pbio in _bio_map.values():
+            if 'Seasons Played' not in _pbio and 'Draft Year' in _pbio:
+                try:
+                    yrs = _today_bio.year - int(_pbio['Draft Year'])
+                    if 0 <= yrs <= 30:
+                        _pbio['Seasons Played'] = str(yrs)
+                except Exception:
+                    pass
+        print(f'Draft pick supplement: {len(_draft_info)} entries merged')
+    except Exception as _de:
+        print(f'Draft picks unavailable: {_de}')
+
+    print(f'ESPN ID map: {len(_espn_id_map)} players | Bio map: {len(_bio_map)} players')
+except Exception as _e:
+    print(f'ESPN ID map unavailable: {_e}')
+
 
 # ── ADP helpers ───────────────────────────────────────────────────────
 import re as _re
@@ -406,7 +537,7 @@ def _refresh_sleeper_player_cache():
     if now - _sleeper_player_cache['ts'] < _SLEEPER_PLAYER_CACHE_TTL and _sleeper_player_cache['by_id']:
         return
     try:
-        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=20)
+        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=8)
         if resp.status_code == 200:
             by_id = {}
             by_name = defaultdict(list)
@@ -421,6 +552,8 @@ def _refresh_sleeper_player_cache():
                     'position': (p.get('position') or '').upper(),
                     'team': _norm_team(p.get('team') or ''),
                     'update': _format_sleeper_injury_news(p),
+                    'espn_id': str(p['espn_id']) if p.get('espn_id') else None,
+                    'college': (p.get('college') or '').strip() or None,
                 }
                 by_id[str(pid)] = slim
                 by_name[_normalize_name(name)].append(slim)
@@ -433,12 +566,14 @@ def _refresh_sleeper_player_cache():
 
 def _get_sleeper_player_map():
     """Fetch + cache the Sleeper NFL player dict. Returns {player_id: {name, position, team}}."""
-    _refresh_sleeper_player_cache()
+    if _sleeper_player_cache['by_id']:
+        _refresh_sleeper_player_cache()  # no-op if still within TTL
     return _sleeper_player_cache['by_id']  # return stale on failure
 
 
 def _get_sleeper_player_update(name, team='', pos=''):
-    _refresh_sleeper_player_cache()
+    if _sleeper_player_cache['by_id']:
+        _refresh_sleeper_player_cache()  # no-op if still within TTL
     candidates = _sleeper_player_cache['by_name'].get(_normalize_name(name), [])
     if not candidates:
         return {}
@@ -708,6 +843,34 @@ def _fetch_sleeper_adp_all():
             ]
             out[scoring] = pd.DataFrame(records)
             print(f'Sleeper ADP ({scoring}) from 2025 stats: {len(records)} players')
+
+        # Supplement with players not in 2025 stats (rookies) using search_rank from meta
+        covered_ids = set(stats.keys())
+        rookie_records = []
+        for player_id, pmeta in meta.items():
+            if player_id in covered_ids:
+                continue
+            sr = pmeta.get('search_rank')
+            if sr is None or sr == 9999999:
+                continue
+            pos_list = pmeta.get('fantasy_positions') or []
+            if not any(x in pos_list for x in ('QB', 'RB', 'WR', 'TE')):
+                continue
+            name = pmeta.get('full_name', '')
+            if not name:
+                continue
+            rookie_records.append({
+                'player_name': name,
+                'name_key':    _normalize_name(name),
+                'adp_rank':    int(sr),
+                'team':        pmeta.get('team', ''),
+                'position':    pmeta.get('position', ''),
+            })
+        if rookie_records:
+            rookie_df = pd.DataFrame(rookie_records)
+            for scoring in scoring_keys:
+                out[scoring] = pd.concat([out[scoring], rookie_df], ignore_index=True)
+            print(f'Supplemented ADP with {len(rookie_records)} rookies from search_rank')
 
         return out
 
@@ -1029,6 +1192,19 @@ def _load_model_rankings(scoring='ppr'):
         else:
             combined['adp_rank'] = None
 
+        # ESPN ADP fallback: covers 2026 rookies not in 2025 Sleeper stats
+        _espn_df = _espn_adp.get('ppr', pd.DataFrame())
+        if not _espn_df.empty:
+            if 'name_key' not in combined.columns:
+                combined['name_key'] = combined['player_name'].apply(_normalize_name)
+            _espn_slim = _espn_df[['name_key', 'adp_rank']].drop_duplicates('name_key').rename(
+                columns={'adp_rank': '_espn_adp'}
+            )
+            combined = combined.merge(_espn_slim, on='name_key', how='left')
+            _missing_adp = combined['adp_rank'].isna() & combined['_espn_adp'].notna()
+            combined.loc[_missing_adp, 'adp_rank'] = combined.loc[_missing_adp, '_espn_adp']
+            combined = combined.drop(columns=['_espn_adp'], errors='ignore')
+
         # Normalize team abbreviations (LA -> LAR, etc.)
         combined['team'] = combined['team'].apply(_norm_team)
         
@@ -1073,7 +1249,7 @@ _model_data = {
     'half_ppr': _load_model_rankings('half_ppr'),
     'standard': _load_model_rankings('standard'),
 }
-_model_table = {k: v.to_dict(orient='records') if not v.empty else [] for k, v in _model_data.items()}
+_model_table = {k: json.loads(v.to_json(orient='records')) if not v.empty else [] for k, v in _model_data.items()}
 
 
 def _inject_rankings_flags(rows):
@@ -1108,12 +1284,25 @@ def _inject_rankings_flags(rows):
         if 'Flags' not in ordered:
             ordered['Flags'] = flags
         enriched.append(ordered)
+    # Drop Depth column entirely when Sleeper has no current depth chart data (off-season)
+    if all(not row.get('Depth', '') for row in enriched):
+        for row in enriched:
+            row.pop('Depth', None)
     return enriched
 
 
 _model_table = {k: _inject_rankings_flags(v) for k, v in _model_table.items()}
 for k, v in _model_table.items():
     print(f'Model table ({k}): {len(v)} rows')
+
+_rookie_names = set()
+try:
+    _rook_df = pd.read_pickle(_BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel' / 'combined_predictions_ppr.pkl')
+    if 'is_rookie' in _rook_df.columns:
+        _rookie_names = set(_rook_df[_rook_df['is_rookie'] == True]['player_name'].tolist())
+    print(f'Rookie names loaded: {len(_rookie_names)}')
+except Exception as _re:
+    print(f'Rookie names unavailable: {_re}')
 
 # ── Similarity model (Phase 4) ────────────────────────────────────
 import pickle as _pickle
@@ -1138,6 +1327,10 @@ try:
     print(f'Similarity model loaded: {len(_similarity_comps)} players, {len(_umap_df)} UMAP points')
 except Exception as _e:
     print(f'Warning: could not load similarity model: {_e}')
+
+# Pre-warm Sleeper player cache in background so first player click is instant
+import threading as _threading
+_threading.Thread(target=_refresh_sleeper_player_cache, daemon=True).start()
 
 # ── Helpers shared by composite grades and roster stats ───────────
 import math as _math
@@ -1510,6 +1703,10 @@ def _load(filename):
 _qb_stats    = _load('final_qb_data.pkl')
 _rb_stats    = _load('final_rb_data.pkl')
 _wrte_stats  = _load('final_wrte_data.pkl')
+
+# teamsPastRoster.pkl was saved with Python 3.9 and contains struct_time objects
+# that trigger a fatal C-level error in Python 3.11. Skip loading it entirely.
+_roster_df = pd.DataFrame()
 _qb_model    = _load('QBDFForModelPPR.pkl')
 _rb_model    = _load('RBDFForModelPPR.pkl')
 _wrte_model  = _load('WRTEDFForModelPPR.pkl')
@@ -1563,7 +1760,7 @@ def logout():
 @main.route('/guest-login')
 def guest_login():
     from webapp import db
-    guest = User.query.filter_by(id='guest').first()
+    guest = User.query.filter_by(id='guest').first() or User.query.filter_by(email='guest@darkhorse.local').first()
     if not guest:
         guest = User(id='guest', email='guest@darkhorse.local')
         guest.set_password('guest-no-password')
@@ -1762,15 +1959,7 @@ def player_stats():
     pos  = request.args.get('pos', '').strip().upper()
     team = request.args.get('team', '').strip().upper()
     
-    # DEBUG LOGGING
-    print(f"\n=== PLAYER_STATS REQUEST ===")
-    print(f"Name: {name}")
-    print(f"Pos: {pos}")
-    print(f"Team (raw): {team}")
-    
-    team = _norm_team(team)  # Normalize LA -> LAR, etc.
-    print(f"Team (normalized): {team}")
-    print(f"Team in _composite_grades? {team in _composite_grades}")
+    team = _norm_team(team)
 
     if not name:
         return jsonify({})
@@ -1803,30 +1992,34 @@ def player_stats():
         history = _clean_hist(hist)
 
     # Fallback: build history from pkl files when nflreadpy is unavailable
+    # These pkl files were saved with Python 3.9 and may fail to load in Python 3.11 — skip silently
     if not history:
-        pkl_map = {'QB': 'final_qb_data.pkl', 'RB': 'final_rb_data.pkl',
-                   'WR': 'final_wrte_data.pkl', 'TE': 'final_wrte_data.pkl'}
-        pkl_file = pkl_map.get(pos)
-        if pkl_file:
-            pkl_path = _PICKLE_DIR / pkl_file
-            if pkl_path.exists():
-                pkl_df = pd.read_pickle(pkl_path)
-                player_rows = pkl_df[pkl_df['player_display_name'] == name].sort_values('season')
-                if pos == 'QB':
-                    cols = ['season', 'GP', 'completions', 'attempts', 'passing_yards',
-                            'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points']
-                elif pos == 'RB':
-                    cols = ['season', 'GP', 'carries', 'rushing_yards', 'rushing_tds',
-                            'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points']
-                else:
-                    cols = ['season', 'GP', 'receptions', 'targets', 'receiving_yards',
-                            'receiving_tds', 'fantasy_points']
-                available = [c for c in cols if c in player_rows.columns]
-                hist = player_rows[available].round(1)
-                history = _clean_hist(hist)
+        try:
+            pkl_map = {'QB': 'final_qb_data.pkl', 'RB': 'final_rb_data.pkl',
+                       'WR': 'final_wrte_data.pkl', 'TE': 'final_wrte_data.pkl'}
+            pkl_file = pkl_map.get(pos)
+            if pkl_file:
+                pkl_path = _PICKLE_DIR / pkl_file
+                if pkl_path.exists():
+                    pkl_df = pd.read_pickle(pkl_path)
+                    player_rows = pkl_df[pkl_df['player_display_name'] == name].sort_values('season')
+                    if pos == 'QB':
+                        cols = ['season', 'GP', 'completions', 'attempts', 'passing_yards',
+                                'passing_tds', 'interceptions', 'rushing_yards', 'rushing_tds', 'fantasy_points']
+                    elif pos == 'RB':
+                        cols = ['season', 'GP', 'carries', 'rushing_yards', 'rushing_tds',
+                                'receptions', 'targets', 'receiving_yards', 'receiving_tds', 'fantasy_points']
+                    else:
+                        cols = ['season', 'GP', 'receptions', 'targets', 'receiving_yards',
+                                'receiving_tds', 'fantasy_points']
+                    available = [c for c in cols if c in player_rows.columns]
+                    hist = player_rows[available].round(1)
+                    history = _clean_hist(hist)
+        except Exception:
+            pass
 
     # --- Rankings info ---
-    rank_row = _rankings[_rankings['Name'] == name]
+    rank_row = _rankings[_rankings['Name'] == name] if not _rankings.empty and 'Name' in _rankings.columns else pd.DataFrame()
     ranking = {}
     if not rank_row.empty:
         r = rank_row.iloc[0]
@@ -1876,11 +2069,6 @@ def player_stats():
             oline_rank = all_oline_grades.index(oline_grade) + 1 if oline_grade in all_oline_grades else None
             team_grade_ranks['OLine'] = oline_rank
 
-    # DEBUG LOGGING
-    print(f"Returning team_grade: {team_grade}")
-    print(f"Returning team_grade_ranks: {team_grade_ranks}")
-    print(f"===========================\n")
-
     return jsonify({
         'history': history,
         'ranking': ranking,
@@ -1888,16 +2076,48 @@ def player_stats():
         'team_grade_ranks': team_grade_ranks,
         'comps': _similarity_comps.get(name, []),
         'injury_news': _get_sleeper_player_update(name, team, pos),
+        'is_rookie': name in _rookie_names,
     })
 
 
 def _get_player_roster_profile(name, team='', pos=''):
+    # Sleeper cache first: filter by position + team to avoid name collisions (e.g. two "Lamar Jackson"s)
     espn_id = None
-    bio = {}
+    _sleeper_candidates = _sleeper_player_cache['by_name'].get(_normalize_name(name), [])
+    _norm_team_arg = _norm_team(team).upper() if team else ''
+    _pos_arg = pos.upper() if pos else ''
+    # Pass 1: exact position + team match
+    for _sc in _sleeper_candidates:
+        if not _sc.get('espn_id'):
+            continue
+        _sc_pos  = (_sc.get('position') or '').upper()
+        _sc_team = _norm_team(_sc.get('team') or '').upper()
+        if (_pos_arg and _sc_pos == _pos_arg) and (_norm_team_arg and _sc_team == _norm_team_arg):
+            espn_id = _sc['espn_id']
+            break
+    # Pass 2: position match only (team might differ — e.g. mid-season trade)
+    if not espn_id:
+        for _sc in _sleeper_candidates:
+            if not _sc.get('espn_id'):
+                continue
+            _sc_pos = (_sc.get('position') or '').upper()
+            if _pos_arg and _sc_pos == _pos_arg:
+                espn_id = _sc['espn_id']
+                break
+    # Pass 3: any Sleeper candidate (name-only match, least precise)
+    if not espn_id:
+        for _sc in _sleeper_candidates:
+            if _sc.get('espn_id'):
+                espn_id = _sc['espn_id']
+                break
+    # Final fallback: nfl_data_py map (may have collisions for common names)
+    if not espn_id:
+        espn_id = _espn_id_map.get(name)
+
+    bio = dict(_bio_map.get(name, {}))
     try:
-        roster_path = Path(app.root_path) / 'data' / 'teamsPastRoster.pkl'
-        if roster_path.exists():
-            roster_df = pd.read_pickle(roster_path)
+        roster_df = _roster_df
+        if not roster_df.empty:
             match = roster_df[roster_df['Player'] == name]
             if not match.empty:
                 row = match.iloc[0]
@@ -1970,6 +2190,13 @@ def _get_player_roster_profile(name, team='', pos=''):
     except Exception as exc:
         print(f'Warning: could not look up player roster profile: {exc}')
 
+    # Supplement College from Sleeper cache if nfl_data_py didn't have it
+    if 'College' not in bio:
+        for _sc in _sleeper_candidates:
+            if _sc.get('college'):
+                bio['College'] = _sc['college']
+                break
+
     injury_news = _get_sleeper_player_update(name, team, pos)
     if injury_news.get('summary'):
         bio['Status'] = injury_news['summary']
@@ -1987,6 +2214,7 @@ def _get_player_roster_profile(name, team='', pos=''):
 @main.route('/player_quick_stats')
 @login_required
 def player_quick_stats():
+    import traceback as _tb
     name = request.args.get('name', '').strip()
     pos  = request.args.get('pos', '').strip().upper()
     team = request.args.get('team', '').strip().upper()
@@ -1994,87 +2222,102 @@ def player_quick_stats():
     if not name:
         return jsonify({})
 
-    roster_profile = _get_player_roster_profile(name, team, pos)
-    espn_id = roster_profile['espn_id']
-    bio = roster_profile['bio']
-    injury_news = roster_profile['injury_news']
+    try:
+        roster_profile = _get_player_roster_profile(name, team, pos)
+        espn_id = roster_profile['espn_id']
+        bio = roster_profile['bio']
+        injury_news = roster_profile['injury_news']
 
-    # Get 2025 stats from _nfl_seasonal
-    stats = {}
-    fantasy_points = None
-    games = None
-    if not _nfl_seasonal.empty:
-        player_rows = _nfl_seasonal[
-            (_nfl_seasonal['player_display_name'] == name) &
-            (_nfl_seasonal['season'] == 2025)
-        ]
-        if not player_rows.empty:
-            row = player_rows.iloc[0]
-            def _gs(col):
-                v = row.get(col)
-                if v is None:
-                    return None
-                try:
-                    import math as _m
-                    f = float(v)
-                    return None if _m.isnan(f) or _m.isinf(f) else (int(f) if f == int(f) else round(f, 1))
-                except (TypeError, ValueError):
-                    return None
+        # Get 2025 stats from _nfl_seasonal
+        stats = {}
+        fantasy_points = None
+        games = None
+        if not _nfl_seasonal.empty:
+            player_rows = _nfl_seasonal[
+                (_nfl_seasonal['player_display_name'] == name) &
+                (_nfl_seasonal['season'] == 2025)
+            ]
+            if not player_rows.empty:
+                row = player_rows.iloc[0]
+                def _gs(col):
+                    v = row.get(col)
+                    if v is None:
+                        return None
+                    try:
+                        import math as _m
+                        f = float(v)
+                        return None if _m.isnan(f) or _m.isinf(f) else (int(f) if f == int(f) else round(f, 1))
+                    except (TypeError, ValueError):
+                        return None
 
-            games = _gs('games')
-            fpp = _gs('fantasy_points_ppr')
-            fantasy_points = fpp
+                games = _gs('games')
+                fpp = _gs('fantasy_points_ppr')
+                fantasy_points = fpp
 
-            if pos == 'QB':
-                stats = {
-                    'completions': _gs('completions'),
-                    'attempts': _gs('attempts'),
-                    'passing_yards': _gs('passing_yards'),
-                    'passing_tds': _gs('passing_tds'),
-                    'passing_interceptions': _gs('passing_interceptions'),
-                    'rushing_yards': _gs('rushing_yards'),
-                    'rushing_tds': _gs('rushing_tds'),
-                    'games': games,
+                if pos == 'QB':
+                    stats = {
+                        'completions': _gs('completions'),
+                        'attempts': _gs('attempts'),
+                        'passing_yards': _gs('passing_yards'),
+                        'passing_tds': _gs('passing_tds'),
+                        'passing_interceptions': _gs('passing_interceptions'),
+                        'rushing_yards': _gs('rushing_yards'),
+                        'rushing_tds': _gs('rushing_tds'),
+                        'games': games,
+                    }
+                elif pos == 'RB':
+                    stats = {
+                        'carries': _gs('carries'),
+                        'rushing_yards': _gs('rushing_yards'),
+                        'rushing_tds': _gs('rushing_tds'),
+                        'receptions': _gs('receptions'),
+                        'targets': _gs('targets'),
+                        'receiving_yards': _gs('receiving_yards'),
+                        'receiving_tds': _gs('receiving_tds'),
+                        'games': games,
+                    }
+                else:  # WR / TE
+                    stats = {
+                        'receptions': _gs('receptions'),
+                        'targets': _gs('targets'),
+                        'receiving_yards': _gs('receiving_yards'),
+                        'receiving_tds': _gs('receiving_tds'),
+                        'games': games,
+                    }
+
+        # Get ranking info from _model_table['ppr']
+        ranking = {}
+        for row in _model_table.get('ppr', []):
+            if row.get('Name') == name:
+                ranking = {
+                    'predicted_ppg': row.get('Predicted PPG'),
+                    'vbd': row.get('VBD'),
+                    'adp': row.get('ADP'),
                 }
-            elif pos == 'RB':
-                stats = {
-                    'carries': _gs('carries'),
-                    'rushing_yards': _gs('rushing_yards'),
-                    'rushing_tds': _gs('rushing_tds'),
-                    'receptions': _gs('receptions'),
-                    'targets': _gs('targets'),
-                    'receiving_yards': _gs('receiving_yards'),
-                    'receiving_tds': _gs('receiving_tds'),
-                    'games': games,
-                }
-            else:  # WR / TE
-                stats = {
-                    'receptions': _gs('receptions'),
-                    'targets': _gs('targets'),
-                    'receiving_yards': _gs('receiving_yards'),
-                    'receiving_tds': _gs('receiving_tds'),
-                    'games': games,
-                }
+                break
 
-    # Get ranking info from _model_table['ppr']
-    ranking = {}
-    for row in _model_table.get('ppr', []):
-        if row.get('Name') == name:
-            ranking = {
-                'predicted_ppg': row.get('Predicted PPG'),
-                'vbd': row.get('VBD'),
-                'adp': row.get('ADP'),
-            }
-            break
+        # Team grade (OLine + position-specific grade), normalized 0-1
+        team_grade = {}
+        if team and team in _composite_grades:
+            cg = _composite_grades[team]
+            team_grade['OLine'] = cg.get('RB_OLine') if pos == 'RB' else cg.get('OLine')
+            if pos in ('QB', 'RB', 'WR', 'TE'):
+                team_grade[pos] = cg.get(pos)
 
-    return jsonify({
-        'espn_id': espn_id,
-        'bio': bio,
-        'stats': stats,
-        'fantasy_points': fantasy_points,
-        'ranking': ranking,
-        'injury_news': injury_news,
-    })
+        return jsonify({
+            'espn_id': espn_id,
+            'bio': bio,
+            'stats': stats,
+            'fantasy_points': fantasy_points,
+            'ranking': ranking,
+            'injury_news': injury_news,
+            'team_grade': team_grade,
+            'is_rookie': name in _rookie_names,
+        })
+    except Exception as _e:
+        _tb.print_exc()
+        return jsonify({'espn_id': None, 'bio': {}, 'stats': {}, 'fantasy_points': None,
+                        'ranking': {}, 'injury_news': {}, '_error': str(_e)})
 
 
 @main.route('/player/<path:name>')
@@ -2104,6 +2347,7 @@ def player_profile(name):
         back_url=back_url,
         compare=compare,
         player_comps_json=json.dumps(player_comps_data),
+        is_rookie=name in _rookie_names,
     )
 
 
@@ -2890,6 +3134,25 @@ def draft_board_sleeper_connect():
             })
         standings.sort(key=lambda s: (-s['wins'], -s['pts_for']))
 
+        # Resolve earliest season by following previous_league_id chain (max 15 hops)
+        league_start_year = int(league.get('season') or datetime.utcnow().year)
+        prev_lid = league.get('previous_league_id')
+        hops = 0
+        while prev_lid and hops < 15:
+            try:
+                prev_resp = requests.get(
+                    f'https://api.sleeper.app/v1/league/{prev_lid}', timeout=5)
+                if prev_resp.status_code != 200:
+                    break
+                prev_lg = prev_resp.json()
+                prev_season = prev_lg.get('season')
+                if prev_season:
+                    league_start_year = int(prev_season)
+                prev_lid = prev_lg.get('previous_league_id')
+                hops += 1
+            except Exception:
+                break
+
         return jsonify({
             'draft_id':            draft_id,
             'league_name':         league.get('name', 'My League'),
@@ -2908,6 +3171,7 @@ def draft_board_sleeper_connect():
             'season':              league.get('season') or datetime.utcnow().year,
             'previous_league_id':  league.get('previous_league_id'),
             'standings':           standings,
+            'league_start_year':   league_start_year,
         })
     except requests.RequestException:
         return jsonify({'error': 'Failed to connect to Sleeper API'}), 503
@@ -2923,6 +3187,7 @@ def draft_board_sleeper_sync():
     """
     draft_id  = request.args.get('draft_id', '').strip()
     league_id = request.args.get('league_id', '').strip()
+    last_pick = int(request.args.get('last_pick', 0) or 0)
     if not draft_id or not league_id:
         return jsonify({'error': 'draft_id and league_id required'}), 400
 
@@ -2945,6 +3210,16 @@ def draft_board_sleeper_sync():
         # ── 2. Picks (with trade-corrected slot attribution) ──
         picks_resp = requests.get(f'https://api.sleeper.app/v1/draft/{draft_id}/picks', timeout=8)
         picks_raw  = picks_resp.json() if picks_resp.status_code == 200 else []
+
+        # Fast path: no new picks and draft still going — skip expensive roster fetch
+        if len(picks_raw) <= last_pick and draft_status not in ('complete', 'pre_draft'):
+            return jsonify({
+                'picks':               [],
+                'team_rosters':        None,
+                'draft_status':        draft_status,
+                'roster_player_names': None,
+                'pick_count':          len(picks_raw),
+            })
 
         # If slot_to_roster was empty, fall back to roster_id derived from rosters endpoint
         need_roster_fallback = not roster_id_to_slot
@@ -3043,6 +3318,7 @@ def draft_board_sleeper_sync():
             'team_rosters':        team_rosters,
             'draft_status':        draft_status,
             'roster_player_names': roster_player_names,
+            'pick_count':          len(picks_raw),
         })
 
     except requests.RequestException:
@@ -3523,33 +3799,39 @@ def draft_board_leagues_save():
     if not league_id:
         return jsonify({'error': 'league_id required'}), 400
 
-    existing = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
-    if existing:
-        existing.league_name    = data.get('league_name', existing.league_name)
-        existing.num_teams      = data.get('num_teams', existing.num_teams)
-        existing.scoring        = data.get('scoring', existing.scoring)
-        existing.league_type    = data.get('league_type', existing.league_type)
-        existing.sleeper_user_id = data.get('sleeper_user_id', existing.sleeper_user_id)
-        existing.espn_s2        = data.get('espn_s2', existing.espn_s2)
-        existing.espn_swid      = data.get('espn_swid', existing.espn_swid)
-        existing.user_slot      = data.get('user_slot', existing.user_slot)
-        existing.last_accessed  = datetime.utcnow()
-    else:
-        db.session.add(SavedLeague(
-            user_id        = current_user.id,
-            league_id      = league_id,
-            league_name    = data.get('league_name', 'My League'),
-            source         = data.get('source', 'sleeper'),
-            num_teams      = data.get('num_teams', 12),
-            scoring        = data.get('scoring', 'ppr'),
-            league_type    = data.get('league_type', 'redraft'),
-            sleeper_user_id = data.get('sleeper_user_id'),
-            espn_s2        = data.get('espn_s2'),
-            espn_swid      = data.get('espn_swid'),
-            user_slot      = data.get('user_slot'),
-        ))
-    db.session.commit()
-    return jsonify({'saved': True})
+    try:
+        existing = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
+        if existing:
+            existing.league_name    = data.get('league_name', existing.league_name)
+            existing.num_teams      = data.get('num_teams', existing.num_teams)
+            existing.scoring        = data.get('scoring', existing.scoring)
+            existing.league_type    = data.get('league_type', existing.league_type)
+            existing.sleeper_user_id = data.get('sleeper_user_id', existing.sleeper_user_id)
+            existing.espn_s2        = data.get('espn_s2', existing.espn_s2)
+            existing.espn_swid      = data.get('espn_swid', existing.espn_swid)
+            existing.user_slot      = data.get('user_slot', existing.user_slot)
+            existing.last_accessed  = datetime.utcnow()
+        else:
+            db.session.add(SavedLeague(
+                user_id        = current_user.id,
+                league_id      = league_id,
+                league_name    = data.get('league_name', 'My League'),
+                source         = data.get('source', 'sleeper'),
+                num_teams      = data.get('num_teams', 12),
+                scoring        = data.get('scoring', 'ppr'),
+                league_type    = data.get('league_type', 'redraft'),
+                sleeper_user_id = data.get('sleeper_user_id'),
+                espn_s2        = data.get('espn_s2'),
+                espn_swid      = data.get('espn_swid'),
+                user_slot      = data.get('user_slot'),
+            ))
+        db.session.commit()
+        return jsonify({'saved': True})
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @main.route('/draft-board/leagues/<league_id>', methods=['DELETE'])

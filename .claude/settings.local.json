@@ -83,8 +83,20 @@
       "Bash(find /Users/kmaran3/Dropbox/StepByStepToolKit/Models/PickleFiles -name *.pkl)",
       "Bash(wc -l /Users/kmaran3/Dropbox/StepByStepToolKit/webapp/templates/*.html)",
       "Bash(grep -r \"from sklearn\\\\|import.*KMeans\\\\|import.*DBSCAN\" /Users/kmaran3/Dropbox/StepByStepToolKit --include=*.py --include=*.ipynb)",
-      "Bash(/opt/homebrew/bin/python3.11 -m pytest tests/ -v --tb=short)",
-      "Bash(/opt/homebrew/bin/python3.11 -m pip install pytest)"
+      "Bash(ls:*)",
+      "Bash(python3.11 -c \"from webapp import create_app\")",
+      "Bash(git checkout:*)",
+      "Bash(python3.11 -c \"from webapp import create_app; app = create_app\\(\\); print\\('OK'\\)\" 2>&1)",
+      "Bash(source venv/bin/activate)",
+      "Read(//Users/kmaran3/.claude/skills/**)",
+      "Read(//Users/kmaran3/.claude/**)",
+      "Bash(find /Users/kmaran3/.claude -name *.md -path */skills/* -o -name *.md -path */commands/*)",
+      "Bash(find /Users/kmaran3/Dropbox/Personal/AIAgent/draft-copilot/frontend -maxdepth 3 -name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js)",
+      "Bash(/opt/anaconda3/bin/pip install:*)",
+      "Bash(/opt/anaconda3/bin/python -c \"import dotenv; print\\(''''dotenv ok''''\\)\")",
+      "Bash(/opt/anaconda3/bin/python -c \"from webapp import create_app; app = create_app\\(\\); print\\(''''App created successfully''''\\)\")",
+      "Bash(/opt/homebrew/bin/python3.11 -c \"from webapp import create_app; app = create_app\\(\\); print\\(''''App created successfully''''\\)\")",
+      "Bash(/opt/homebrew/bin/python3.11 -c \"\nfrom webapp.copilot.prompt_builder import build_prompt, build_fallback_response\n\ncontext = {\n    'num_teams': 12,\n    'scoring_format': 'ppr',\n    'league_type': 'redraft',\n    'current_pick': 5,\n    'user_slot': 5,\n    'roster_slots': {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1},\n    'user_roster': [{'name': 'Patrick Mahomes', 'position': 'QB'}],\n    'available_players': [{'name': 'Saquon Barkley', 'position': 'RB', 'ppg': '20.1', 'vbd': '45.2'}],\n}\nroster = {'positional_needs': [{'position': 'RB', 'priority': 'HIGH', 'note': 'Need 2 RBs'}], 'bye_week_conflicts': [], 'roster_summary': {'picks_remaining': 14}}\nvalue = [{'player_name': 'Saquon Barkley', 'position': 'RB', 'assessment': 'GREAT VALUE', 'vbd_rank': 2, 'projected_ppg': 20.1}]\nscarcity = {'RB': {'scarcity_level': 'MODERATE', 'above_replacement': 8, 'top_3': []}}\n\nprompt = build_prompt\\('Who should I draft?', context, roster, value, scarcity\\)\nprint\\('Prompt length:', len\\(str\\(prompt\\)\\)\\)\nprint\\('Prompt type:', type\\(prompt\\)\\)\n\nfallback = build_fallback_response\\(context, roster, value\\)\nprint\\('Fallback:\\\\n', fallback[:200]\\)\n\" 2>&1)"
     ]
   }
 }

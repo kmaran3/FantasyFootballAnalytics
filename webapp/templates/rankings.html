@@ -128,6 +128,12 @@
 </div>
 
 <style>
+/* Prevent player name from wrapping in the rankings table */
+#sortable-table td:nth-child(2),
+#sortable-table th:nth-child(2) {
+    white-space: nowrap;
+}
+
 /* Mobile: sticky player-name column in rankings table */
 @media (max-width: 768px) {
     #sortable-table td:first-child,
@@ -649,9 +655,12 @@ $(document).ready(function() {
 
                 html += '</div>'; // end dd-content
                 panel.html(html);
+                // If Sleeper cache wasn't warm yet, allow retry on next click
+                if (!espnId) { panel.data('loaded', false); }
             })
             .catch(function() {
                 panel.html('<div class="dd-content"><span class="dd-na">Failed to load player data.</span></div>');
+                panel.data('loaded', false);
             });
     }
 

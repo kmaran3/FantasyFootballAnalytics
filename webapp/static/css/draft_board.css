@@ -66,6 +66,23 @@
     50%       { opacity: 0.4; }
 }
 
+.db-go-live-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    background: rgba(212, 175, 55, 0.15);
+    border: 1px solid var(--gold);
+    border-radius: 4px;
+    color: var(--gold);
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.db-go-live-btn:hover {
+    background: rgba(212, 175, 55, 0.3);
+}
+
 .db-topbar-btn {
     padding: 5px 12px;
     background: var(--dark-gray);
@@ -118,6 +135,7 @@
     flex-direction: column;
     gap: 3px;
     min-width: 0;
+    text-align: left;
 }
 
 .db-saved-league-name {
@@ -342,29 +360,34 @@
 .db-active {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
 }
 
 .db-layout {
+    position: relative;
+    overflow: hidden;
     flex: 1;
-    display: grid;
-    grid-template-columns: 210px 1fr;
-    gap: 0;
-    align-items: start;  /* panels don't stretch — left/right become sticky */
+    min-height: 0;
 }
 
 /* ── Available players panel ─────────────────────────────────── */
 .db-available {
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--medium-gray);
-    background: var(--black);
+    border-right: 1px solid rgba(42,42,42,0.8);
+    background: var(--charcoal);
     overflow: hidden;
-    /* Stick below the topbar (~49px) and fill the rest of the viewport */
-    position: sticky;
-    top: 49px;
-    height: calc(100vh - 49px);
-    align-self: start;
+    /* Positioned absolutely so it doesn't affect parent height */
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 235px;
+}
+
+.db-player-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .db-panel-header {
@@ -374,11 +397,46 @@
     color: var(--gold);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border-bottom: 2px solid var(--gold);
+    border-bottom: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
+}
+
+/* Continuous lines drawn across the full layout width */
+.db-layout .db-gold-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gold);
+    z-index: 25;
+    pointer-events: none;
+}
+.db-layout:has(.db-board-center.copilot-open) .db-gold-line,
+.db-layout:has(.db-board-center.copilot-open) .db-row-line {
+    right: 360px;
+}
+/* When copilot is open: shrink team headers, nudge gold line down, shift left panel */
+.db-board-center.copilot-open .db-board-table thead th {
+    font-size: 0.58em;
+    padding: 6px 3px;
+}
+.db-layout .db-row-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(42,42,42,0.8);
+    z-index: 25;
+    pointer-events: none;
+}
+
+/* When standings are shown, remove horizontal cell borders so only the continuous row-lines show */
+.db-layout.db-standings-mode .db-cell {
+    border-top: none;
+    border-bottom: none;
 }
 
 .db-avail-count {
@@ -446,6 +504,65 @@
     overflow-x: hidden;
 }
 
+/* ── Standings rows ───────────────────────────────────────────── */
+.db-standings-row {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    min-height: 44px;
+    border-bottom: none;
+    font-size: 0.72em;
+    gap: 0;
+    box-sizing: border-box;
+    position: relative;
+}
+.db-standings-row.db-standings-last::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: rgba(42,42,42,0.8);
+}
+.db-standings-rank {
+    min-width: 18px;
+    text-align: center;
+    color: var(--gold);
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.db-standings-divider {
+    width: 1px;
+    align-self: stretch;
+    background: rgba(255,255,255,0.15);
+    margin: 0 5px;
+    flex-shrink: 0;
+}
+.db-standings-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--white);
+    font-weight: 600;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: keep-all;
+}
+.db-standings-record {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    flex: 0 0 32px;
+    text-align: center;
+    font-size: 0.92em;
+}
+.db-standings-pts {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    flex: 0 0 62px;
+    text-align: right;
+    font-size: 0.92em;
+}
+
 .db-player-row {
     display: flex;
     align-items: flex-start;
@@ -503,9 +620,9 @@
     margin-top: 2px;
     font-size: 0.68em;
     line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: break-word;
 }
 
 .db-player-update-warning { color: #f0b870; }
@@ -536,11 +653,14 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    margin-left: 235px;
+    height: 100%;
 }
 
 .db-board-scroll {
-    flex: none;
+    flex: 1;
     min-width: 0;
+    min-height: 0;
     overflow-x: hidden;
 }
 
@@ -591,7 +711,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 8px 4px;
-    border-bottom: 2px solid var(--gold);
+    border-bottom: none;
     white-space: normal;
     word-break: break-word;
     text-align: center;
@@ -718,6 +838,56 @@
     text-decoration: underline;
 }
 
+/* ── Profile modal (iframe overlay) ───────────────────────── */
+.db-profile-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.db-profile-modal {
+    position: relative;
+    width: 92vw;
+    height: 90vh;
+    max-width: 1200px;
+    background: var(--charcoal);
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.db-profile-modal-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    z-index: 10;
+    background: var(--dark-gray);
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    font-size: 1.4em;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: background 0.15s;
+}
+.db-profile-modal-close:hover {
+    background: var(--gold);
+    color: var(--black);
+}
+.db-profile-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: var(--charcoal);
+}
+
 /* ── Available-only toggle ──────────────────────────────────── */
 .db-panel-header {
     display: flex;
@@ -776,6 +946,12 @@
 .db-roster-slots .db-roster-section-hdr:first-child,
 .db-ot-body .db-roster-section-hdr:first-child {
     border-top: none;
+}
+
+/* ── Bottom drawer wrapper ───────────────────────────────────── */
+.db-bottom-drawer {
+    display: flex;
+    flex-direction: column;
 }
 
 /* ── Bottom row: Other Teams + AI Bar side by side ───────────── */
@@ -1328,7 +1504,7 @@
     }
 
     /* Board center takes full width on mobile */
-    .db-board-center { order: 1; }
+    .db-board-center { order: 1; margin-left: 0; }
 
     /* Hide side panels — replaced by drawer */
     .db-available { display: none; position: static; height: auto; }
@@ -1450,4 +1626,243 @@
     .db-ai-label { font-size: 0.6em; }
     .db-target-chip { font-size: 0.7em; padding: 2px 6px; }
     .db-alert-pill { font-size: 0.7em; }
+}
+
+/* ── Copilot Panel ─────────────────────────────────────────── */
+
+.db-copilot-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    background: rgba(212, 175, 55, 0.15);
+    border: 1px solid var(--gold);
+    border-radius: 4px;
+    color: var(--gold);
+    font-size: 0.75em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.db-copilot-toggle:hover {
+    background: rgba(212, 175, 55, 0.3);
+}
+
+.db-copilot-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 360px;
+    display: flex;
+    flex-direction: column;
+    background: rgba(22, 22, 22, 0.95);
+    border-left: 1px solid rgba(212, 175, 55, 0.25);
+    overflow: hidden;
+    z-index: 20;
+}
+
+/* When copilot is open, board center needs right margin to avoid overlap */
+.db-board-center.copilot-open {
+    margin-right: 360px;
+}
+
+.db-copilot-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+}
+.db-copilot-title {
+    color: var(--gold);
+    font-size: 0.85em;
+    font-weight: 600;
+}
+.db-copilot-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+.db-copilot-close:hover { color: #fff; }
+
+/* Best Available bar */
+.db-copilot-bav {
+    padding: 8px 12px;
+    background: rgba(212, 175, 55, 0.08);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+    flex-shrink: 0;
+}
+.db-copilot-bav-label {
+    font-size: 0.65em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gold);
+    font-weight: 600;
+}
+.db-copilot-bav-player {
+    margin-top: 4px;
+    font-size: 0.8em;
+    color: #e0e0e0;
+}
+.db-copilot-bav-player .bav-pos {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: 700;
+    margin-right: 4px;
+}
+.db-copilot-bav-player .bav-ppg {
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85em;
+    margin-left: 6px;
+}
+.db-copilot-bav-player .bav-reason {
+    display: block;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.75em;
+    margin-top: 2px;
+}
+.db-copilot-bav-complete {
+    font-size: 0.8em;
+    color: rgba(255,255,255,0.5);
+    font-style: italic;
+}
+
+/* Chat messages */
+.db-copilot-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.db-copilot-welcome {
+    color: rgba(255,255,255,0.4);
+    font-size: 0.8em;
+    text-align: center;
+    padding: 20px 10px;
+    line-height: 1.5;
+}
+.db-copilot-msg {
+    max-width: 92%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.8em;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+.db-copilot-msg.user {
+    align-self: flex-end;
+    background: rgba(212, 175, 55, 0.2);
+    color: #e0e0e0;
+    border-bottom-right-radius: 2px;
+}
+.db-copilot-msg.copilot {
+    align-self: flex-start;
+    background: rgba(255,255,255,0.06);
+    color: #d0d0d0;
+    border-bottom-left-radius: 2px;
+    text-align: left;
+    max-width: 100%;
+}
+.db-copilot-msg.copilot strong { color: #fff; }
+.db-copilot-msg.copilot h2 { font-size: 1em; margin: 0 0 4px; color: var(--gold); }
+.db-copilot-msg.copilot h3 { font-size: 0.9em; margin: 8px 0 2px; color: #e0e0e0; }
+.db-copilot-msg.copilot ul { margin: 4px 0; padding-left: 16px; }
+.db-copilot-msg.copilot li { margin: 2px 0; }
+.db-copilot-msg.error {
+    align-self: center;
+    background: rgba(220, 50, 50, 0.15);
+    color: rgba(255,150,150,0.9);
+    font-size: 0.75em;
+    text-align: center;
+}
+.db-copilot-msg .interrupted {
+    color: rgba(255,255,255,0.3);
+    font-style: italic;
+    font-size: 0.85em;
+}
+
+/* Typing indicator */
+.db-copilot-typing {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px;
+    align-self: flex-start;
+}
+.db-copilot-typing span {
+    width: 6px; height: 6px;
+    background: rgba(212, 175, 55, 0.5);
+    border-radius: 50%;
+    animation: copilotDot 1.2s infinite;
+}
+.db-copilot-typing span:nth-child(2) { animation-delay: 0.2s; }
+.db-copilot-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes copilotDot {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+}
+
+/* Input area */
+.db-copilot-input-wrap {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    gap: 6px;
+    flex-shrink: 0;
+}
+.db-copilot-input {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: #e0e0e0;
+    font-size: 0.8em;
+    outline: none;
+}
+.db-copilot-input:focus {
+    border-color: rgba(212, 175, 55, 0.4);
+}
+.db-copilot-send {
+    background: rgba(212, 175, 55, 0.2);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 6px;
+    color: var(--gold);
+    padding: 6px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+.db-copilot-send:hover {
+    background: rgba(212, 175, 55, 0.35);
+}
+
+/* No API key banner */
+.db-copilot-no-key {
+    padding: 8px 12px;
+    background: rgba(220, 160, 50, 0.1);
+    border-top: 1px solid rgba(220, 160, 50, 0.2);
+    color: rgba(220, 160, 50, 0.8);
+    font-size: 0.7em;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* Hide panel on mobile — shown in drawer instead */
+@media (max-width: 768px) {
+    .db-copilot-panel { display: none !important; }
+    .db-copilot-toggle { display: none !important; }
+    .db-board-center.copilot-open { margin-right: 0; }
 }
