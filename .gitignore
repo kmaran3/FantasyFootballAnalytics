@@ -32,7 +32,6 @@ Thumbs.db
 .env.local
 
 # Testing
-test_*.py
 TEST_REPORT.md
 fix_*.py
 
