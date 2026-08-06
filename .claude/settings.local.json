@@ -103,7 +103,11 @@
       "Bash(/opt/homebrew/opt/python@3.11/bin/python3.11 -m pytest tests/test_auth.py::test_login_redirects_authenticated_user -v)",
       "Bash(SUPABASE_URL= SUPABASE_ANON_KEY= SUPABASE_JWT_SECRET= /opt/homebrew/opt/python@3.11/bin/python3.11 -m pytest tests/ -v --tb=short)",
       "Bash(git rm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(/opt/homebrew/opt/python@3.11/bin/python3.11 -m pytest tests/ -q)"
     ]
   }
 }
