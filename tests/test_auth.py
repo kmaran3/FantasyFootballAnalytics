@@ -1,11 +1,17 @@
-"""Tests for authentication: login, register, logout, guest access."""
+"""Tests for authentication: login page, register page, logout, protected routes.
+
+Note: These tests validate route behavior and rendering. Actual Supabase
+sign_in/sign_up calls are mocked since we don't have credentials in CI.
+"""
+
+from unittest.mock import patch, MagicMock
 
 
 def test_login_page_loads(client):
-    """GET / renders the login form."""
+    """GET / renders the login form with email field."""
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"login" in resp.data.lower() or b"sign in" in resp.data.lower()
+    assert b"email" in resp.data.lower()
 
 
 def test_register_page_loads(client):
@@ -15,100 +21,59 @@ def test_register_page_loads(client):
     assert b"register" in resp.data.lower() or b"sign up" in resp.data.lower()
 
 
-def test_register_new_user(client, app):
-    """POST /register with valid data creates a user and redirects."""
-    resp = client.post(
-        "/register",
-        data={
-            "username": "newuser",
-            "email": "new@example.com",
-            "password": "Abcdef1234",
-            "confirm_password": "Abcdef1234",
-        },
-        follow_redirects=True,
-    )
+def test_login_invalid_credentials(client):
+    """POST / with bad credentials shows error flash."""
+    with patch("webapp.supabase_auth.sign_in", side_effect=Exception("Invalid")):
+        resp = client.post(
+            "/",
+            data={"email": "bad@example.com", "password": "WrongPass999"},
+            follow_redirects=True,
+        )
     assert resp.status_code == 200
-    from webapp import User
-    with app.app_context():
-        assert User.query.get("newuser") is not None
+    assert b"invalid" in resp.data.lower() or b"error" in resp.data.lower()
 
 
-def test_register_duplicate_username(client, app):
-    """Registering with an existing username fails."""
-    from webapp import User, db
-    with app.app_context():
-        if not User.query.get("dupuser"):
-            u = User(id="dupuser", email="dup@example.com")
-            u.set_password("TestPass123")
-            db.session.add(u)
-            db.session.commit()
-
-    resp = client.post(
-        "/register",
-        data={
-            "username": "dupuser",
-            "email": "other@example.com",
-            "password": "TestPass123",
-            "confirm_password": "TestPass123",
-        },
-        follow_redirects=True,
-    )
-    assert resp.status_code == 200
-    assert b"already" in resp.data.lower() or b"taken" in resp.data.lower() or b"exists" in resp.data.lower()
-
-
-def test_login_valid_credentials(client, app):
-    """Login with correct username/password redirects to /home."""
-    from webapp import User, db
-    with app.app_context():
-        if not User.query.get("logintest"):
-            u = User(id="logintest", email="login@example.com")
-            u.set_password("TestPass123")
-            db.session.add(u)
-            db.session.commit()
-
-    resp = client.post(
-        "/",
-        data={"username": "logintest", "password": "TestPass123"},
-        follow_redirects=False,
-    )
-    # Should redirect to /home on success
-    assert resp.status_code in (302, 303)
-    assert "/home" in resp.headers.get("Location", "")
-
-
-def test_login_invalid_password(client, app):
-    """Login with wrong password stays on login page."""
-    from webapp import User, db
-    with app.app_context():
-        if not User.query.get("logintest2"):
-            u = User(id="logintest2", email="login2@example.com")
-            u.set_password("TestPass123")
-            db.session.add(u)
-            db.session.commit()
-
-    resp = client.post(
-        "/",
-        data={"username": "logintest2", "password": "WrongPass999"},
-        follow_redirects=True,
-    )
-    assert resp.status_code == 200
-    # Should show error, not redirect to home
-    assert b"home" not in resp.data[:500].lower() or b"invalid" in resp.data.lower()
-
-
-def test_guest_login(client):
-    """GET /guest-login logs in as guest and redirects to /home."""
-    resp = client.get("/guest-login", follow_redirects=False)
+def test_login_redirects_authenticated_user(logged_in_client):
+    """GET / when already logged in redirects to /home."""
+    resp = logged_in_client.get("/", follow_redirects=False)
     assert resp.status_code in (302, 303)
     assert "/home" in resp.headers.get("Location", "")
 
 
 def test_logout(logged_in_client):
     """GET /logout redirects to login page."""
-    resp = logged_in_client.get("/logout", follow_redirects=False)
+    with patch("webapp.supabase_auth.sign_out"):
+        resp = logged_in_client.get("/logout", follow_redirects=False)
     assert resp.status_code in (302, 303)
 
-    # After logout, accessing /home should redirect to login
-    resp2 = logged_in_client.get("/home", follow_redirects=False)
-    assert resp2.status_code in (302, 303)
+
+def test_protected_route_redirects_unauthenticated(client):
+    """GET /home without auth redirects to login."""
+    resp = client.get("/home", follow_redirects=False)
+    assert resp.status_code in (302, 303)
+    assert "/" in resp.headers.get("Location", "")
+
+
+def test_login_next_param_validated(client):
+    """Open redirect: next=https://evil.com should be ignored."""
+    mock_resp = MagicMock()
+    mock_resp.user = MagicMock(id="uuid-123", email="ok@test.com", user_metadata={})
+    mock_resp.session = MagicMock(access_token="tok", refresh_token="ref")
+
+    with patch("webapp.supabase_auth.sign_in", return_value=mock_resp):
+        with patch("webapp.views._ensure_local_user"):
+            resp = client.post(
+                "/?next=https://evil.com",
+                data={"email": "ok@test.com", "password": "GoodPass123"},
+                follow_redirects=False,
+            )
+    # Should redirect to /home, NOT to evil.com
+    location = resp.headers.get("Location", "")
+    assert "evil.com" not in location
+    assert "/home" in location
+
+
+def test_social_login_invalid_provider(client):
+    """GET /login/github returns 404 (only google/apple allowed)."""
+    resp = client.get("/login/github")
+    assert resp.status_code == 404

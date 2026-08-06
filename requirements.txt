@@ -1,6 +1,8 @@
 Flask==3.0.0
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
+supabase>=2.13.0
+PyJWT>=2.8.0
 Flask-WTF==1.2.1
 WTForms==3.1.1
 numpy>=1.23.2,<2.0.0

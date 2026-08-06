@@ -4,8 +4,8 @@ import json
 import os
 import time
 
-from flask import request, Response, stream_with_context, jsonify
-from flask_login import login_required, current_user
+from flask import request, Response, stream_with_context, jsonify, g
+from webapp.supabase_auth import login_required
 
 from . import copilot_bp
 from .copilot_tools import (
@@ -60,7 +60,7 @@ def _best_available_from_value(value_picks, needs=None):
 @copilot_bp.route("/draft-board/copilot/chat", methods=["POST"])
 @login_required
 def copilot_chat():
-    user_id = current_user.id
+    user_id = g.user.id
 
     # Rate limit: 10 requests/minute
     now = time.time()

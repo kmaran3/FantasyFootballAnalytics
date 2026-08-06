@@ -2,8 +2,7 @@ from flask import Flask
 from flask.json.provider import DefaultJSONProvider
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask_wtf.csrf import CSRFProtect
 import os
 from dotenv import load_dotenv
 
@@ -20,20 +19,13 @@ except ImportError:
 
 # Initialize the database globally
 db = SQLAlchemy()
+_csrf = CSRFProtect()
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.String(100), primary_key=True)
+class User(db.Model):
+    id = db.Column(db.String(36), primary_key=True)        # Supabase UUID
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256))
+    username = db.Column(db.String(100), nullable=True)     # display name / old username
     rankings = db.relationship('UserRanking', backref='user', lazy=True)
-    
-    def set_password(self, password):
-        """Hash and set the user's password."""
-        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
-    
-    def check_password(self, password):
-        """Check if the provided password matches the hash."""
-        return check_password_hash(self.password_hash, password)
 
 class UserRanking(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -154,15 +146,12 @@ def create_app():
     # Initialize the database with the app
     db.init_app(app)
 
-    login_manager = LoginManager()
-    login_manager.init_app(app)
-    login_manager.login_view = 'main.login'
-    login_manager.session_protection = 'strong'  # Protects against session hijacking
+    # Enable CSRF protection globally (makes csrf_token() available in all templates)
+    from webapp import _csrf
+    _csrf.init_app(app)
 
-    # User loader function for Flask-Login
-    @login_manager.user_loader
-    def load_user(user_id):
-        return User.query.get(user_id)
+    from webapp.supabase_auth import init_supabase
+    init_supabase(app)
 
     # Import and register blueprints
     from .views import main as main_blueprint
