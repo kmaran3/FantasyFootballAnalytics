@@ -1597,6 +1597,22 @@ _rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
 def login():
     if g.user:
         return redirect(url_for('main.home'))
+
+    # Handle OAuth code if Supabase redirected here instead of /auth/callback
+    code = request.args.get('code')
+    if code:
+        try:
+            resp = supabase_auth.get_supabase().auth.exchange_code_for_session(
+                {'auth_code': code}
+            )
+            supabase_auth._store_session(resp.session)
+            _ensure_local_user(resp.user)
+            return redirect(url_for('main.home'))
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            flash('Authentication failed. Please try again.', 'danger')
+
     form = LoginForm()
     if form.validate_on_submit():
         try:
