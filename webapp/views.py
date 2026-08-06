@@ -1602,11 +1602,8 @@ def login():
     code = request.args.get('code')
     if code:
         try:
-            resp = supabase_auth.get_supabase().auth.exchange_code_for_session(
-                {'auth_code': code}
-            )
-            supabase_auth._store_session(resp.session)
-            _ensure_local_user(resp.user)
+            data = supabase_auth.exchange_code_for_session(code)
+            _ensure_local_user_from_token(data)
             return redirect(url_for('main.home'))
         except Exception:
             import traceback
@@ -1667,11 +1664,8 @@ def auth_callback():
     if not code:
         return redirect(url_for('main.login'))
     try:
-        resp = supabase_auth.get_supabase().auth.exchange_code_for_session(
-            {'auth_code': code}
-        )
-        supabase_auth._store_session(resp.session)
-        _ensure_local_user(resp.user)
+        data = supabase_auth.exchange_code_for_session(code)
+        _ensure_local_user_from_token(data)
         return redirect(url_for('main.home'))
     except Exception as e:
         import traceback
@@ -1736,6 +1730,22 @@ def _ensure_local_user(supabase_user):
         db.session.add(user)
     else:
         user.email = supabase_user.email
+    db.session.commit()
+
+
+def _ensure_local_user_from_token(token_data):
+    """Create or update local User record from raw token response dict."""
+    user_data = token_data.get('user', {})
+    user_id = user_data.get('id', '')
+    email = user_data.get('email', '')
+    if not user_id:
+        return
+    user = User.query.get(user_id)
+    if not user:
+        user = User(id=user_id, email=email)
+        db.session.add(user)
+    else:
+        user.email = email
     db.session.commit()
 
 @main.route('/home')
