@@ -1722,12 +1722,17 @@ def _ensure_local_user(supabase_user):
     """Create or update local User record from Supabase user data."""
     user = User.query.get(supabase_user.id)
     if not user:
-        user = User(
-            id=supabase_user.id,
-            email=supabase_user.email,
-            username=(supabase_user.user_metadata or {}).get('old_username'),
-        )
-        db.session.add(user)
+        existing = User.query.filter_by(email=supabase_user.email).first()
+        if existing:
+            existing.id = supabase_user.id
+            db.session.flush()
+        else:
+            user = User(
+                id=supabase_user.id,
+                email=supabase_user.email,
+                username=(supabase_user.user_metadata or {}).get('old_username'),
+            )
+            db.session.add(user)
     else:
         user.email = supabase_user.email
     db.session.commit()
@@ -1742,8 +1747,15 @@ def _ensure_local_user_from_token(token_data):
         return
     user = User.query.get(user_id)
     if not user:
-        user = User(id=user_id, email=email)
-        db.session.add(user)
+        # Check if an old row exists with this email (pre-migration user)
+        existing = User.query.filter_by(email=email).first()
+        if existing:
+            # Update old row to use the new Supabase UUID
+            existing.id = user_id
+            db.session.flush()
+        else:
+            user = User(id=user_id, email=email)
+            db.session.add(user)
     else:
         user.email = email
     db.session.commit()
