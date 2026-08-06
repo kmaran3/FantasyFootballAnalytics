@@ -109,7 +109,12 @@
       "Bash(git push:*)",
       "Bash(/opt/homebrew/opt/python@3.11/bin/python3.11 -m pytest tests/ -q)",
       "Bash(kill %1)",
-      "Bash(pkill -f \"python.*app.py\")"
+      "Bash(pkill -f \"python.*app.py\")",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(gh repo:*)",
+      "Bash(gh api:*)",
+      "Bash(gh workflow:*)"
     ]
   }
 }

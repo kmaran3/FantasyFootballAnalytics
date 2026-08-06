@@ -131,9 +131,14 @@ def create_app():
     # Load a stable secret key from environment (preferred) or instance file (local dev fallback).
     app.config['SECRET_KEY'] = _get_secret_key(app)
     
-    # Database configuration - Railway/Postgres in production, SQLite fallback for local dev.
+    # Database configuration - Supabase Postgres in production, SQLite fallback for local dev.
     app.config['SQLALCHEMY_DATABASE_URI'] = _get_database_uri(app)
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
+    engine_opts = {'pool_pre_ping': True}
+    db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+    if 'supabase' in db_uri or 'pooler' in db_uri:
+        # Supavisor transaction-mode pooling: disable prepared statement caching
+        engine_opts['connect_args'] = {'options': '-c statement_timeout=30000'}
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_opts
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
