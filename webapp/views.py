@@ -1,12 +1,14 @@
-from flask import Blueprint, render_template, url_for, flash, redirect, request, jsonify, current_app as app
-from flask_login import login_user, current_user, logout_user, login_required
+from flask import Blueprint, render_template, url_for, flash, redirect, request, jsonify, current_app as app, g, abort
+from webapp import supabase_auth
+from webapp.supabase_auth import login_required
+import os
 import pandas as pd
 import requests
 from sqlalchemy import create_engine, text
 from bs4 import BeautifulSoup
 from pathlib import Path
 from webapp.forms import LoginForm, RegistrationForm
-from webapp import db, User, UserRanking, MockDraft, DraftBoardSession, SavedLeague
+from webapp import db, User, UserRanking, MockDraft, DraftBoardSession, SavedLeague, _csrf as csrf
 import json
 import sys
 from datetime import datetime, timedelta
@@ -33,10 +35,6 @@ _enable_numpy_pickle_compat()
 
 main = Blueprint('main', __name__)
 
-# Simple rate limiter for login attempts (in-memory, resets on restart)
-_login_attempts = defaultdict(list)
-_MAX_LOGIN_ATTEMPTS = 5
-_LOGIN_TIMEOUT_MINUTES = 15
 
 _DB_PATH = Path(__file__).resolve().parent.parent / 'webapp' / 'my_database.db'
 engine = create_engine(f'sqlite:///{_DB_PATH}', echo=True)
@@ -1597,100 +1595,132 @@ _rankings    = _load('Full PPR Rankings with Weighted VBD.pkl')
 
 @main.route('/', methods=['GET', 'POST'])
 def login():
-    if current_user.is_authenticated:
+    if g.user:
         return redirect(url_for('main.home'))
-    
-    # Rate limiting: check login attempts from this IP
-    client_ip = request.remote_addr
-    now = datetime.utcnow()
-    
-    # Clean up old attempts
-    _login_attempts[client_ip] = [
-        attempt_time for attempt_time in _login_attempts[client_ip]
-        if now - attempt_time < timedelta(minutes=_LOGIN_TIMEOUT_MINUTES)
-    ]
-    
-    # Check if too many attempts
-    if len(_login_attempts[client_ip]) >= _MAX_LOGIN_ATTEMPTS:
-        flash(f'Too many login attempts. Please try again in {_LOGIN_TIMEOUT_MINUTES} minutes.', 'danger')
-        return render_template('login.html', form=LoginForm())
-    
     form = LoginForm()
     if form.validate_on_submit():
         try:
-            user = User.query.filter_by(id=form.username.data).first()
-            if user and user.check_password(form.password.data):
-                # Successful login - clear attempts
-                _login_attempts[client_ip].clear()
-                login_user(user)
-                next_page = request.args.get('next')
-                return redirect(next_page) if next_page else redirect(url_for('main.home'))
-            else:
-                # Failed login - record attempt
-                _login_attempts[client_ip].append(now)
-                flash('Invalid username or password', 'danger')
+            resp = supabase_auth.sign_in(form.email.data, form.password.data)
+            _ensure_local_user(resp.user)
+            next_page = request.args.get('next')
+            if next_page and not next_page.startswith('/'):
+                next_page = None
+            return redirect(next_page) if next_page else redirect(url_for('main.home'))
         except Exception as e:
-            print(f"Login error: {e}")
-            flash('An error occurred. Please try again.', 'danger')
+            import traceback
+            traceback.print_exc()
+            flash('Invalid email or password', 'danger')
     return render_template('login.html', form=form)
 
-@main.route('/logout')
-def logout():
-    logout_user()
-    flash('You have been logged out.')
-    return redirect(url_for('main.login'))
-
-@main.route('/guest-login')
-def guest_login():
-    from webapp import db
-    guest = User.query.filter_by(id='guest').first() or User.query.filter_by(email='guest@darkhorse.local').first()
-    if not guest:
-        guest = User(id='guest', email='guest@darkhorse.local')
-        guest.set_password('guest-no-password')
-        db.session.add(guest)
-        db.session.commit()
-    login_user(guest, remember=False)
-    return redirect(url_for('main.home'))
 
 @main.route('/register', methods=['GET', 'POST'])
 def register():
-    if current_user.is_authenticated:
+    if g.user:
         return redirect(url_for('main.home'))
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
-            # Check for duplicate email
-            if User.query.filter_by(email=form.email.data).first():
-                flash('An account with that email already exists.', 'warning')
-                return render_template('register.html', form=form)
-            # Check for duplicate username
-            if User.query.filter_by(id=form.username.data).first():
-                flash('That username is already taken.', 'warning')
-                return render_template('register.html', form=form)
-            
-            # Create new user
-            user = User(id=form.username.data, email=form.email.data)
-            user.set_password(form.password.data)
-            db.session.add(user)
-            db.session.commit()
-            
-            flash('Registration successful! Please log in.', 'success')
+            supabase_auth.sign_up(form.email.data.strip(), form.password.data)
+            flash('Registration successful! Check your email to confirm.', 'success')
             return redirect(url_for('main.login'))
-            
-        except Exception as e:
-            db.session.rollback()
-            error_msg = str(e)
-            print(f"Registration error: {error_msg}")
-            
-            # Provide more specific error messages
-            if 'UNIQUE constraint failed' in error_msg:
-                flash('Username or email already exists.', 'danger')
-            elif 'no such table' in error_msg.lower():
-                flash('Database not initialized. Please contact support.', 'danger')
-            else:
-                flash('An error occurred during registration. Please try again.', 'danger')
-                
+        except Exception:
+            flash('Registration failed. Email may already be in use.', 'danger')
     return render_template('register.html', form=form)
+
+
+@main.route('/login/<provider>')
+def social_login(provider):
+    """Redirect to OAuth provider (google, apple)."""
+    if provider not in ('google',):
+        abort(404)
+    resp = supabase_auth.sign_in_with_oauth(
+        provider,
+        redirect_to=url_for('main.auth_callback', _external=True),
+    )
+    return redirect(resp.url)
+
+
+@main.route('/auth/callback')
+def auth_callback():
+    """Handle redirect from OAuth provider.
+
+    Supabase redirects here with ?code=... which we exchange for a session
+    server-side.
+    """
+    code = request.args.get('code')
+    if not code:
+        return redirect(url_for('main.login'))
+    try:
+        resp = supabase_auth.get_supabase().auth.exchange_code_for_session(
+            {'auth_code': code}
+        )
+        supabase_auth._store_session(resp.session)
+        _ensure_local_user(resp.user)
+        return redirect(url_for('main.home'))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash('Authentication failed. Please try again.', 'danger')
+        return redirect(url_for('main.login'))
+
+
+@main.route('/logout')
+def logout():
+    supabase_auth.sign_out()
+    flash('You have been logged out.')
+    return redirect(url_for('main.login'))
+
+
+@main.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip()
+        if email:
+            try:
+                supabase_auth.reset_password(
+                    email,
+                    redirect_to=url_for('main.reset_password_confirm', _external=True),
+                )
+            except Exception:
+                pass
+            # Same message regardless of whether email exists (prevent enumeration)
+            flash('If that email is registered, a reset link has been sent.', 'info')
+        else:
+            flash('Please enter your email address.', 'warning')
+        return redirect(url_for('main.login'))
+    return render_template('forgot_password.html')
+
+
+@main.route('/reset-password', methods=['GET', 'POST'])
+def reset_password_confirm():
+    """User lands here from the reset email link."""
+    if request.method == 'POST':
+        new_password = request.form.get('password', '')
+        if len(new_password) < 8:
+            flash('Password must be at least 8 characters long.', 'danger')
+            return render_template('reset_password.html')
+        try:
+            supabase_auth.get_supabase().auth.update_user({'password': new_password})
+            flash('Password updated! Please log in.', 'success')
+            return redirect(url_for('main.login'))
+        except Exception:
+            flash('Failed to reset password. The link may have expired.', 'danger')
+    return render_template('reset_password.html')
+
+
+def _ensure_local_user(supabase_user):
+    """Create or update local User record from Supabase user data."""
+    user = User.query.get(supabase_user.id)
+    if not user:
+        user = User(
+            id=supabase_user.id,
+            email=supabase_user.email,
+            username=(supabase_user.user_metadata or {}).get('old_username'),
+        )
+        db.session.add(user)
+    else:
+        user.email = supabase_user.email
+    db.session.commit()
 
 @main.route('/home')
 @login_required
@@ -1713,7 +1743,7 @@ def rankings():
 @main.route('/rankings/ppr')
 @login_required
 def get_ppr_rankings():
-    saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
+    saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     return render_template('rankings.html', table_data=_model_table['ppr'], table_type='PPR',
                            user_rankings=saved, player_details_json='{}',
                            team_schedule_json='{}', teams=[], bye_weeks=[])
@@ -1721,7 +1751,7 @@ def get_ppr_rankings():
 @main.route('/rankings/half-ppr')
 @login_required
 def get_half_ppr_rankings():
-    saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
+    saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     return render_template('rankings.html', table_data=_model_table['half_ppr'], table_type='Half PPR',
                            user_rankings=saved, player_details_json='{}',
                            team_schedule_json='{}', teams=[], bye_weeks=[])
@@ -1729,7 +1759,7 @@ def get_half_ppr_rankings():
 @main.route('/rankings/standard')
 @login_required
 def get_standard_rankings():
-    saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
+    saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     return render_template('rankings.html', table_data=_model_table['standard'], table_type='Standard',
                            user_rankings=saved, player_details_json='{}',
                            team_schedule_json='{}', teams=[], bye_weeks=[])
@@ -1755,7 +1785,7 @@ def save_rankings():
     name = data.get('name', 'Untitled')
 
     # Check for duplicate name
-    existing = UserRanking.query.filter_by(user_id=current_user.id, name=name).first()
+    existing = UserRanking.query.filter_by(user_id=g.user.id, name=name).first()
     if existing:
         return jsonify({'error': 'A ranking with that name already exists. Please choose a different name.'}), 400
 
@@ -1763,7 +1793,7 @@ def save_rankings():
     ranking_json = json.dumps(ranking_data)
 
     # Save the ranking to the database
-    user_ranking = UserRanking(user_id=current_user.id, name=name, ranking_type=ranking_type, ranking_data=ranking_json)
+    user_ranking = UserRanking(user_id=g.user.id, name=name, ranking_type=ranking_type, ranking_data=ranking_json)
     db.session.add(user_ranking)
     db.session.commit()
 
@@ -1773,7 +1803,7 @@ def save_rankings():
 @login_required
 def update_ranking(ranking_id):
     ranking = UserRanking.query.get_or_404(ranking_id)
-    if ranking.user_id != current_user.id:
+    if ranking.user_id != g.user.id:
         return jsonify({'error': 'Access denied'}), 403
     data = request.get_json()
     ranking_data = data.get('ranking', [])
@@ -1785,7 +1815,7 @@ def update_ranking(ranking_id):
 @login_required
 def view_saved_ranking(ranking_id):
     ranking = UserRanking.query.get_or_404(ranking_id)
-    if ranking.user_id != current_user.id:
+    if ranking.user_id != g.user.id:
         flash('Access denied.')
         return redirect(url_for('main.rankings'))
     # Parse the saved JSON data back into table format
@@ -1807,7 +1837,7 @@ def view_saved_ranking(ranking_id):
         for i, header in enumerate(headers):
             row_dict[header] = row[i] if i < len(row) else ''
         table_data.append(row_dict)
-    saved = UserRanking.query.filter_by(user_id=current_user.id).order_by(UserRanking.timestamp.desc()).all()
+    saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     player_details = _get_player_details()
     team_schedule = _get_team_schedule()
     teams = sorted(set(str(r.get('Team', '')) for r in table_data if r.get('Team')))
@@ -1822,14 +1852,14 @@ def view_saved_ranking(ranking_id):
 @login_required
 def user_rankings():
     # Retrieve all rankings for the current user
-    user_rankings = UserRanking.query.filter_by(user_id=current_user.id).all()
+    user_rankings = UserRanking.query.filter_by(user_id=g.user.id).all()
     return render_template('user_rankings.html', user_rankings=user_rankings)
 
 @main.route('/delete_ranking/<int:ranking_id>', methods=['DELETE'])
 @login_required
 def delete_ranking(ranking_id):
     ranking = UserRanking.query.get_or_404(ranking_id)
-    if ranking.user_id != current_user.id:
+    if ranking.user_id != g.user.id:
         return jsonify({'error': 'Access denied'}), 403
     db.session.delete(ranking)
     db.session.commit()
@@ -2324,7 +2354,7 @@ def mockdraft_players():
 def mockdraft_save():
     data = request.get_json()
     draft = MockDraft(
-        user_id=current_user.id,
+        user_id=g.user.id,
         draft_type=data.get('draft_type', 'snake'),
         scoring=data.get('scoring', 'ppr'),
         settings=json.dumps(data.get('settings', {})),
@@ -2380,15 +2410,15 @@ def mockdraft_email():
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = smtp_user
-        msg['To'] = current_user.email
+        msg['To'] = g.user.email
         msg.attach(MIMEText(html_body, 'html'))
 
         with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
             server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, current_user.email, msg.as_string())
+            server.sendmail(smtp_user, g.user.email, msg.as_string())
 
-        return jsonify({'message': f'Draft emailed to {current_user.email}!'})
+        return jsonify({'message': f'Draft emailed to {g.user.email}!'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -2427,7 +2457,7 @@ def _build_team_html(user_team, scoring):
 @main.route('/my_drafts')
 @login_required
 def my_drafts():
-    drafts = MockDraft.query.filter_by(user_id=current_user.id).order_by(MockDraft.created_at.desc()).all()
+    drafts = MockDraft.query.filter_by(user_id=g.user.id).order_by(MockDraft.created_at.desc()).all()
     draft_list = []
     for d in drafts:
         settings = json.loads(d.settings)
@@ -2445,7 +2475,7 @@ def my_drafts():
 @login_required
 def view_draft(draft_id):
     draft = MockDraft.query.get_or_404(draft_id)
-    if draft.user_id != current_user.id:
+    if draft.user_id != g.user.id:
         flash('Access denied.')
         return redirect(url_for('main.my_drafts'))
     return render_template('view_draft.html',
@@ -2460,7 +2490,7 @@ def view_draft(draft_id):
 @login_required
 def delete_draft(draft_id):
     draft = MockDraft.query.get_or_404(draft_id)
-    if draft.user_id != current_user.id:
+    if draft.user_id != g.user.id:
         return jsonify({'error': 'Access denied'}), 403
     db.session.delete(draft)
     db.session.commit()
@@ -3595,7 +3625,7 @@ def draft_board_espn_sync():
 def draft_board_save():
     """Upsert the user's draft board session (one session per user)."""
     data = request.get_json(silent=True) or {}
-    existing = DraftBoardSession.query.filter_by(user_id=current_user.id).first()
+    existing = DraftBoardSession.query.filter_by(user_id=g.user.id).first()
     if existing:
         existing.source    = data.get('source', 'manual')
         existing.league_id = data.get('league_id')
@@ -3606,7 +3636,7 @@ def draft_board_save():
         existing.updated_at = datetime.utcnow()
     else:
         db.session.add(DraftBoardSession(
-            user_id   = current_user.id,
+            user_id   = g.user.id,
             source    = data.get('source', 'manual'),
             league_id = data.get('league_id'),
             draft_id  = data.get('draft_id'),
@@ -3622,7 +3652,7 @@ def draft_board_save():
 @login_required
 def draft_board_load():
     """Return the user's saved draft board session, if any."""
-    sess = DraftBoardSession.query.filter_by(user_id=current_user.id).first()
+    sess = DraftBoardSession.query.filter_by(user_id=g.user.id).first()
     if not sess:
         return jsonify({'found': False})
     return jsonify({
@@ -3641,7 +3671,7 @@ def draft_board_load():
 @login_required
 def draft_board_reset():
     """Delete the user's saved draft board session so they can start fresh."""
-    sess = DraftBoardSession.query.filter_by(user_id=current_user.id).first()
+    sess = DraftBoardSession.query.filter_by(user_id=g.user.id).first()
     if sess:
         db.session.delete(sess)
         db.session.commit()
@@ -3655,7 +3685,7 @@ def draft_board_reset():
 def draft_board_leagues_list():
     """Return all leagues saved by the current user."""
     leagues = (SavedLeague.query
-               .filter_by(user_id=current_user.id)
+               .filter_by(user_id=g.user.id)
                .order_by(SavedLeague.last_accessed.desc())
                .all())
     return jsonify([{
@@ -3683,7 +3713,7 @@ def draft_board_leagues_save():
         return jsonify({'error': 'league_id required'}), 400
 
     try:
-        existing = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
+        existing = SavedLeague.query.filter_by(user_id=g.user.id, league_id=league_id).first()
         if existing:
             existing.league_name    = data.get('league_name', existing.league_name)
             existing.num_teams      = data.get('num_teams', existing.num_teams)
@@ -3696,7 +3726,7 @@ def draft_board_leagues_save():
             existing.last_accessed  = datetime.utcnow()
         else:
             db.session.add(SavedLeague(
-                user_id        = current_user.id,
+                user_id        = g.user.id,
                 league_id      = league_id,
                 league_name    = data.get('league_name', 'My League'),
                 source         = data.get('source', 'sleeper'),
@@ -3721,7 +3751,7 @@ def draft_board_leagues_save():
 @login_required
 def draft_board_leagues_delete(league_id):
     """Remove a saved league from the user's account."""
-    lg = SavedLeague.query.filter_by(user_id=current_user.id, league_id=league_id).first()
+    lg = SavedLeague.query.filter_by(user_id=g.user.id, league_id=league_id).first()
     if lg:
         db.session.delete(lg)
         db.session.commit()

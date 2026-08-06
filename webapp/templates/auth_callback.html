@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Signing in...{% endblock %}
+
+{% block body_class %}auth-page{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card animate-slide-up" style="text-align:center;">
+        <div class="auth-header">
+            <h1 class="auth-title">Signing you in...</h1>
+            <p class="auth-subtitle" id="status-msg">Please wait while we complete authentication.</p>
+            <pre id="debug" style="text-align:left;font-size:0.75em;color:#999;margin-top:16px;word-break:break-all;white-space:pre-wrap;"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var debug = document.getElementById('debug');
+    var fullUrl = window.location.href;
+    var hash = window.location.hash.substring(1);
+    var search = window.location.search;
+
+    debug.textContent = 'URL: ' + fullUrl + '\n\nHash: ' + (hash || '(empty)') + '\n\nQuery: ' + (search || '(empty)');
+
+    // Try hash first (implicit flow), then query params (code flow)
+    var params;
+    var accessToken, refreshToken, code;
+
+    if (hash) {
+        params = new URLSearchParams(hash);
+        accessToken = params.get('access_token');
+        refreshToken = params.get('refresh_token');
+    }
+
+    if (!accessToken) {
+        params = new URLSearchParams(search);
+        code = params.get('code');
+        accessToken = params.get('access_token');
+        refreshToken = params.get('refresh_token');
+    }
+
+    debug.textContent += '\n\naccess_token: ' + (accessToken ? 'found (' + accessToken.substring(0, 20) + '...)' : 'NOT FOUND');
+    debug.textContent += '\nrefresh_token: ' + (refreshToken ? 'found' : 'NOT FOUND');
+    debug.textContent += '\ncode: ' + (code ? 'found' : 'NOT FOUND');
+
+    if (!accessToken && !code) {
+        debug.textContent += '\n\nNo tokens or code found — redirecting to login in 10s...';
+        setTimeout(function() { window.location.href = "{{ url_for('main.login') }}"; }, 10000);
+        return;
+    }
+
+    // If we have a code, POST it; if we have tokens, POST those
+    var payload = code
+        ? { code: code }
+        : { access_token: accessToken, refresh_token: refreshToken || '' };
+
+    fetch("{{ url_for('main.auth_callback') }}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        debug.textContent += '\n\nServer response: ' + JSON.stringify(data);
+        if (data.ok) {
+            window.location.href = data.redirect || "{{ url_for('main.home') }}";
+        } else {
+            document.getElementById('status-msg').textContent = 'Authentication failed.';
+            debug.textContent += '\n\nNot redirecting — check debug info above.';
+        }
+    })
+    .catch(function(err) {
+        debug.textContent += '\n\nFetch error: ' + err;
+    });
+})();
+</script>
+{% endblock %}

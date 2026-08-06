@@ -1245,6 +1245,7 @@ body.auth-page footer {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    position: relative;
 }
 
 .input-icon {
@@ -1302,6 +1303,39 @@ body.auth-page footer {
     0%, 100% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
     75% { transform: translateX(5px); }
+}
+
+/* Real-time validation icons */
+.validation-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+
+.validation-icon::before {
+    display: none;
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 20px;
+    text-align: center;
+    width: 20px;
+}
+
+.validation-icon.valid::before {
+    content: "\2713";
+    display: block;
+    color: #2ecc71;
+}
+
+.validation-icon.invalid::before {
+    content: "\2717";
+    display: block;
+    color: #e74c3c;
 }
 
 /* Password requirements */

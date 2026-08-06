@@ -31,6 +31,11 @@ Thumbs.db
 .env
 .env.local
 
+# Internal docs & scripts (not for public repo)
+ImplementationPlans/
+project-docs/
+scripts/
+
 # Testing
 TEST_REPORT.md
 fix_*.py
