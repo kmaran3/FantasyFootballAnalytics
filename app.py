@@ -7,9 +7,20 @@ load_dotenv()
 
 app = create_app()
 
+# Add any missing columns to existing tables (lightweight migration).
+# Runs on both gunicorn import and local `python app.py`.
+with app.app_context():
+    from sqlalchemy import inspect, text
+    _inspector = inspect(db.engine)
+    if 'user' in _inspector.get_table_names():
+        _columns = [col['name'] for col in _inspector.get_columns('user')]
+        if 'username' not in _columns:
+            with db.engine.begin() as conn:
+                conn.execute(text('ALTER TABLE "user" ADD COLUMN username VARCHAR(100)'))
+            print('Migration: added username column to user table')
+    db.create_all()
+
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     
     # Use environment variables for production
     port = int(os.environ.get('PORT', 5001))
