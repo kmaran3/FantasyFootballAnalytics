@@ -168,17 +168,66 @@ def sign_in(email, password):
 
 
 def sign_in_with_oauth(provider, redirect_to):
-    """Get OAuth URL for social login (google, apple).
+    """Get OAuth URL for social login (google).
 
-    Uses implicit flow so Supabase redirects back with tokens in the URL
-    fragment. A small JS snippet on the callback page extracts them.
+    Generates PKCE code_verifier, stores it in the Flask session so it
+    survives across requests/workers, and builds the authorization URL
+    with the code_challenge.
     """
-    return _supabase.auth.sign_in_with_oauth({
-        'provider': provider,
-        'options': {
-            'redirect_to': redirect_to,
+    import secrets
+    import hashlib
+    import base64
+
+    # Generate PKCE code verifier and challenge
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+        .rstrip(b'=')
+        .decode()
+    )
+
+    # Store verifier in Flask session for the callback
+    session['pkce_code_verifier'] = code_verifier
+
+    # Build the OAuth URL manually with our code_challenge
+    params = (
+        f"provider={provider}"
+        f"&redirect_to={redirect_to}"
+        f"&code_challenge={code_challenge}"
+        f"&code_challenge_method=S256"
+    )
+    url = f"{_supabase.supabase_url}/auth/v1/authorize?{params}"
+
+    class OAuthResult:
+        def __init__(self, url):
+            self.url = url
+
+    return OAuthResult(url)
+
+
+def exchange_code_for_session(code):
+    """Exchange an OAuth authorization code for a session using the stored PKCE verifier."""
+    import httpx
+
+    code_verifier = session.pop('pkce_code_verifier', '')
+
+    resp = httpx.post(
+        f"{_supabase.supabase_url}/auth/v1/token?grant_type=pkce",
+        json={
+            'auth_code': code,
+            'code_verifier': code_verifier,
         },
-    })
+        headers={
+            'apikey': _supabase.supabase_key,
+            'Content-Type': 'application/json',
+        },
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    session['sb_access_token'] = data['access_token']
+    session['sb_refresh_token'] = data.get('refresh_token', '')
+    return data
 
 
 def sign_out():
