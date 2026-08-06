@@ -291,133 +291,16 @@ try:
 except Exception as e:
     print(f'Warning: could not load nflreadpy stats: {e}')
 
-# Build name→espn_id and name→bio maps from nfl_data_py (loaded once at startup)
+# Load name→espn_id and name→bio maps from pre-generated JSON cache
 _espn_id_map = {}
-_bio_map = {}  # name → {Age, Height, Weight, College, Draft Year, Draft Team, Pick, Seasons Played}
+_bio_map = {}
 try:
-    import nfl_data_py as _nfldata
-    from datetime import date as _bio_date
-    _players_df = _nfldata.import_players()
-    _today_bio = _bio_date.today()
-
-    def _bio_fmt_height(v):
-        try:
-            inches = float(v)
-            return f"{int(inches // 12)}'{int(inches % 12)}\""
-        except Exception:
-            s = str(v).strip()
-            return s if s and s not in ('nan', 'None') else None
-
-    def _bio_fmt_age(bd):
-        try:
-            import re as _re_bd
-            s = str(bd).strip()
-            m = _re_bd.match(r'(\d{4})-(\d{2})-(\d{2})', s)
-            if not m:
-                return None
-            born = _bio_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-            age = _today_bio.year - born.year - ((_today_bio.month, _today_bio.day) < (born.month, born.day))
-            return str(age)
-        except Exception:
-            return None
-
-    def _bio_ok(v):
-        return v is not None and str(v).strip() not in ('', 'nan', 'None', 'NaN')
-
-    for _, _pr in _players_df.iterrows():
-        _pname = str(_pr.get('display_name') or _pr.get('short_name') or '').strip()
-        if not _pname:
-            continue
-
-        _eid = _pr.get('espn_id')
-        if _bio_ok(_eid):
-            _espn_id_map[_pname] = str(int(float(_eid)))
-
-        bio = {}
-        _age = _bio_fmt_age(_pr.get('birth_date'))
-        if _age:
-            bio['Age'] = _age
-        _ht = _bio_fmt_height(_pr.get('height'))
-        if _ht:
-            bio['Height'] = _ht
-        if _bio_ok(_pr.get('weight')):
-            try:
-                bio['Weight'] = f"{int(float(_pr['weight']))} lbs"
-            except Exception:
-                pass
-        if _bio_ok(_pr.get('college')):
-            bio['College'] = str(_pr['college'])
-        # Draft year
-        _entry = _pr.get('entry_year') or _pr.get('rookie_year')
-        if _bio_ok(_entry):
-            try:
-                bio['Draft Year'] = str(int(float(_entry)))
-                yrs = _today_bio.year - int(float(_entry))
-                if yrs >= 0:
-                    bio['Seasons Played'] = str(yrs)
-            except Exception:
-                pass
-        # Draft team (column name varies by nfl_data_py version)
-        for _dt_col in ('draft_club', 'draft_team', 'team_draft'):
-            if _bio_ok(_pr.get(_dt_col)):
-                bio['Draft Team'] = str(_pr[_dt_col]).upper()
-                break
-        # Draft round + pick
-        _rnd = _pr.get('draft_round') or _pr.get('round')
-        _pick = _pr.get('draft_pick') or _pr.get('pick') or _pr.get('draft_number')
-        if _bio_ok(_rnd) and _bio_ok(_pick):
-            try:
-                bio['Pick'] = f"Rd {int(float(_rnd))} Pk {int(float(_pick))}"
-            except Exception:
-                pass
-        elif _bio_ok(_pr.get('draft_number')):
-            try:
-                bio['Pick'] = f"#{int(float(_pr['draft_number']))} overall"
-            except Exception:
-                pass
-        if bio:
-            _bio_map[_pname] = bio
-
-    # Supplement with draft picks data for Draft Team / Round / Pick if still missing
-    try:
-        _draft_years = list(range(2000, _today_bio.year + 1))
-        _draft_df = _nfldata.import_draft_picks(_draft_years)
-        # build name → (season, team, round, pick) — keep most recent entry per player
-        _draft_info = {}
-        for _, _dp in _draft_df.iterrows():
-            _dpname = str(_dp.get('pfr_player_name') or '').strip()
-            if not _dpname:
-                continue
-            try:
-                _draft_info[_dpname] = {
-                    'Draft Year': str(int(float(_dp['season']))),
-                    'Draft Team': str(_dp.get('team', '')).upper(),
-                    'Pick':       f"Rd {int(float(_dp['round']))} Pk {int(float(_dp['pick']))}",
-                }
-            except Exception:
-                pass
-        # Merge into _bio_map
-        for _dpname, _dinfo in _draft_info.items():
-            if _dpname in _bio_map:
-                for _k, _v in _dinfo.items():
-                    if _k not in _bio_map[_dpname] and _v and _v not in ('', 'nan'):
-                        _bio_map[_dpname][_k] = _v
-            else:
-                _bio_map[_dpname] = dict(_dinfo)
-        # After merging draft info, calculate Seasons Played for anyone who got Draft Year
-        # but not Seasons Played (happens when entry_year was NaN in import_players)
-        for _pbio in _bio_map.values():
-            if 'Seasons Played' not in _pbio and 'Draft Year' in _pbio:
-                try:
-                    yrs = _today_bio.year - int(_pbio['Draft Year'])
-                    if 0 <= yrs <= 30:
-                        _pbio['Seasons Played'] = str(yrs)
-                except Exception:
-                    pass
-        print(f'Draft pick supplement: {len(_draft_info)} entries merged')
-    except Exception as _de:
-        print(f'Draft picks unavailable: {_de}')
-
+    import json as _json
+    _cache_dir = _BASE_DIR / 'Models' / 'PickleFiles'
+    with open(_cache_dir / 'espn_id_map.json') as _f:
+        _espn_id_map = _json.load(_f)
+    with open(_cache_dir / 'bio_map.json') as _f:
+        _bio_map = _json.load(_f)
     print(f'ESPN ID map: {len(_espn_id_map)} players | Bio map: {len(_bio_map)} players')
 except Exception as _e:
     print(f'ESPN ID map unavailable: {_e}')
