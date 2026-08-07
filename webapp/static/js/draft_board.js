@@ -5,6 +5,14 @@
 
 'use strict';
 
+// ── CSRF ──────────────────────────────────────────────────────
+function csrfHeaders(extra = {}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    const h = { ...extra };
+    if (token) h['X-CSRFToken'] = token;
+    return h;
+}
+
 // ── State ─────────────────────────────────────────────────────
 const DB = {
     // Session settings
@@ -495,7 +503,7 @@ async function sleeperLookup() {
     try {
         const res = await fetch('/draft-board/sleeper/lookup', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ username }),
         });
         const data = await res.json();
@@ -545,7 +553,7 @@ async function sleeperConnect() {
     try {
         const res = await fetch('/draft-board/sleeper/connect', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ league_id: leagueId, sleeper_user_id: DB.sleeperUserId }),
         });
         const data = await res.json();
@@ -558,7 +566,7 @@ async function sleeperConnect() {
         try {
             const saveRes = await fetch('/draft-board/leagues/save', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     league_id:        leagueId,
                     league_name:      data.league_name,
@@ -652,7 +660,7 @@ async function espnLookup() {
 
         const res = await fetch('/draft-board/espn/lookup', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(body),
         });
         const data = await res.json();
@@ -725,7 +733,7 @@ async function espnConnect() {
 
         const res = await fetch('/draft-board/espn/connect', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(body),
         });
         const data = await res.json();
@@ -742,7 +750,7 @@ async function espnConnect() {
         try {
             const saveRes = await fetch('/draft-board/leagues/save', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     league_id:       leagueId,
                     league_name:     data.league_name,
@@ -2027,7 +2035,7 @@ async function fetchAISuggestions() {
     try {
         const res  = await fetch('/draft-board/ai-suggest', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -2167,7 +2175,7 @@ async function renderDraftCompleteAnalysis(forTeamTab) {
     try {
         const res  = await fetch('/draft-board/ai-suggest', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body:    JSON.stringify({
                 mode:                'complete',
                 roster:              enrichedRoster,
@@ -2365,7 +2373,7 @@ async function saveState() {
     try {
         await fetch('/draft-board/save', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
                 source:    DB.source,
                 league_id: DB.leagueId,
@@ -2673,7 +2681,7 @@ async function sendCopilotMessage() {
     try {
         const response = await fetch('/draft-board/copilot/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload),
             signal: abortController.signal,
         });
@@ -2814,7 +2822,7 @@ document.addEventListener('keydown', function(e) {
 async function resetBoard() {
     stopPolling();
     try {
-        await fetch('/draft-board/reset', { method: 'POST' });
+        await fetch('/draft-board/reset', { method: 'POST', headers: csrfHeaders() });
     } catch {}
 
     // Reset all state
@@ -2922,7 +2930,7 @@ async function switchSeason(year) {
 
         const res = await fetch(connectUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: csrfHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(connectBody),
         });
         const data = await res.json();
@@ -3230,7 +3238,7 @@ function renderSavedLeagues(leagues) {
 
                 const res = await fetch(connectUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: csrfHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify(connectBody),
                 });
                 const data = await res.json();
@@ -3245,7 +3253,7 @@ function renderSavedLeagues(leagues) {
                 const resolvedSlot = data.user_slot || savedUserSlot;
                 fetch('/draft-board/leagues/save', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: csrfHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         league_id:   leagueId,
                         league_name: data.league_name,
@@ -3296,7 +3304,7 @@ function renderSavedLeagues(leagues) {
     list.querySelectorAll('.db-remove-league-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const leagueId = btn.dataset.leagueId;
-            await fetch(`/draft-board/leagues/${leagueId}`, { method: 'DELETE' });
+            await fetch(`/draft-board/leagues/${leagueId}`, { method: 'DELETE', headers: csrfHeaders() });
             // Re-fetch and re-render
             const updated = await loadSavedLeagues();
             renderSavedLeagues(updated);

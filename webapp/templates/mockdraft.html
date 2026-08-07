@@ -239,5 +239,14 @@
   <div id="finalBoardWrap"></div>
 </div>
 
+<script>
+$.ajaxSetup({
+    beforeSend: function(xhr, settings) {
+        if (!/^(GET|HEAD|OPTIONS)$/i.test(settings.type)) {
+            xhr.setRequestHeader('X-CSRFToken', '{{ csrf_token() }}');
+        }
+    }
+});
+</script>
 <script src="{{ url_for('static', filename='js/mockdraft.js') }}"></script>
 {% endblock %}

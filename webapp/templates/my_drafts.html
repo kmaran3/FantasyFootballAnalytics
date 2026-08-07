@@ -41,6 +41,13 @@
 </div>
 
 <script>
+$.ajaxSetup({
+    beforeSend: function(xhr, settings) {
+        if (!/^(GET|HEAD|OPTIONS)$/i.test(settings.type)) {
+            xhr.setRequestHeader('X-CSRFToken', '{{ csrf_token() }}');
+        }
+    }
+});
 $(document).on('click', '.delete-draft', function(e) {
   e.preventDefault();
   if (!confirm('Delete this draft?')) return;

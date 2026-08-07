@@ -4,18 +4,21 @@
 {% block main_class %}rankings-main{% endblock %}
 {% block title %}Rankings{% endblock %}
 
+{% set active_pos = request.args.get('pos', '') %}
+{% set active_pos_list = active_pos.split(',') if active_pos else [] %}
+
 {% block content %}
 <div class="position-filter-bar">
     <div class="filter-bar-inner">
         <input type="text" id="playerSearch" class="player-search-input" placeholder="Search player...">
         <div class="filter-buttons">
-            <button class="position-filter-btn active" data-pos="ALL">All Positions</button>
-            <button class="position-filter-btn" data-pos="QB">QB</button>
-            <button class="position-filter-btn" data-pos="RB">RB</button>
-            <button class="position-filter-btn" data-pos="WR">WR</button>
-            <button class="position-filter-btn" data-pos="TE">TE</button>
-            <button class="position-filter-btn" data-pos="K">K</button>
-            <button class="position-filter-btn" data-pos="DEF">DEF</button>
+            <button class="position-filter-btn {% if not active_pos %}active{% endif %}" data-pos="ALL">All Positions</button>
+            <button class="position-filter-btn {% if 'QB' in active_pos.split(',') %}active{% endif %}" data-pos="QB">QB</button>
+            <button class="position-filter-btn {% if 'RB' in active_pos.split(',') %}active{% endif %}" data-pos="RB">RB</button>
+            <button class="position-filter-btn {% if 'WR' in active_pos.split(',') %}active{% endif %}" data-pos="WR">WR</button>
+            <button class="position-filter-btn {% if 'TE' in active_pos.split(',') %}active{% endif %}" data-pos="TE">TE</button>
+            <button class="position-filter-btn {% if 'K' in active_pos.split(',') %}active{% endif %}" data-pos="K">K</button>
+            <button class="position-filter-btn {% if 'DEF' in active_pos.split(',') %}active{% endif %}" data-pos="DEF">DEF</button>
             <button class="position-filter-btn" id="deepDiveToggle">Deep Dive</button>
 
             <!-- Team custom dropdown -->
@@ -51,9 +54,9 @@
     <div class="left-panel">
         <h2>Ranking Type</h2>
         <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
-            <a href="{{ url_for('main.get_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}">PPR</a>
-            <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}">Half PPR</a>
-            <a href="{{ url_for('main.get_standard_rankings') }}" class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}">Standard</a>
+            <button class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}" data-scoring="ppr" data-url="{{ url_for('main.get_ppr_rankings') }}">PPR</button>
+            <button class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}" data-scoring="half_ppr" data-url="{{ url_for('main.get_half_ppr_rankings') }}">Half PPR</button>
+            <button class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}" data-scoring="standard" data-url="{{ url_for('main.get_standard_rankings') }}">Standard</button>
         </div>
 
         {% if table_data %}
@@ -90,7 +93,8 @@
             </thead>
             <tbody>
                 {% for row in table_data %}
-                    <tr class="player-row" style="cursor: pointer;">
+                    <tr class="player-row" data-pos="{{ row.get('Position', '') }}" style="cursor: pointer;{% if active_pos_list and row.get('Position', '') not in active_pos_list %} display: none;{% endif %}"
+                    >
                         {% for header in table_data[0].keys() %}
                             {% set cell = row[header] %}
                             {% if header == 'Flags' %}
@@ -355,6 +359,9 @@
 <script>
 var playerDetails = {};
 var teamSchedule  = {};
+{% if scoring_diffs is defined %}
+var scoringDiffs = {{ scoring_diffs | tojson }};
+{% endif %}
 
 $(document).ready(function() {
     // ── CSRF for all AJAX calls ───────────────────────────────────────────
@@ -408,6 +415,7 @@ $(document).ready(function() {
     // ── Filter state ───────────────────────────────────────────────────────
     var selectedTeams = new Set();
     var selectedBye   = new Set();
+    var originalOrder = [];
 
     // ── Unified filter function ────────────────────────────────────────────
     function applyFilters() {
@@ -507,6 +515,70 @@ $(document).ready(function() {
     $('#playerSearch').on('input', applyFilters);
 
     // ── Position filter ────────────────────────────────────────────────────
+    // ── Update scoring format links to carry current position filter ──────
+    // ── Scoring format switching (client-side, no page reload) ──────────
+    // Build column index map from thead
+    var colIndex = {};
+    $('#sortable-table thead th').each(function(i) {
+        var h = $(this).clone().find('.col-info').remove().end().text().trim();
+        colIndex[h] = i;
+    });
+
+    $('.ranking-type-btn[data-scoring]').click(function() {
+        if ($(this).hasClass('active')) return;
+        var scoring = $(this).data('scoring');
+        if (!scoringDiffs || !scoringDiffs[scoring]) return;
+
+        // Update active button
+        $('.ranking-type-btn').removeClass('active');
+        $(this).addClass('active');
+
+        var diff = scoringDiffs[scoring];
+
+        // Update only the numeric cells that differ per format
+        $('#sortable-table tbody tr.player-row').each(function() {
+            var $cells = $(this).children('td');
+            var name = $cells.eq(colIndex['Name']).text().trim();
+            var d = diff[name];
+            if (!d) return;
+            for (var col in d) {
+                if (colIndex[col] !== undefined) {
+                    var val = d[col];
+                    $cells.eq(colIndex[col]).text(val !== null && val !== undefined ? val : '');
+                }
+            }
+        });
+
+        // Re-sort rows by new Rank
+        var tbody = $('#sortable-table tbody');
+        var rankIdx = colIndex['Rank'];
+        var rows = tbody.find('tr.player-row').get();
+        rows.sort(function(a, b) {
+            var ra = parseFloat($(a).children('td').eq(rankIdx).text()) || 9999;
+            var rb = parseFloat($(b).children('td').eq(rankIdx).text()) || 9999;
+            return ra - rb;
+        });
+        for (var i = 0; i < rows.length; i++) {
+            var $row = $(rows[i]);
+            var $dd = $row.data('deep-dive');
+            tbody.append($row);
+            if ($dd && $dd.length) tbody.append($dd);
+            else tbody.append($row.next('.deep-dive-row'));
+        }
+
+        // Update originalOrder to match new sort
+        originalOrder = [];
+        tbody.find('tr.player-row').each(function() { originalOrder.push(this); });
+        $('#resetRanking').hide();
+
+        // Update URL without reload
+        var url = $(this).data('url');
+        var activePos = [];
+        $('.position-filter-btn[data-pos].active').each(function() { activePos.push($(this).data('pos')); });
+        if (activePos.indexOf('ALL') === -1 && activePos.length > 0) url += '?pos=' + activePos.join(',');
+        history.pushState(null, '', url);
+    });
+
     $('.position-filter-btn[data-pos]').click(function() {
         var clicked = $(this).data('pos');
         if (clicked === 'ALL') {
@@ -751,7 +823,7 @@ $(document).ready(function() {
     }).disableSelection();
 
     // ── Original order capture (for Reset) ────────────────────────────────
-    var originalOrder = [];
+    // (originalOrder declared earlier, before rebuildTable)
     $('#sortable-table tbody tr.player-row').each(function() {
         originalOrder.push(this);
     });
