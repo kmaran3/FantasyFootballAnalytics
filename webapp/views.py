@@ -1144,6 +1144,26 @@ _model_data = {
 _model_table = {k: json.loads(v.to_json(orient='records')) if not v.empty else [] for k, v in _model_data.items()}
 
 
+def _build_sleeper_team_map():
+    """Fetch current team assignments from Sleeper API (includes offseason moves)."""
+    try:
+        resp = requests.get('https://api.sleeper.app/v1/players/nfl', timeout=15)
+        if resp.status_code != 200:
+            return {}
+        team_map = {}
+        for pid, p in (resp.json() or {}).items():
+            name = (p.get('full_name') or '').strip()
+            team = (p.get('team') or '').strip()
+            if name and team:
+                team_map[_normalize_name(name)] = _norm_team(team)
+        print(f'Sleeper team map: {len(team_map)} players')
+        return team_map
+    except Exception as e:
+        print(f'Warning: could not fetch Sleeper team map: {e}')
+        return {}
+
+_sleeper_team_map = _build_sleeper_team_map()
+
 def _inject_rankings_flags(rows):
     if not rows:
         return rows
@@ -1153,6 +1173,12 @@ def _inject_rankings_flags(rows):
 
     enriched = []
     for row in rows:
+        # Update team with Sleeper's current roster data (catches offseason moves)
+        name_key = _normalize_name(row.get('Name', ''))
+        sleeper_team = _sleeper_team_map.get(name_key, '')
+        if sleeper_team:
+            row['Team'] = sleeper_team
+
         update = _get_sleeper_player_update(
             row.get('Name', ''),
             row.get('Team', ''),
@@ -1165,6 +1191,7 @@ def _inject_rankings_flags(rows):
             prior_team_map,
             watch_news_map,
         )
+
         ordered = {}
         for key, value in row.items():
             ordered[key] = value
