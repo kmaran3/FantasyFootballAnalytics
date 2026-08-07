@@ -366,19 +366,26 @@ form label {
 
 /* ── Panels ──────────────────────────────────────────────────── */
 
-.left-panel {
+.left-sidebar {
     position: fixed;
     top: 130px;
     left: 20px;
-    width: 105px;
-    padding: 8px;
+    width: 140px;
     z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+}
+
+.left-panel {
+    padding: 8px;
     background-color: var(--black);
     border: 1px solid var(--medium-gray);
     border-radius: 8px;
     font-size: 0.65em;
     color: var(--white);
-    flex-direction: column;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
@@ -393,6 +400,7 @@ form label {
     flex-grow: 1;
 }
 
+
 .saved-lists {
     left: 40px;
     position: fixed;
@@ -406,29 +414,6 @@ form label {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
-.right-panel {
-    position: fixed;
-    top: 130px;
-    right: 20px;
-    width: 130px;
-    padding: 8px;
-    z-index: 1000;
-    background-color: var(--black);
-    border: 1px solid var(--medium-gray);
-    border-radius: 8px;
-    font-size: 0.65em;
-    color: var(--white);
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
-}
-
-.right-panel h2 {
-    margin: 0 0 8px 0;
-    font-size: 1.4em;
-    color: var(--gold);
-    font-weight: 600;
-}
 
 .saved-ranking-item {
     display: flex;
@@ -691,7 +676,9 @@ form label {
 /* ── Save ranking button ─────────────────────────────────────── */
 
 .save-ranking-btn {
+    width: 100%;
     padding: 8px 12px;
+    margin-bottom: 6px;
     background-color: var(--dark-gray);
     color: var(--gold);
     border: 1px solid var(--gold);
@@ -700,6 +687,24 @@ form label {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+.reset-ranking-btn {
+    width: 100%;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    background: transparent;
+    color: #e0e0e0;
+    border: 1px solid #666;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: all 0.2s ease;
+}
+
+.reset-ranking-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
 }
 
 .save-ranking-btn:hover {
@@ -734,7 +739,7 @@ body.rankings-body {
 
 .rankings-main #ranking_table {
     margin-left: 145px;
-    margin-right: 170px;
+    margin-right: 20px;
 }
 
 .rankings-main table {
@@ -747,7 +752,7 @@ body.rankings-body {
     background-color: var(--charcoal);
     border-bottom: 1px solid var(--medium-gray);
     padding-left: 145px;
-    padding-right: 170px;
+    padding-right: 20px;
     box-sizing: border-box;
 }
 
@@ -1564,9 +1569,9 @@ body.auth-page footer {
         flex-wrap: wrap;
     }
 
-    /* Left/right fixed panels off on tablet — rankings uses them */
+    /* Left fixed panel off on tablet — rankings uses it */
+    .left-sidebar,
     .left-panel,
-    .right-panel,
     .saved-lists {
         position: static;
         width: auto;
