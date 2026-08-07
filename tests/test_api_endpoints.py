@@ -1,6 +1,7 @@
 """Tests for JSON API endpoints used by the frontend."""
 
 import json
+from unittest.mock import patch, MagicMock
 
 
 # ── Draft Board persistence endpoints ────────────────────────
@@ -231,3 +232,159 @@ def test_player_quick_stats(logged_in_client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert isinstance(data, dict)
+
+
+# ── Sleeper league lookup/connect endpoints ─────────────────
+
+
+def _mock_sleeper_response(url, **kwargs):
+    """Return canned Sleeper API responses based on URL."""
+    resp = MagicMock()
+    if "/v1/user/testuser" in url and "/leagues/" not in url:
+        resp.status_code = 200
+        resp.json.return_value = {"user_id": "sl-123", "display_name": "testuser"}
+    elif "/leagues/nfl/" in url:
+        resp.status_code = 200
+        resp.json.return_value = [
+            {
+                "league_id": "lg-abc",
+                "name": "Test League",
+                "total_rosters": 12,
+                "status": "pre_draft",
+                "scoring_settings": {"rec": 1.0},
+            }
+        ]
+    elif "/v1/user/nobody" in url:
+        resp.status_code = 404
+        resp.json.return_value = None
+    else:
+        resp.status_code = 200
+        resp.json.return_value = {}
+    return resp
+
+
+def test_sleeper_lookup_success(logged_in_client):
+    """Sleeper lookup returns user_id and leagues list."""
+    with patch("webapp.views.requests.get", side_effect=_mock_sleeper_response):
+        resp = logged_in_client.post(
+            "/draft-board/sleeper/lookup",
+            data=json.dumps({"username": "testuser"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["user_id"] == "sl-123"
+    assert len(data["leagues"]) == 1
+    assert data["leagues"][0]["name"] == "Test League"
+    assert data["leagues"][0]["num_teams"] == 12
+
+
+def test_sleeper_lookup_missing_username(logged_in_client):
+    """Sleeper lookup returns 400 when username is missing."""
+    resp = logged_in_client.post(
+        "/draft-board/sleeper/lookup",
+        data=json.dumps({"username": ""}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_sleeper_lookup_user_not_found(logged_in_client):
+    """Sleeper lookup returns 404 for unknown user."""
+    with patch("webapp.views.requests.get", side_effect=_mock_sleeper_response):
+        resp = logged_in_client.post(
+            "/draft-board/sleeper/lookup",
+            data=json.dumps({"username": "nobody"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 404
+
+
+def test_sleeper_lookup_requires_login(client):
+    """Sleeper lookup redirects when not logged in."""
+    resp = client.post(
+        "/draft-board/sleeper/lookup",
+        data=json.dumps({"username": "testuser"}),
+        content_type="application/json",
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 401)
+
+
+# ── ESPN league lookup endpoint ─────────────────────────────
+
+
+def _mock_espn_api_fetch(league_id, year, views, cookies=None):
+    """Canned ESPN API response."""
+    if league_id == "99999999":
+        return None, "not_found"
+    if league_id == "private":
+        return None, "private"
+    return {
+        "settings": {"name": "ESPN Test League", "size": 10},
+        "teams": [
+            {"id": 1, "name": "Team Alpha", "abbrev": "TA", "owners": ["owner1"]},
+            {"id": 2, "name": "Team Beta", "abbrev": "TB", "owners": ["owner2"]},
+        ],
+    }, None
+
+
+def test_espn_lookup_success(logged_in_client):
+    """ESPN lookup returns league info."""
+    with patch("webapp.views._espn_api_fetch", side_effect=_mock_espn_api_fetch):
+        resp = logged_in_client.post(
+            "/draft-board/espn/lookup",
+            data=json.dumps({"league_id": "12345678"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["league_name"] == "ESPN Test League"
+    assert data["num_teams"] == 10
+    assert len(data["teams"]) == 2
+
+
+def test_espn_lookup_missing_id(logged_in_client):
+    """ESPN lookup returns 400 when league_id is missing."""
+    resp = logged_in_client.post(
+        "/draft-board/espn/lookup",
+        data=json.dumps({"league_id": ""}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+
+
+def test_espn_lookup_not_found(logged_in_client):
+    """ESPN lookup returns 404 for unknown league."""
+    with patch("webapp.views._espn_api_fetch", side_effect=_mock_espn_api_fetch):
+        resp = logged_in_client.post(
+            "/draft-board/espn/lookup",
+            data=json.dumps({"league_id": "99999999"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 404
+
+
+def test_espn_lookup_private_league(logged_in_client):
+    """ESPN lookup returns 401 for private leagues without cookies."""
+    with patch("webapp.views._espn_api_fetch", side_effect=_mock_espn_api_fetch):
+        resp = logged_in_client.post(
+            "/draft-board/espn/lookup",
+            data=json.dumps({"league_id": "private"}),
+            content_type="application/json",
+        )
+    assert resp.status_code == 401
+    data = resp.get_json()
+    assert data["error"] == "private"
+
+
+def test_espn_lookup_requires_login(client):
+    """ESPN lookup redirects when not logged in."""
+    resp = client.post(
+        "/draft-board/espn/lookup",
+        data=json.dumps({"league_id": "12345678"}),
+        content_type="application/json",
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 401)

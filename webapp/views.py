@@ -1214,6 +1214,16 @@ _model_table = {k: _inject_rankings_flags(v) for k, v in _model_table.items()}
 for k, v in _model_table.items():
     print(f'Model table ({k}): {len(v)} rows')
 
+# Build compact diffs for client-side scoring format switching.
+# Only the numeric columns differ between formats — store those as {Name: {col: val}} maps.
+_DIFF_COLS = ('Rank', 'Predicted PPG', 'VBD', 'ADP', 'vs ADP', 'Weighted PPG', '2025 PPG')
+_scoring_diffs = {}
+for key in ('ppr', 'half_ppr', 'standard'):
+    _scoring_diffs[key] = {
+        row['Name']: {c: row.get(c) for c in _DIFF_COLS}
+        for row in _model_table.get(key, [])
+    }
+
 _rookie_names = set()
 try:
     _rook_df = pd.read_pickle(_BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel' / 'combined_predictions_ppr.pkl')
@@ -1821,6 +1831,7 @@ def rankings():
 def get_ppr_rankings():
     saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     return render_template('rankings.html', table_data=_model_table['ppr'], table_type='PPR',
+                           scoring_diffs=_scoring_diffs,
                            user_rankings=saved, player_details_json='{}',
                            team_schedule_json='{}', teams=[], bye_weeks=[])
 
@@ -1829,6 +1840,7 @@ def get_ppr_rankings():
 def get_half_ppr_rankings():
     saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     return render_template('rankings.html', table_data=_model_table['half_ppr'], table_type='Half PPR',
+                           scoring_diffs=_scoring_diffs,
                            user_rankings=saved, player_details_json='{}',
                            team_schedule_json='{}', teams=[], bye_weeks=[])
 
@@ -1837,6 +1849,7 @@ def get_half_ppr_rankings():
 def get_standard_rankings():
     saved = UserRanking.query.filter_by(user_id=g.user.id).order_by(UserRanking.timestamp.desc()).all()
     return render_template('rankings.html', table_data=_model_table['standard'], table_type='Standard',
+                           scoring_diffs=_scoring_diffs,
                            user_rankings=saved, player_details_json='{}',
                            team_schedule_json='{}', teams=[], bye_weeks=[])
 

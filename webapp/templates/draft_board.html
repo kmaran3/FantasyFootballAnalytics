@@ -3,6 +3,7 @@
 {% block body_class %}{% endblock %}
 
 {% block content %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/draft_board.css') }}">
 
 <div class="db-page" id="db-page">
