@@ -47,21 +47,24 @@
     </div>
 </div>
 
-<div class="left-panel">
-    <h2>Ranking Type</h2>
-    <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
-        <a href="{{ url_for('main.get_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}">PPR</a>
-        <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}">Half PPR</a>
-        <a href="{{ url_for('main.get_standard_rankings') }}" class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}">Standard</a>
-    </div>
-</div>
+<div class="left-sidebar">
+    <div class="left-panel">
+        <h2>Ranking Type</h2>
+        <div class="btn-group-vertical mb-3" role="group" aria-label="CSV Selector">
+            <a href="{{ url_for('main.get_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'PPR' %}active{% endif %}">PPR</a>
+            <a href="{{ url_for('main.get_half_ppr_rankings') }}" class="ranking-type-btn {% if table_type == 'Half PPR' %}active{% endif %}">Half PPR</a>
+            <a href="{{ url_for('main.get_standard_rankings') }}" class="ranking-type-btn {% if table_type == 'Standard' %}active{% endif %}">Standard</a>
+        </div>
 
-<div class="right-panel">
-    {% if table_data %}
-        <button id="saveRanking" class="save-ranking-btn" style="width: 100%; margin-bottom: 10px;">Save Rankings</button>
-    {% endif %}
-    <h2>Your Saved Rankings</h2>
+        {% if table_data %}
+            <button id="saveRanking" class="save-ranking-btn">Save Rankings</button>
+            <button id="resetRanking" class="reset-ranking-btn" style="display: none;">Reset Order</button>
+        {% endif %}
+    </div>
+
     {% if user_rankings %}
+    <div class="left-panel">
+        <h2>Saved Rankings</h2>
         {% for ranking in user_rankings %}
             <div class="saved-ranking-item">
                 <a href="{{ url_for('main.view_saved_ranking', ranking_id=ranking.id) }}" class="saved-ranking-link {% if saved_ranking_id is defined and saved_ranking_id == ranking.id %}active{% endif %}">
@@ -70,8 +73,7 @@
                 <button class="btn btn-danger btn-sm delete-ranking" data-id="{{ ranking.id }}">&times;</button>
             </div>
         {% endfor %}
-    {% else %}
-        <p style="font-size: 0.85em; opacity: 0.7;">No saved rankings yet.</p>
+    </div>
     {% endif %}
 </div>
 
@@ -355,6 +357,15 @@ var playerDetails = {};
 var teamSchedule  = {};
 
 $(document).ready(function() {
+    // ── CSRF for all AJAX calls ───────────────────────────────────────────
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS)$/i.test(settings.type)) {
+                xhr.setRequestHeader('X-CSRFToken', '{{ csrf_token() }}');
+            }
+        }
+    });
+
     // ── Column info tooltips ───────────────────────────────────────────────
     var colTooltips = {
         'Predicted PPG':  'ML model projection of fantasy points per game for the 2026 season, based on historical performance, age trajectory, and usage trends.',
@@ -738,6 +749,33 @@ $(document).ready(function() {
             ui.item.after(ui.item.data('deep-dive'));
         }
     }).disableSelection();
+
+    // ── Original order capture (for Reset) ────────────────────────────────
+    var originalOrder = [];
+    $('#sortable-table tbody tr.player-row').each(function() {
+        originalOrder.push(this);
+    });
+
+    // Show Reset button when user reorders
+    $("#sortable-table tbody").on('sortupdate', function() {
+        $('#resetRanking').show();
+    });
+
+    // Reset click handler — restore original row order
+    $('#resetRanking').click(function() {
+        var tbody = $('#sortable-table tbody');
+        originalOrder.forEach(function(playerRow) {
+            tbody.append(playerRow);
+            var deepDive = $(playerRow).data('deep-dive');
+            if (deepDive && deepDive.length) {
+                tbody.append(deepDive);
+            }
+        });
+        tbody.find('tr.player-row').each(function(i) {
+            $(this).find('td:first').text(i + 1);
+        });
+        $(this).hide();
+    });
 
     // ── Save / update ranking ──────────────────────────────────────────────
     var savedRankingId   = {{ saved_ranking_id if saved_ranking_id is defined else 'null' }};

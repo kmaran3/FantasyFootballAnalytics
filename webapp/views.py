@@ -87,6 +87,13 @@ _TEAM_NAME_MAP = {
 }
 
 _player_details_cache = None
+
+def _read_data(pkl_path):
+    """Load a DataFrame from JSON (preferred) or pickle fallback."""
+    json_path = pkl_path.with_suffix('.json')
+    if json_path.exists():
+        return pd.read_json(json_path, orient='records')
+    return pd.read_pickle(pkl_path)
 _team_schedule_cache = None
 
 
@@ -100,7 +107,7 @@ def _get_player_details():
     # Age from currYearRoster
     roster_path = _PICKLE_DIR / 'currYearRoster.pkl'
     if roster_path.exists():
-        roster_df = pd.read_pickle(roster_path)
+        roster_df = _read_data(roster_path)
         for _, row in roster_df.iterrows():
             name = str(row['Player']).strip()
             details[name] = {
@@ -119,7 +126,7 @@ def _get_player_details():
     # QB stats (most recent season)
     qb_path = _PICKLE_DIR / 'final_qb_data.pkl'
     if qb_path.exists():
-        df = pd.read_pickle(qb_path)
+        df = _read_data(qb_path)
         df = df[df['season'] == df['season'].max()]
         if 'season_type' in df.columns:
             df = df[df['season_type'] == 'REG']
@@ -143,7 +150,7 @@ def _get_player_details():
     # RB stats
     rb_path = _PICKLE_DIR / 'final_rb_data.pkl'
     if rb_path.exists():
-        df = pd.read_pickle(rb_path)
+        df = _read_data(rb_path)
         df = df[df['season'] == df['season'].max()]
         if 'season_type' in df.columns:
             df = df[df['season_type'] == 'REG']
@@ -167,7 +174,7 @@ def _get_player_details():
     # WR/TE stats
     wrte_path = _PICKLE_DIR / 'final_wrte_data.pkl'
     if wrte_path.exists():
-        df = pd.read_pickle(wrte_path)
+        df = _read_data(wrte_path)
         df = df[df['season'] == df['season'].max()]
         if 'season_type' in df.columns:
             df = df[df['season_type'] == 'REG']
@@ -242,6 +249,10 @@ _data_dir = Path(__file__).parent.parent / 'Models' / 'PickleFiles'
 
 def _load(filename):
     try:
+        # Prefer JSON (cross-version compatible) over pickle
+        json_path = _data_dir / filename.replace('.pkl', '.json')
+        if json_path.exists():
+            return pd.read_json(json_path, orient='records')
         return pd.read_pickle(_data_dir / filename)
     except Exception:
         return pd.DataFrame()
@@ -1952,7 +1963,7 @@ def player_stats():
             if pkl_file:
                 pkl_path = _PICKLE_DIR / pkl_file
                 if pkl_path.exists():
-                    pkl_df = pd.read_pickle(pkl_path)
+                    pkl_df = _read_data(pkl_path)
                     player_rows = pkl_df[pkl_df['player_display_name'] == name].sort_values('season')
                     if pos == 'QB':
                         cols = ['season', 'GP', 'completions', 'attempts', 'passing_yards',
