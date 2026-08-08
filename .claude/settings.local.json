@@ -123,7 +123,9 @@
       "Bash(python3.11 -c \"import numpy; print\\('numpy:', numpy.__version__\\)\")",
       "Bash(/usr/bin/python3 -c \"\nimport pandas as pd\nimport pathlib\n\npkl_dir = pathlib.Path\\('Models/PickleFiles'\\)\nfiles = ['final_qb_data.pkl', 'final_rb_data.pkl', 'final_wrte_data.pkl',\n         'AVbyPositionGroup.pkl', 'AVgrades.pkl', 'currAVs.pkl']\n\nfor name in files:\n    p = pkl_dir / name\n    df = pd.read_pickle\\(p\\)\n    json_name = name.replace\\('.pkl', '.json'\\)\n    json_path = pkl_dir / json_name\n    df.to_json\\(json_path, orient='records'\\)\n    print\\(f'Saved {json_name} \\({df.shape}\\)'\\)\n\" 2>&1)",
       "Bash(python3.11 -c \"\nimport pandas as pd\nfor name in ['final_qb_data.json', 'final_rb_data.json', 'final_wrte_data.json', 'AVbyPositionGroup.json', 'AVgrades.json', 'currAVs.json']:\n    df = pd.read_json\\(f'Models/PickleFiles/{name}', orient='records'\\)\n    print\\(f'{name}: OK \\({df.shape}\\)'\\)\n\")",
-      "Bash(python3.11 -m pytest tests/ -x -q)"
+      "Bash(python3.11 -m pytest tests/ -x -q)",
+      "Bash(python3.11 -m pytest tests/test_csrf.py -x -v)",
+      "Bash(python3.11 -m pytest tests/ -q)"
     ]
   }
 }
