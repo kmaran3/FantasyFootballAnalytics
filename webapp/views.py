@@ -419,8 +419,6 @@ _sleeper_player_cache = {'ts': 0, 'by_id': {}, 'by_name': {}}
 _SLEEPER_PLAYER_CACHE_TTL = 3600  # 1 hour
 _player_move_news_cache = {'ts': 0, 'data': {}}
 _PLAYER_MOVE_NEWS_CACHE_TTL = 21600  # 6 hours
-_player_watch_news_cache = {'ts': 0, 'data': {}}
-_PLAYER_WATCH_NEWS_CACHE_TTL = 3600  # 1 hour
 
 
 def _refresh_sleeper_player_cache():
@@ -464,8 +462,7 @@ def _get_sleeper_player_map():
 
 
 def _get_sleeper_player_update(name, team='', pos=''):
-    if _sleeper_player_cache['by_id']:
-        _refresh_sleeper_player_cache()  # no-op if still within TTL
+    _refresh_sleeper_player_cache()
     candidates = _sleeper_player_cache['by_name'].get(_normalize_name(name), [])
     if not candidates:
         return {}
@@ -592,89 +589,6 @@ def _compose_flag_tooltip(tag, description, expected_time):
         parts.append(f'Expected time missed: {expected_time}')
     return ' | '.join(parts)
 
-
-def _fetch_player_watch_news(player_names):
-    import time
-
-    now = time.time()
-    if now - _player_watch_news_cache['ts'] < _PLAYER_WATCH_NEWS_CACHE_TTL and _player_watch_news_cache['data']:
-        return _player_watch_news_cache['data']
-
-    name_map = {_normalize_name(name): name for name in player_names if _clean_text(name)}
-    if not name_map:
-        return {}
-
-    queries = [
-        '"NFL" (suspension OR suspended OR "commissioner exempt" OR "exempt list")',
-        '"NFL" (arrest OR arrested OR charges OR charged OR jail OR lawsuit OR investigation OR "domestic violence")',
-    ]
-
-    watch_map = {}
-    for query in queries:
-        url = f'https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en'
-        try:
-            resp = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-            resp.raise_for_status()
-            root = ET.fromstring(resp.text)
-        except Exception:
-            continue
-
-        for item in root.findall('./channel/item'):
-            title = _clean_text(item.findtext('title'))
-            raw_description = _clean_text(item.findtext('description'))
-            description = BeautifulSoup(raw_description, 'html.parser').get_text(' ', strip=True) if raw_description else ''
-            article_text = ' '.join(part for part in [title, description] if part)
-            normalized_text = _normalize_name(article_text)
-            normalized_title = _normalize_name(title)
-            lower_title = title.lower()
-            if not normalized_text:
-                continue
-
-            matched_name = None
-            for name_key, original_name in name_map.items():
-                if name_key and name_key in normalized_title:
-                    matched_name = (name_key, original_name)
-                    break
-            if not matched_name or matched_name[0] in watch_map:
-                continue
-
-            lower_text = article_text.lower()
-            name_index = normalized_title.find(matched_name[0])
-            suspension_index = min(
-                [idx for idx in [lower_title.find(token) for token in ('suspension', 'suspended', 'commissioner exempt', 'exempt list')] if idx >= 0] or [-1]
-            )
-            is_suspension = suspension_index >= 0 and name_index >= 0 and name_index <= suspension_index
-            is_offfield = any(token in lower_text for token in ('arrest', 'arrested', 'charges', 'charged', 'jail', 'lawsuit', 'investigation', 'domestic violence'))
-            if not (is_suspension or is_offfield):
-                continue
-
-            published = _clean_text(item.findtext('pubDate'))
-            published_label = ''
-            if published:
-                try:
-                    published_dt = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
-                    published_label = published_dt.strftime('%b %d')
-                except ValueError:
-                    published_label = ''
-
-            source = _clean_text(item.findtext('source'))
-            desc = description or title
-            expected_time = _extract_expected_time_missed(article_text)
-            label = 'Suspension' if is_suspension else 'Off-field'
-            watch_map[matched_name[0]] = {
-                'label': label,
-                'tone': 'danger' if is_suspension else 'warning',
-                'description': desc,
-                'expected_time_missed': expected_time,
-                'headline': title,
-                'source': source,
-                'published_label': published_label,
-                'title': _compose_flag_tooltip(label, desc, expected_time),
-            }
-
-    _player_watch_news_cache['ts'] = now
-    _player_watch_news_cache['data'] = watch_map
-    return watch_map
 
 # ── Sleeper ADP (scoring-format-specific) ─────────────────────────────
 # Sleeper projections endpoint returns per-scoring-type projected points
@@ -957,22 +871,11 @@ def _latest_player_team_map():
     }
 
 
-def _build_rankings_flags(name, pos, team, prior_team_map, watch_news_map):
+def _build_rankings_flags(name, pos, team, prior_team_map):
     flags = []
     update = _get_sleeper_player_update(name, team, pos)
     status_key = (update.get('status') or '').upper()
     summary_key = (update.get('summary') or '').upper()
-    name_key = _normalize_name(name)
-    watch_news = watch_news_map.get(name_key, {})
-
-    if watch_news:
-        flags.append({
-            'label': watch_news.get('label', 'Off-field'),
-            'tone': watch_news.get('tone', 'warning'),
-            'title': watch_news.get('title', ''),
-            'description': watch_news.get('description', ''),
-            'expected_time_missed': watch_news.get('expected_time_missed', 'Unknown'),
-        })
 
     if 'SUSP' in status_key or 'SUSP' in summary_key:
         flags.append({
@@ -993,7 +896,7 @@ def _build_rankings_flags(name, pos, team, prior_team_map, watch_news_map):
     ):
         flags.append({
             'label': 'Injury',
-            'tone': 'warning',
+            'tone': update.get('tone') or 'warning',
             'title': _compose_flag_tooltip(
                 'Injury',
                 update.get('title') or update.get('summary') or 'Injury update',
@@ -1001,6 +904,15 @@ def _build_rankings_flags(name, pos, team, prior_team_map, watch_news_map):
             ),
             'description': update.get('title') or update.get('summary') or 'Injury update',
             'expected_time_missed': _extract_expected_time_missed(update.get('title') or update.get('summary') or ''),
+        })
+
+    if _normalize_name(name) in _rookie_names:
+        flags.append({
+            'label': 'Rookie',
+            'tone': 'info',
+            'title': 'Rookie | First NFL season',
+            'description': 'First NFL season',
+            'expected_time_missed': 'N/A',
         })
 
     prior_team = prior_team_map.get(_normalize_name(name))
@@ -1143,6 +1055,19 @@ _model_data = {
 }
 _model_table = {k: json.loads(v.to_json(orient='records')) if not v.empty else [] for k, v in _model_data.items()}
 
+_rookie_names = set()
+try:
+    _rook_df = pd.read_pickle(_BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel' / 'combined_predictions_ppr.pkl')
+    if 'is_rookie' in _rook_df.columns:
+        _rookie_names = {
+            _normalize_name(name)
+            for name in _rook_df.loc[_rook_df['is_rookie'] == True, 'player_name']
+            if _clean_text(name)
+        }
+    print(f'Rookie names loaded: {len(_rookie_names)}')
+except Exception as _re:
+    print(f'Rookie names unavailable: {_re}')
+
 
 def _build_sleeper_team_map():
     """Fetch current team assignments from Sleeper API (includes offseason moves)."""
@@ -1169,8 +1094,6 @@ def _inject_rankings_flags(rows):
         return rows
 
     prior_team_map = _latest_player_team_map()
-    watch_news_map = _fetch_player_watch_news([row.get('Name', '') for row in rows])
-
     enriched = []
     for row in rows:
         # Update team with Sleeper's current roster data (catches offseason moves)
@@ -1189,7 +1112,6 @@ def _inject_rankings_flags(rows):
             row.get('Position', ''),
             row.get('Team', ''),
             prior_team_map,
-            watch_news_map,
         )
 
         ordered = {}
@@ -1223,15 +1145,6 @@ for key in ('ppr', 'half_ppr', 'standard'):
         row['Name']: {c: row.get(c) for c in _DIFF_COLS}
         for row in _model_table.get(key, [])
     }
-
-_rookie_names = set()
-try:
-    _rook_df = pd.read_pickle(_BASE_DIR / 'Models' / 'PickleFiles' / 'NewModel' / 'combined_predictions_ppr.pkl')
-    if 'is_rookie' in _rook_df.columns:
-        _rookie_names = set(_rook_df[_rook_df['is_rookie'] == True]['player_name'].tolist())
-    print(f'Rookie names loaded: {len(_rookie_names)}')
-except Exception as _re:
-    print(f'Rookie names unavailable: {_re}')
 
 # ── Similarity model (Phase 4) ────────────────────────────────────
 import pickle as _pickle
