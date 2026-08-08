@@ -67,3 +67,57 @@ def logged_in_client(app, client):
     with patch("webapp.supabase_auth.pyjwt.get_unverified_header", return_value={"alg": "HS256"}), \
          patch("webapp.supabase_auth.pyjwt.decode", return_value=fake_payload):
         yield client
+
+
+@pytest.fixture(scope="session")
+def csrf_app():
+    """Flask app with CSRF protection enabled — mirrors production behavior."""
+    import os
+    os.environ["FLASK_ENV"] = "testing"
+    os.environ["SECRET_KEY"] = "test-secret-key-not-for-prod"
+
+    application = create_app()
+    application.config.update(
+        TESTING=True,
+        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
+        WTF_CSRF_ENABLED=True,
+        SERVER_NAME="localhost",
+    )
+
+    with application.app_context():
+        _db.drop_all()
+        _db.create_all()
+
+    yield application
+
+
+@pytest.fixture()
+def csrf_client(csrf_app):
+    """Logged-in client with CSRF enabled. Provides a get_csrf_token() helper."""
+    with csrf_app.app_context():
+        _db.session.begin_nested()
+
+        user = User.query.get("test-uuid-csrf")
+        if not user:
+            user = User(id="test-uuid-csrf", email="csrf@example.com")
+            _db.session.add(user)
+            _db.session.commit()
+
+        client = csrf_app.test_client()
+
+        fake_payload = {
+            "sub": "test-uuid-csrf",
+            "email": "csrf@example.com",
+            "user_metadata": {},
+            "aud": "authenticated",
+        }
+
+        with client.session_transaction() as sess:
+            sess["sb_access_token"] = "fake-token"
+            sess["sb_refresh_token"] = "fake-refresh"
+
+        with patch("webapp.supabase_auth.pyjwt.get_unverified_header", return_value={"alg": "HS256"}), \
+             patch("webapp.supabase_auth.pyjwt.decode", return_value=fake_payload):
+            yield client
+
+        _db.session.rollback()

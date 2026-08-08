@@ -1734,6 +1734,14 @@ def about():
 def contact():
     return render_template('contact.html')
 
+@main.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+@main.route('/terms')
+def terms():
+    return render_template('terms.html')
+
 @main.route('/rankings', methods=['GET', 'POST'])
 @login_required
 def rankings():
